@@ -1,0 +1,29 @@
+{
+  "name": "@projdeck/agentd",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "projdeck": "./src/cli.ts"
+  },
+  "scripts": {
+    "dev": "node --watch src/index.ts",
+    "start": "node src/index.ts",
+    "cli": "node src/cli.ts",
+    "typecheck": "tsc -p .",
+    "test": "node --test 'src/**/*.test.ts'"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.1.5",
+    "@fastify/multipart": "^10.1.6",
+    "@fastify/static": "^10.1.7",
+    "@fastify/websocket": "^11.3.4",
+    "@projdeck/shared": "workspace:*",
+    "fastify": "^5.12.7",
+    "node-pty": "1.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/ws": "^8.18.2",
+    "typescript": "^7.0.2"
+  }
+}

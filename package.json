@@ -1,0 +1,13 @@
+{
+  "name": "projdeck",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm --filter @projdeck/web build",
+    "start": "pnpm --filter @projdeck/agentd start",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test"
+  },
+  "packageManager": "pnpm@12.14.0"
+}

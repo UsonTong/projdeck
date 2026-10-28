@@ -1,0 +1,18 @@
+# 本机运行：systemctl --user 托管 agentd，开机自启
+# 安装：
+#   cp deploy/projdeck-agentd.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now projdeck-agentd
+#   loginctl enable-linger $USER   # 未登录桌面时也保持运行
+[Unit]
+Description=projdeck agentd（herdr 远程控制台本地服务）
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/Repositories/projdeck/packages/agentd
+ExecStart=/usr/bin/node src/index.ts
+Restart=always
+RestartSec=3
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=default.target

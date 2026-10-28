@@ -1,0 +1,6 @@
+packages:
+  - packages/*
+
+# 只允许 node-pty 运行构建脚本（编译原生 PTY 模块，用于网页终端）
+allowBuilds:
+  node-pty: true
