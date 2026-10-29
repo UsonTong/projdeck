@@ -55,6 +55,12 @@ export class ProjdeckService {
   private readonly store: ProjectStore;
   private snapshot: Snapshot | undefined;
   private codexCache: { at: number; rollouts: CodexRollout[] } | undefined;
+  /** 正在网页上查看的会话：terminalId → 查看者数量（终端视图、对话视图各算一个）。 */
+  private readonly viewers = new Map<string, number>();
+  /** 当前处于 done 状态的 terminal。 */
+  private readonly doneTerminals = new Set<string>();
+  /** 看过一个「已完成」的会话后调用，用于推送新的总览。 */
+  onSeen?: () => void;
 
   constructor(config: Config, herdr: HerdrClient, store: ProjectStore) {
     this.config = config;
@@ -132,7 +138,7 @@ export class ProjdeckService {
         terminalId: pane.terminal_id,
         workspaceId: pane.workspace_id,
         kind,
-        status: kind === "shell" ? "unknown" : (agent?.agent_status ?? pane.agent_status),
+        status: kind === "shell" ? "unknown" : this.seenStatus(pane.terminal_id, agent?.agent_status ?? pane.agent_status),
         title: cleanTitle(agent?.terminal_title_stripped ?? pane.terminal_title_stripped) || basename(pane.cwd),
         cwd: pane.cwd,
         conversationId,
@@ -147,6 +153,38 @@ export class ProjdeckService {
 
     this.snapshot = { at: Date.now(), overview, sessions };
     return this.snapshot;
+  }
+
+  /**
+   * herdr 的 done 表示「完成了但还没看过」，只有在 herdr 里聚焦 pane 才算看过；
+   * 聚焦会切换电脑上的 pane，不能代用。所以 projdeck 自己记：网页上看过的完成显示为空闲。
+   * 新开的 agent 启动时也会短暂工作一下，不这样处理就会一打开就显示「已完成」。
+   */
+  private seenStatus(terminalId: string, status: Session["status"]): Session["status"] {
+    if (status !== "done") {
+      this.doneTerminals.delete(terminalId);
+      this.store.markDoneSeen(terminalId, false);
+      return status;
+    }
+    this.doneTerminals.add(terminalId);
+    if (this.viewers.has(terminalId)) this.store.markDoneSeen(terminalId, true);
+    return this.store.state.seenDone.includes(terminalId) ? "idle" : "done";
+  }
+
+  /** 网页开始查看一个会话（终端或对话视图）。返回结束查看的函数。 */
+  async beginView(paneId: string): Promise<() => void> {
+    const terminalId = await this.terminalIdOf(paneId);
+    const seen = () => {
+      if (this.doneTerminals.has(terminalId) && this.store.markDoneSeen(terminalId, true)) this.onSeen?.();
+    };
+    this.viewers.set(terminalId, (this.viewers.get(terminalId) ?? 0) + 1);
+    seen();
+    return () => {
+      const n = (this.viewers.get(terminalId) ?? 1) - 1;
+      if (n > 0) this.viewers.set(terminalId, n);
+      else this.viewers.delete(terminalId);
+      seen();
+    };
   }
 
   private async lookup(paneId: string) {

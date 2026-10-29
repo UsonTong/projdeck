@@ -51,6 +51,8 @@ export class TerminalBridge {
       return ws.close();
     }
     if (ws.readyState !== ws.OPEN) return;
+    // 打开网页终端即算看过这个会话，它的「已完成」不再提示
+    const viewing = this.service.beginView(paneId).catch(() => () => {});
 
     // 去掉 HERDR_* 变量：agentd 自己可能运行在某个 herdr pane 里，避免被当成嵌套客户端或连错 socket
     const env: Record<string, string> = {};
@@ -117,6 +119,7 @@ export class TerminalBridge {
 
     // 关闭网页即断开 attach，pane 尺寸随之恢复
     ws.on("close", () => {
+      void viewing.then((end) => end());
       if (this.active.delete(term)) term.kill();
     });
   }

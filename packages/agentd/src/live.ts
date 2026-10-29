@@ -10,6 +10,8 @@ interface Watch {
   clients: Set<WebSocket>;
   cursor: number;
   transcriptTimer?: NodeJS.Timeout;
+  /** 有人在看对话视图期间，这个会话的「已完成」算已读。 */
+  endView?: () => void;
 }
 
 /**
@@ -83,6 +85,11 @@ export class LiveHub {
     if (!w) {
       w = { clients: new Set(), cursor: -1 };
       this.watches.set(paneId, w);
+      const watch = w;
+      this.service.beginView(paneId).then(
+        (end) => (this.watches.get(paneId) === watch ? (watch.endView = end) : end()),
+        () => {},
+      );
     }
     w.clients.add(ws);
 
@@ -104,6 +111,7 @@ export class LiveHub {
     w.clients.delete(ws);
     if (w.clients.size === 0) {
       clearTimeout(w.transcriptTimer);
+      w.endView?.();
       this.watches.delete(paneId);
     }
   }

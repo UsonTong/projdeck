@@ -50,6 +50,7 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
   if (accessKey.enabled) app.log.info("已启用访问 key：带有效 key 的请求无需密码");
   const limiter = new LoginLimiter();
   const live = new LiveHub(service, herdr);
+  service.onSeen = () => live.scheduleOverview();
   const terminals = new TerminalBridge(config, service);
   app.addHook("onClose", async () => terminals.closeAll());
 

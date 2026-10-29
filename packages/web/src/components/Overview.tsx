@@ -19,7 +19,7 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTi
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { KIND_LABEL, STATUS_LABEL, statusRank } from "@/lib/session";
+import { KIND_LABEL, markLaunching, STATUS_LABEL, statusRank } from "@/lib/session";
 import { formatDateTime, useTimeZone } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { api } from "../api.ts";
@@ -62,8 +62,7 @@ export function OverviewPage({ activePane, activeFiles }: { activePane: string |
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex items-center justify-between gap-2 px-4 pt-[calc(0.75rem+env(safe-area-inset-top))] pb-3">
-        <h1 className="font-heading text-lg font-semibold tracking-tight">projdeck</h1>
+      <header className="flex items-center justify-end gap-2 px-4 pt-[calc(0.75rem+env(safe-area-inset-top))] pb-3">
         <div className="flex items-center gap-1">
           {hiddenCount > 0 && (
             <IconAction label={showHidden ? "不显示隐藏的会话" : `显示隐藏的会话（${hiddenCount}）`} onClick={() => setShowHidden(!showHidden)}>
@@ -197,6 +196,7 @@ function ProjectGroup(props: { project: ProjectView; sessions: Session[]; active
   const start = async (kind: SessionKind) => {
     try {
       const { paneId } = await api.startSession(project.id, kind);
+      if (kind !== "shell") markLaunching(paneId);
       openSession(paneId);
     } catch (err) {
       fail(err);
@@ -383,6 +383,7 @@ function ArchivedRow({ item, projectName }: { item: ArchivedSession; projectName
   const restore = async () => {
     try {
       const { paneId } = await api.restore(item.id);
+      markLaunching(paneId);
       openSession(paneId);
     } catch (err) {
       fail(err);

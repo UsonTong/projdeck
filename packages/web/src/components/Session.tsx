@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { STATUS_LABEL } from "@/lib/session";
+import { doneLaunching, isLaunching, STATUS_LABEL } from "@/lib/session";
 import { themeKey, useTerminalTheme } from "@/lib/terminalTheme";
 import { uploadFile } from "@/lib/upload";
 import { api } from "../api.ts";
@@ -63,9 +63,15 @@ export function SessionPage({ paneId }: { paneId: string }) {
     setFontSize(delta === 0 ? 0 : Math.min(28, Math.max(8, fontSize + delta)));
   // 电脑上沿用 Ghostty 的 window-padding；手机屏幕窄，只留一点边距
   const padding = wide && theme ? { x: theme.paddingX, y: theme.paddingY } : { x: 4, y: 4 };
+  // 这一页的视图在打开时定下来。之后会话类型变了（在终端里输入 claude，临时终端变成 Claude 会话）也不自动切走
+  const [chosenView, setChosenView] = useState<View | null>(null);
+  const openedView = useRef<View | null>(null);
+  const chooseView = (v: View) => {
+    setChosenView(v);
+    setPreferredView(v);
+  };
   const [composerOpen, setComposerOpen] = useState(false);
   const [filesPath, setFilesPath] = useState<string | null>(null);
-  // 「新终端」标记只用一次：清屏后关掉，改字号等重新挂载终端时不会再清
   const [ctrl, setCtrl] = useState(false);
   const term = useRef<TerminalHandle>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -97,9 +103,11 @@ export function SessionPage({ paneId }: { paneId: string }) {
 
   const { session, project } = found;
   // 临时终端没有对话视图；不属于项目的会话没有文件视图
-  let view: View = preferredView;
+  let view: View = chosenView ?? openedView.current ?? preferredView;
   if (view === "bubbles" && session.kind === "shell") view = "terminal";
   if (view === "files" && !project) view = "terminal";
+  if (session.kind !== "shell") doneLaunching(paneId);
+  if (!isLaunching(paneId)) openedView.current ??= view;
   // 文件视图默认打开会话的工作目录（在项目内时）
   const cwdInProject = project && (session.cwd + "/").startsWith(project.path + "/") ? session.cwd.slice(project.path.length + 1) : "";
 
@@ -141,7 +149,7 @@ export function SessionPage({ paneId }: { paneId: string }) {
             variant="outline"
             size="sm"
             value={view}
-            onValueChange={(v) => v && setPreferredView(v as View)}
+            onValueChange={(v) => v && chooseView(v as View)}
             aria-label="视图"
           >
             <ToggleGroupItem value="terminal" aria-label="终端">
@@ -187,7 +195,7 @@ export function SessionPage({ paneId }: { paneId: string }) {
               onFile={upload}
               onFontSize={changeFontSize}
               onPickFile={() => fileInput.current?.click()}
-              onSwitchToChat={session.kind === "shell" ? undefined : () => setPreferredView("bubbles")}
+              onSwitchToChat={session.kind === "shell" ? undefined : () => chooseView("bubbles")}
               onCtrlChange={setCtrl}
             />
           </Suspense>
@@ -214,7 +222,7 @@ export function SessionPage({ paneId }: { paneId: string }) {
       {view === "bubbles" && session.status === "blocked" && (
         <button
           className="flex items-center gap-2 border-t border-destructive/40 bg-destructive/10 px-3 py-2 text-left text-sm text-destructive"
-          onClick={() => setPreferredView("terminal")}
+          onClick={() => chooseView("terminal")}
         >
           <TriangleAlertIcon className="size-4 shrink-0" />
           需要你处理（权限确认或选项菜单），切到终端操作

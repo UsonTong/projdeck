@@ -19,11 +19,16 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 test("watch → unwatch → watch 连发时只保留一套轮询", async () => {
   let calls = 0;
+  let viewing = 0;
   const service = {
     overview: async () => ({ herdr: { online: true }, projects: [], unassigned: [], archived: [] }),
     transcript: async () => {
       calls++;
       return { conversationId: null, entries: [], cursor: -1, reset: false };
+    },
+    beginView: async () => {
+      viewing++;
+      return () => viewing--;
     },
   } as unknown as ProjdeckService;
   const hub = new LiveHub(service, new EventEmitter() as unknown as HerdrClient);
@@ -39,6 +44,9 @@ test("watch → unwatch → watch 连发时只保留一套轮询", async () => {
 
   // 对话记录每 1.5s 轮询一次；若有两套轮询，这段时间会调用 2 次
   await sleep(1_700);
+  // 被取消的那次 watch 也要结束「查看」，否则会话会一直被当成有人在看
+  assert.equal(viewing, 1);
   ws.emit("close");
   assert.equal(calls, 1);
+  assert.equal(viewing, 0);
 });

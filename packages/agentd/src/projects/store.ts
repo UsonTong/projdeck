@@ -11,6 +11,8 @@ interface State {
   hideUnassigned: boolean;
   /** 手动为 Codex pane 指定的对话：terminalId → threadId。 */
   codexOverrides: Record<string, string>;
+  /** 「已完成」已在网页上看过的 terminal；状态离开 done 后移除。 */
+  seenDone: string[];
 }
 
 const defaultArgs: Record<AgentKind, string[]> = {
@@ -40,6 +42,7 @@ export class ProjectStore {
       hiddenConversations: [],
       hideUnassigned: false,
       codexOverrides: {},
+      seenDone: [],
       ...readJson<Partial<State>>(this.stateFile, {}),
     };
   }
@@ -112,7 +115,16 @@ export class ProjectStore {
     for (const key of Object.keys(this.state.sticky)) if (!alive.has(key)) delete this.state.sticky[key];
     for (const key of Object.keys(this.state.codexOverrides)) if (!alive.has(key)) delete this.state.codexOverrides[key];
     this.state.hiddenTerminals = this.state.hiddenTerminals.filter((t) => alive.has(t));
+    this.state.seenDone = this.state.seenDone.filter((t) => alive.has(t));
     if (JSON.stringify(this.state) !== before) this.saveState();
+  }
+
+  /** 标记看过；返回是否有变化。 */
+  markDoneSeen(terminalId: string, seen: boolean): boolean {
+    if (this.state.seenDone.includes(terminalId) === seen) return false;
+    this.state.seenDone = seen ? [...this.state.seenDone, terminalId] : this.state.seenDone.filter((t) => t !== terminalId);
+    this.saveState();
+    return true;
   }
 
   isHidden(terminalId: string, conversationId: string | null): boolean {
