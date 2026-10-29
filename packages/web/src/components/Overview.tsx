@@ -525,8 +525,7 @@ function UnassignedTab({ sessions, activePane }: { sessions: Session[]; activePa
   }
   return (
     <div className="flex flex-col gap-0.5">
-      <div className="flex items-center gap-2 px-2 pb-1.5">
-        <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">不在任何项目文件夹里启动的会话</p>
+      <div className="flex items-center justify-end px-2 pb-1.5">
         <div className="flex shrink-0 rounded-md bg-muted p-0.5">
           {SORTS.map((o) => (
             <Tooltip key={o.value}>
