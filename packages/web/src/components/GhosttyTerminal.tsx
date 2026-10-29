@@ -299,7 +299,15 @@ export const GhosttyTerminal = forwardRef<TerminalHandle, Props>(function Ghostt
     const term = termRef.current;
     if (!term || reconnectTick === 0) return;
     const proto = location.protocol === "https:" ? "wss" : "ws";
-    const params = new URLSearchParams({ pane: props.paneId, cols: String(term.cols), rows: String(term.rows), sizing: props.sizing });
+    // 谁在操作谁优先（尺寸策略为「自动」时）：浏览器窗口有焦点就用网页的尺寸，切到别处（如电脑上的 Ghostty）就让回给电脑
+    const isActive = () => document.visibilityState === "visible" && document.hasFocus();
+    const params = new URLSearchParams({
+      pane: props.paneId,
+      cols: String(term.cols),
+      rows: String(term.rows),
+      sizing: props.sizing,
+      active: isActive() ? "1" : "0",
+    });
     const ws = new WebSocket(`${proto}://${location.host}/ws/term?${params}`);
     ws.binaryType = "arraybuffer";
     wsRef.current = ws;
@@ -368,10 +376,30 @@ export const GhosttyTerminal = forwardRef<TerminalHandle, Props>(function Ghostt
     };
     document.addEventListener("visibilitychange", onVisibility);
 
+    // 焦点在窗口间切换时会连着触发好几个事件，稍等稳定后再报告
+    let lastActive = isActive();
+    let activeTimer: ReturnType<typeof setTimeout> | undefined;
+    const reportActive = () => {
+      clearTimeout(activeTimer);
+      activeTimer = setTimeout(() => {
+        const active = isActive();
+        if (active === lastActive) return;
+        lastActive = active;
+        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ t: "a", active }));
+      }, 150);
+    };
+    window.addEventListener("focus", reportActive);
+    window.addEventListener("blur", reportActive);
+    document.addEventListener("visibilitychange", reportActive);
+
     return () => {
       intentional = true;
       clearTimeout(hiddenTimer);
       document.removeEventListener("visibilitychange", onVisibility);
+      clearTimeout(activeTimer);
+      window.removeEventListener("focus", reportActive);
+      window.removeEventListener("blur", reportActive);
+      document.removeEventListener("visibilitychange", reportActive);
       ws.close();
     };
   }, [props.paneId, props.sizing, reconnectTick]);

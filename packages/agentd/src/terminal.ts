@@ -10,7 +10,8 @@ const MAX_TERMINALS = 12;
 /** WebSocket 发送缓冲超过此值时暂停读取 PTY，避免慢网络下内存堆积。 */
 const HIGH_WATER = 2 * 1024 * 1024;
 
-type ClientFrame = { t: "i"; d: string } | { t: "r"; c: number; r: number };
+/** a：网页是否正在被操作（窗口有焦点）。 */
+type ClientFrame = { t: "i"; d: string } | { t: "r"; c: number; r: number } | { t: "a"; active: boolean };
 type ServerFrame =
   | { t: "error"; message: string }
   | { t: "exit" }
@@ -21,7 +22,8 @@ type ServerFrame =
  * 网页终端的尺寸策略。
  * - fit：pane 改为网页的尺寸（手机等，电脑上的 herdr 会被裁切）；
  * - desktop：保持电脑上的尺寸，网页缩放显示；
- * - auto：电脑上开着 herdr 客户端时跟随电脑，否则适配网页。
+ * - auto：谁在操作谁优先。网页正被操作时适配网页；网页没在操作（切到了电脑上的 Ghostty 等）
+ *   且电脑上开着 herdr 客户端时，恢复电脑上的尺寸。
  */
 export type TerminalSizing = "fit" | "desktop" | "auto";
 
@@ -54,7 +56,14 @@ export class TerminalBridge {
     this.service = service;
   }
 
-  async open(ws: WebSocket, paneId: string, cols: number, rows: number, sizing: TerminalSizing = "fit"): Promise<void> {
+  async open(
+    ws: WebSocket,
+    paneId: string,
+    cols: number,
+    rows: number,
+    sizing: TerminalSizing = "fit",
+    initiallyActive = true,
+  ): Promise<void> {
     const control = (msg: ServerFrame) => ws.readyState === ws.OPEN && ws.send(JSON.stringify(msg));
     if (this.active.size >= MAX_TERMINALS) {
       control({ t: "error", message: "打开的终端太多了，请先关闭一些页面" });
@@ -80,8 +89,9 @@ export class TerminalBridge {
     env.TERM = "xterm-256color";
     env.COLORTERM = "truecolor";
 
+    let active = initiallyActive;
     const desired = async () => {
-      if (sizing === "fit") return null;
+      if (sizing === "fit" || (sizing === "auto" && active)) return null;
       if (sizing === "auto" && !(await desktopClientConnected(this.config.herdrSocket))) return null;
       return this.service.desktopSize(paneId).catch(() => null);
     };
@@ -101,14 +111,15 @@ export class TerminalBridge {
     this.active.add(term);
     control({ t: "size", follow });
 
-    // 电脑上改了窗口大小、或关掉 / 打开了 herdr 客户端时跟着变
-    const poll = setInterval(async () => {
+    const update = async () => {
       const next = await desired();
       if (JSON.stringify(next) === JSON.stringify(follow)) return;
       follow = next;
       term.resize(target().cols, target().rows);
       control({ t: "size", follow });
-    }, FOLLOW_POLL_MS);
+    };
+    // 电脑上改了窗口大小、或关掉 / 打开了 herdr 客户端时跟着变
+    const poll = setInterval(() => void update(), FOLLOW_POLL_MS);
 
     // attach 失败时 herdr 会输出一行 JSON 错误然后退出，转成可读的提示
     let started = false;
@@ -152,6 +163,10 @@ export class TerminalBridge {
         return;
       }
       if (frame.t === "i" && typeof frame.d === "string") term.write(frame.d.replaceAll("\x02", "\x02\x02"));
+      if (frame.t === "a" && typeof frame.active === "boolean" && frame.active !== active) {
+        active = frame.active;
+        void update(); // 切换操作的一边要立即生效
+      }
       if (frame.t === "r") {
         web = { cols: clamp(frame.c, 20, 500), rows: clamp(frame.r, 5, 200) };
         if (!follow) term.resize(web.cols, web.rows); // 跟随电脑时网页的尺寸不影响 pane
