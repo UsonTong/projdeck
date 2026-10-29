@@ -28,10 +28,11 @@ const listeners = new Set<() => void>();
 
 /**
  * 从 agentd 读取本机 Ghostty 的主题。像 dankcolors 这类按壁纸生成的主题会变化，
- * 所以页面切回前台时重新获取（至少间隔 30 秒），变了才通知界面更新。
+ * 本机配色一变，agentd 会推送通知（见 live.ts），这里立即重新获取；切回前台时也会检查（至少间隔 30 秒）。
+ * 变了才通知界面更新。
  */
-function refresh(): void {
-  if (loading || Date.now() - lastFetch < 30_000) return;
+export function refreshTheme(force = false): void {
+  if (loading || (!force && Date.now() - lastFetch < 30_000)) return;
   loading = true;
   lastFetch = Date.now();
   api
@@ -50,9 +51,9 @@ let started = false;
 function start(): void {
   if (started) return;
   started = true;
-  refresh();
-  document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && refresh());
-  window.addEventListener("focus", refresh);
+  refreshTheme();
+  document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && refreshTheme());
+  window.addEventListener("focus", () => refreshTheme());
 }
 
 /** 当前的终端主题；首次加载完成前为 null。整个界面的配色也随之同步（见 applyAppTheme）。 */

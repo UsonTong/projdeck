@@ -28,6 +28,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatDateTime, useTimeZone } from "@/lib/time";
 import { formatSize } from "@/lib/upload";
+import { copyText } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
 import { api } from "../api.ts";
 import { confirmDialog } from "./Confirm.tsx";
@@ -49,22 +50,6 @@ function iconFor(e: FileEntry): LucideIcon {
   return FileIcon;
 }
 
-async function copyText(text: string): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch {
-    // HTTP 下没有 clipboard API
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.style.position = "fixed";
-    ta.style.opacity = "0";
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand("copy");
-    ta.remove();
-  }
-  toast.success("已复制路径", { description: text });
-}
 
 function IconButton(props: { label: string; onClick: () => void; children: ReactNode; className?: string; destructive?: boolean; active?: boolean }) {
   return (

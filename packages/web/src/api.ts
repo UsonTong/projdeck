@@ -59,6 +59,7 @@ export const api = {
   prompt: (paneId: string, text: string, files: string[]) => request("POST", `${pane(paneId)}/prompt`, { text, files }),
   keys: (paneId: string, keys: string[]) => request("POST", `${pane(paneId)}/keys`, { keys }),
   setHidden: (paneId: string, hidden: boolean) => request("POST", `${pane(paneId)}/hidden`, { hidden }),
+  close: (paneId: string) => request("POST", `${pane(paneId)}/close`),
   archive: (paneId: string) => request<ArchivedSession>("POST", `${pane(paneId)}/archive`),
   codexCandidates: (paneId: string) =>
     request<{ threadId: string; modifiedAt: string }[]>("GET", `${pane(paneId)}/codex-candidates`),

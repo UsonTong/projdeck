@@ -60,6 +60,12 @@ export class LiveHub {
     });
   }
 
+  /** 向所有页面推送一条消息。 */
+  broadcast(msg: ServerMessage): void {
+    const text = JSON.stringify(msg);
+    for (const ws of this.clients) ws.send(text);
+  }
+
   /** 状态可能已变化（例如刚执行完操作），尽快推送一次总览。 */
   scheduleOverview(): void {
     clearTimeout(this.debounce);

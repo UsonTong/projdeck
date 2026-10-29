@@ -1,5 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { ClientMessage, Overview, ServerMessage, TranscriptEntry } from "@projdeck/shared";
+import { refreshTheme } from "@/lib/terminalTheme";
 
 type Listener = () => void;
 
@@ -57,6 +58,7 @@ class LiveConnection {
   }
 
   private handle(msg: ServerMessage): void {
+    if (msg.type === "theme") return refreshTheme(true);
     if (msg.type === "overview") this.overview = msg.overview;
     if (msg.type === "transcript") {
       const p = this.pane(msg.paneId);

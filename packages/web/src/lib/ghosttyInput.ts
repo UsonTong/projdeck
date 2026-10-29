@@ -64,6 +64,8 @@ export function attachMouse(term: Terminal, el: HTMLElement, send: (data: string
     if (!cell) return;
     e.preventDefault();
     e.stopPropagation(); // 阻止 ghostty-web 开始本地选择
+    // 选区由 herdr 负责（松开时 herdr 复制到剪贴板）；之前按住 Shift 留下的本地选区清掉，不出现两个选区
+    if (term.hasSelection()) term.clearSelection();
     term.focus();
     pressed = e.button;
     last = `${cell.col},${cell.row}`;
@@ -88,6 +90,13 @@ export function attachMouse(term: Terminal, el: HTMLElement, send: (data: string
     const cell = cellAt(e) ?? { col: 1, row: 1 };
     send(encodeMouse(pressed | modifiers(e), cell.col, cell.row, true, sgr()));
     pressed = null;
+  };
+
+  // 双击选词同样交给 herdr；ghostty-web 自己也会在双击时选词，拦下来
+  const onDblClick = (e: MouseEvent) => {
+    if (!tracking() || e.shiftKey) return;
+    e.preventDefault();
+    e.stopPropagation();
   };
 
   // 滚轮：触控板一次会产生很多小 delta，累积到一定距离再发一格
@@ -133,6 +142,7 @@ export function attachMouse(term: Terminal, el: HTMLElement, send: (data: string
   };
 
   el.addEventListener("mousedown", onDown, true);
+  el.addEventListener("dblclick", onDblClick, true);
   window.addEventListener("mousemove", onMove, true);
   window.addEventListener("mouseup", onUp, true);
   el.addEventListener("wheel", onWheel, { capture: true, passive: false });
@@ -140,6 +150,7 @@ export function attachMouse(term: Terminal, el: HTMLElement, send: (data: string
   el.addEventListener("touchmove", onTouchMove, { passive: false });
   return () => {
     el.removeEventListener("mousedown", onDown, true);
+    el.removeEventListener("dblclick", onDblClick, true);
     window.removeEventListener("mousemove", onMove, true);
     window.removeEventListener("mouseup", onUp, true);
     el.removeEventListener("wheel", onWheel, true);

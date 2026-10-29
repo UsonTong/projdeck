@@ -15,10 +15,18 @@ import { MorphIcon } from "morphicons/react";
 import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { copyText } from "@/lib/clipboard";
 import { KIND_LABEL, markLaunching, STATUS_LABEL, statusRank } from "@/lib/session";
 import { formatDateTime, useTimeZone } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -215,38 +223,54 @@ function ProjectGroup(props: { project: ProjectView; sessions: Session[]; active
 
   return (
     <section>
-      <div className="flex items-center gap-1 rounded-md px-2 py-1">
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold">{project.name}</div>
-          <div className="truncate font-mono text-[11px] text-muted-foreground" title={project.path}>
-            {shortPath(project.path)}
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <div className="flex items-center gap-1 rounded-md px-2 py-1">
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-semibold">{project.name}</div>
+              <div className="truncate font-mono text-[11px] text-muted-foreground" title={project.path}>
+                {shortPath(project.path)}
+              </div>
+            </div>
+            {/* 新开会话：直接点图标，不用下拉菜单 */}
+            <div className="flex shrink-0 items-center">
+              {starters.map((k) => (
+                <IconAction key={k} label={`新开 ${KIND_LABEL[k]}`} onClick={() => void start(k)}>
+                  <AgentIcon kind={k} size="xs" plus />
+                </IconAction>
+              ))}
+              <IconAction label="新开临时终端" onClick={() => void start("shell")}>
+                <AgentIcon kind="shell" size="xs" plus />
+              </IconAction>
+              <IconAction label="文件" onClick={() => openFiles(project.id)} className={props.filesOpen ? "bg-accent" : undefined}>
+                <FolderOpenIcon />
+              </IconAction>
+              <IconAction label="项目设置" onClick={() => setSettings(true)}>
+                <Settings2Icon />
+              </IconAction>
+            </div>
           </div>
-        </div>
-        {/* 新开会话：直接点图标，不用下拉菜单 */}
-        <div className="flex shrink-0 items-center">
+        </ContextMenuTrigger>
+        <ContextMenuContent className="w-52">
           {starters.map((k) => (
-            <IconAction key={k} label={`新开 ${KIND_LABEL[k]}`} onClick={() => void start(k)}>
-              <AgentIcon kind={k} size="xs" plus />
-            </IconAction>
+            <ContextMenuItem key={k} onSelect={() => void start(k)}>
+              新开 {KIND_LABEL[k]}
+            </ContextMenuItem>
           ))}
-          <IconAction label="新开临时终端" onClick={() => void start("shell")}>
-            <AgentIcon kind="shell" size="xs" plus />
-          </IconAction>
-          <IconAction label="文件" onClick={() => openFiles(project.id)} className={props.filesOpen ? "bg-accent" : undefined}>
-            <FolderOpenIcon />
-          </IconAction>
-          <IconAction label="项目设置" onClick={() => setSettings(true)}>
-            <Settings2Icon />
-          </IconAction>
-        </div>
-      </div>
+          <ContextMenuItem onSelect={() => void start("shell")}>新开临时终端</ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem onSelect={() => openFiles(project.id)}>文件</ContextMenuItem>
+          <ContextMenuItem onSelect={() => void copyPath(project.path)}>复制路径</ContextMenuItem>
+          <ContextMenuItem onSelect={() => setSettings(true)}>项目设置…</ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
 
       {sorted.length === 0 ? (
         <p className="px-3 py-2 text-xs text-muted-foreground">没有运行中的会话，点上方图标新开一个</p>
       ) : (
         <div className="flex flex-col gap-0.5">
           {sorted.map((s) => (
-            <SessionRow key={s.paneId} session={s} projectId={project.id} active={s.paneId === activePane} />
+            <SessionRow key={s.paneId} session={s} project={project} active={s.paneId === activePane} />
           ))}
         </div>
       )}
@@ -255,7 +279,8 @@ function ProjectGroup(props: { project: ProjectView; sessions: Session[]; active
   );
 }
 
-function SessionRow({ session: s, projectId, active }: { session: Session; projectId: string | null; active: boolean }) {
+function SessionRow({ session: s, project, active }: { session: Session; project: ProjectView | null; active: boolean }) {
+  const projectId = project?.id ?? null;
   const archive = async () => {
     if (s.status === "working") {
       const ok = await confirmDialog({
@@ -273,56 +298,98 @@ function SessionRow({ session: s, projectId, active }: { session: Session; proje
     await api.createProject({ path: s.cwd }).then(() => toast.success(`已导入 ${shortPath(s.cwd)}`), fail);
   };
 
+  const close = async () => {
+    const ok = await confirmDialog({
+      title: "关闭这个终端？",
+      description: "pane 会被关闭，里面正在运行的命令也会结束。",
+      action: "关闭",
+      destructive: true,
+    });
+    if (ok) await api.close(s.paneId).catch(fail);
+  };
+
+  // 会话目录在项目里时，可以直接在文件管理器里打开
+  const inProject = project && (s.cwd === project.path || s.cwd.startsWith(project.path + "/"));
+
   const status = STATUS_LABEL[s.status];
   return (
-    <div
-      className={cn(
-        "group/row relative flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-accent/60",
-        active && "bg-accent hover:bg-accent",
-        s.hidden && "opacity-50",
-      )}
-    >
-      <AgentIcon kind={s.kind} status={s.status} />
-      <div className="min-w-0 flex-1">
-        {/* after: 伪元素铺满整行，整行可点；操作按钮用 z-10 浮在上面 */}
-        <button className="block w-full truncate text-left text-sm after:absolute after:inset-0" onClick={() => openSession(s.paneId)}>
-          {s.title}
-        </button>
-        <div className="truncate text-xs text-muted-foreground">
-          {status && s.status !== "idle" ? (
-            <span
-              className={cn(
-                s.status === "working" && "text-status-working",
-                s.status === "blocked" && "text-status-blocked",
-                s.status === "done" && "text-status-done",
-              )}
-            >
-              {status}
-            </span>
-          ) : (
-            KIND_LABEL[s.kind]
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <div
+          className={cn(
+            "group/row relative flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-accent/60",
+            active && "bg-accent hover:bg-accent",
+            s.hidden && "opacity-50",
           )}
-          {!projectId && <span className="font-mono"> · {shortPath(s.cwd)}</span>}
+        >
+          <AgentIcon kind={s.kind} status={s.status} />
+          <div className="min-w-0 flex-1">
+            {/* after: 伪元素铺满整行，整行可点；操作按钮用 z-10 浮在上面 */}
+            <button className="block w-full truncate text-left text-sm after:absolute after:inset-0" onClick={() => openSession(s.paneId)}>
+              {s.title}
+            </button>
+            <div className="truncate text-xs text-muted-foreground">
+              {status && s.status !== "idle" ? (
+                <span
+                  className={cn(
+                    s.status === "working" && "text-status-working",
+                    s.status === "blocked" && "text-status-blocked",
+                    s.status === "done" && "text-status-done",
+                  )}
+                >
+                  {status}
+                </span>
+              ) : (
+                KIND_LABEL[s.kind]
+              )}
+              {!projectId && <span className="font-mono"> · {shortPath(s.cwd)}</span>}
+            </div>
+          </div>
+          <div className={cn("relative z-10 flex shrink-0 items-center", HOVER_REVEAL)}>
+            {!projectId && s.kind !== "shell" && (
+              <IconAction label="把这个目录导入为项目" onClick={() => void importFolder()}>
+                <FolderInputIcon />
+              </IconAction>
+            )}
+            <IconAction label={s.hidden ? "取消隐藏" : "隐藏"} onClick={() => void api.setHidden(s.paneId, !s.hidden).catch(fail)}>
+              <MorphIcon icon={s.hidden ? Eye : EyeOff} />
+            </IconAction>
+            {s.kind !== "shell" && projectId && (
+              <IconAction label="归档（关闭 pane，保留对话）" onClick={() => void archive()}>
+                <ArchiveIcon />
+              </IconAction>
+            )}
+          </div>
         </div>
-      </div>
-      <div className={cn("relative z-10 flex shrink-0 items-center", HOVER_REVEAL)}>
-        {!projectId && s.kind !== "shell" && (
-          <IconAction label="把这个目录导入为项目" onClick={() => void importFolder()}>
-            <FolderInputIcon />
-          </IconAction>
+      </ContextMenuTrigger>
+      <ContextMenuContent className="w-52">
+        <ContextMenuItem onSelect={() => openSession(s.paneId)}>打开</ContextMenuItem>
+        <ContextMenuItem onSelect={() => window.open(`${location.pathname}#/s/${encodeURIComponent(s.paneId)}`, "_blank")}>
+          在新标签页打开
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onSelect={() => void copyPath(s.cwd)}>复制目录路径</ContextMenuItem>
+        {inProject && (
+          <ContextMenuItem onSelect={() => openFiles(project.id, s.cwd.slice(project.path.length + 1))}>在文件中查看</ContextMenuItem>
         )}
-        <IconAction label={s.hidden ? "取消隐藏" : "隐藏"} onClick={() => void api.setHidden(s.paneId, !s.hidden).catch(fail)}>
-          <MorphIcon icon={s.hidden ? Eye : EyeOff} />
-        </IconAction>
-        {s.kind !== "shell" && projectId && (
-          <IconAction label="归档（关闭 pane，保留对话）" onClick={() => void archive()}>
-            <ArchiveIcon />
-          </IconAction>
+        {!projectId && <ContextMenuItem onSelect={() => void importFolder()}>把这个目录导入为项目</ContextMenuItem>}
+        <ContextMenuSeparator />
+        <ContextMenuItem onSelect={() => void api.setHidden(s.paneId, !s.hidden).catch(fail)}>{s.hidden ? "取消隐藏" : "隐藏"}</ContextMenuItem>
+        {s.kind !== "shell" && projectId && <ContextMenuItem onSelect={() => void archive()}>归档（关闭 pane，保留对话）</ContextMenuItem>}
+        {s.kind === "shell" && (
+          <ContextMenuItem variant="destructive" onSelect={() => void close()}>
+            关闭终端
+          </ContextMenuItem>
         )}
-      </div>
-    </div>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
+
+const copyPath = async (path: string) => {
+  if (await copyText(path)) toast.success("已复制路径");
+  else toast.error("复制失败");
+};
 
 // ---------------------------------------------------------------------------
 // 未归属
@@ -336,7 +403,7 @@ function UnassignedTab({ sessions, activePane }: { sessions: Session[]; activePa
     <div className="flex flex-col gap-0.5">
       <p className="px-2 pb-1 text-xs text-muted-foreground">不在任何项目文件夹里启动的会话</p>
       {sessions.map((s) => (
-        <SessionRow key={s.paneId} session={s} projectId={null} active={s.paneId === activePane} />
+        <SessionRow key={s.paneId} session={s} project={null} active={s.paneId === activePane} />
       ))}
     </div>
   );
@@ -365,19 +432,27 @@ function ArchivedTab({ overview }: { overview: Overview }) {
         <div className="flex flex-col gap-0.5">
           <p className="px-2 pb-1 text-xs font-medium text-muted-foreground">项目</p>
           {archivedProjects.map((p) => (
-            <div key={p.id} className="group/row flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-accent/60">
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground ring-1 ring-border">
-                <FolderOpenIcon className="size-4" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm">{p.name}</div>
-                <div className="truncate font-mono text-xs text-muted-foreground">{shortPath(p.path)}</div>
-              </div>
-              <Button variant="outline" size="sm" onClick={() => void api.updateProject(p.id, { archived: false }).catch(fail)}>
-                <ArchiveRestoreIcon data-icon="inline-start" />
-                恢复
-              </Button>
-            </div>
+            <ContextMenu key={p.id}>
+              <ContextMenuTrigger asChild>
+                <div className="group/row flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-accent/60">
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground ring-1 ring-border">
+                    <FolderOpenIcon className="size-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm">{p.name}</div>
+                    <div className="truncate font-mono text-xs text-muted-foreground">{shortPath(p.path)}</div>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => void api.updateProject(p.id, { archived: false }).catch(fail)}>
+                    <ArchiveRestoreIcon data-icon="inline-start" />
+                    恢复
+                  </Button>
+                </div>
+              </ContextMenuTrigger>
+              <ContextMenuContent className="w-52">
+                <ContextMenuItem onSelect={() => void api.updateProject(p.id, { archived: false }).catch(fail)}>恢复项目</ContextMenuItem>
+                <ContextMenuItem onSelect={() => void copyPath(p.path)}>复制路径</ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
           ))}
         </div>
       )}
@@ -406,21 +481,33 @@ function ArchivedRow({ item, projectName }: { item: ArchivedSession; projectName
     if (ok) await api.deleteArchive(item.id).catch(fail);
   };
   return (
-    <div className="group/row flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-accent/60">
-      <AgentIcon kind={item.kind} />
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm">{item.title}</div>
-        <div className="truncate text-xs text-muted-foreground">
-          {projectName ?? item.projectId} · {formatDateTime(item.archivedAt, timeZone)}
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <div className="group/row flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-accent/60">
+          <AgentIcon kind={item.kind} />
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm">{item.title}</div>
+            <div className="truncate text-xs text-muted-foreground">
+              {projectName ?? item.projectId} · {formatDateTime(item.archivedAt, timeZone)}
+            </div>
+          </div>
+          <IconAction label="删除归档记录" destructive className={HOVER_REVEAL} onClick={() => void remove()}>
+            <Trash2Icon />
+          </IconAction>
+          <Button variant="outline" size="sm" onClick={() => void restore()}>
+            <ArchiveRestoreIcon data-icon="inline-start" />
+            恢复
+          </Button>
         </div>
-      </div>
-      <IconAction label="删除归档记录" destructive className={HOVER_REVEAL} onClick={() => void remove()}>
-        <Trash2Icon />
-      </IconAction>
-      <Button variant="outline" size="sm" onClick={() => void restore()}>
-        <ArchiveRestoreIcon data-icon="inline-start" />
-        恢复
-      </Button>
-    </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent className="w-52">
+        <ContextMenuItem onSelect={() => void restore()}>恢复（resume 对话）</ContextMenuItem>
+        <ContextMenuItem onSelect={() => void copyPath(item.cwd)}>复制目录路径</ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem variant="destructive" onSelect={() => void remove()}>
+          删除归档记录
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }

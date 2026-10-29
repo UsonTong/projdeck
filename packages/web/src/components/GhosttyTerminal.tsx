@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/context-menu";
 import { Spinner } from "@/components/ui/spinner";
 import { attachMouse, attachTextInput } from "@/lib/ghosttyInput";
+import { copyText } from "@/lib/clipboard";
 import { patchRenderer } from "@/lib/ghosttyRender";
 
 /**
@@ -96,23 +97,6 @@ interface Props {
   onSwitchToChat?: () => void;
 }
 
-/** 复制到剪贴板。HTTP（非安全上下文）下没有 navigator.clipboard，退回 execCommand。 */
-async function copyText(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.style.position = "fixed";
-    ta.style.opacity = "0";
-    document.body.appendChild(ta);
-    ta.select();
-    const ok = document.execCommand("copy");
-    ta.remove();
-    return ok;
-  }
-}
 
 /**
  * 交互式网页终端：Ghostty 的 VT 引擎（WASM）渲染，通过 /ws/term 连接 `herdr agent attach`。

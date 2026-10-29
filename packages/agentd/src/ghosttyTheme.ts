@@ -1,4 +1,7 @@
 import { execFile } from "node:child_process";
+import { existsSync, watch } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import type { TerminalTheme } from "@projdeck/shared";
 
@@ -109,4 +112,27 @@ export async function loadGhosttyTheme(ghosttyBin = "ghostty"): Promise<Terminal
   }
   cache = { at: Date.now(), theme };
   return theme;
+}
+
+/**
+ * 监听 Ghostty 配置目录（含 themes/），变化时清掉缓存并通知。
+ * dankcolors 这类主题随壁纸重新生成主题文件，网页要立刻跟着变，不能等页面切回前台。
+ */
+export function watchGhosttyTheme(onChange: () => void): () => void {
+  const dir = join(process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), "ghostty");
+  if (!existsSync(dir)) return () => {};
+  let timer: NodeJS.Timeout | undefined;
+  // 生成主题时往往连写好几次，停下来 300ms 再通知
+  const watcher = watch(dir, { recursive: true }, () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      cache = undefined;
+      onChange();
+    }, 300);
+  });
+  watcher.on("error", () => {});
+  return () => {
+    clearTimeout(timer);
+    watcher.close();
+  };
 }

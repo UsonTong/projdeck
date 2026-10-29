@@ -380,6 +380,13 @@ export class ProjdeckService {
     return item;
   }
 
+  /** 直接关闭 pane（临时终端用；agent 会话应归档以便恢复）。 */
+  async close(paneId: string): Promise<void> {
+    await this.lookup(paneId);
+    await this.herdr.closePane(paneId);
+    this.snapshot = undefined;
+  }
+
   async restore(archiveId: string): Promise<{ paneId: string }> {
     const item = this.store.archive.find((a) => a.id === archiveId);
     if (!item) throw httpError(404, "归档记录不存在");

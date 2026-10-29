@@ -153,4 +153,6 @@ export type ClientMessage =
 
 export type ServerMessage =
   | { type: "overview"; overview: Overview }
-  | { type: "transcript"; paneId: string; page: TranscriptPage };
+  | { type: "transcript"; paneId: string; page: TranscriptPage }
+  /** 本机 Ghostty 配色变了（例如 dankcolors 随壁纸重新生成），前端重新获取主题。 */
+  | { type: "theme" };

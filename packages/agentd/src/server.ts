@@ -21,7 +21,7 @@ import { ACCESS_KEY_COOKIE, AccessKey, LoginLimiter, SESSION_COOKIE, SESSION_TTL
 import type { Config } from "./config.ts";
 import type { HerdrClient } from "./herdr/client.ts";
 import { deleteEntry, listDir, makeDir, MAX_FILE_BYTES, openForDownload, readText, renameEntry, saveToDir } from "./files.ts";
-import { loadGhosttyTheme } from "./ghosttyTheme.ts";
+import { loadGhosttyTheme, watchGhosttyTheme } from "./ghosttyTheme.ts";
 import { LiveHub } from "./live.ts";
 import { TerminalBridge } from "./terminal.ts";
 import { httpError, type ProjdeckService } from "./service.ts";
@@ -51,6 +51,8 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
   const limiter = new LoginLimiter();
   const live = new LiveHub(service, herdr);
   service.onSeen = () => live.scheduleOverview();
+  const stopThemeWatch = watchGhosttyTheme(() => live.broadcast({ type: "theme" }));
+  app.addHook("onClose", async () => stopThemeWatch());
   const terminals = new TerminalBridge(config, service);
   app.addHook("onClose", async () => terminals.closeAll());
 
@@ -206,6 +208,12 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
     const item = await service.archive(req.params.paneId);
     live.scheduleOverview();
     return item;
+  });
+
+  app.post<PaneParams>("/api/sessions/:paneId/close", async (req) => {
+    await service.close(req.params.paneId);
+    live.scheduleOverview();
+    return { ok: true };
   });
 
   app.get<PaneParams>("/api/sessions/:paneId/codex-candidates", async (req) => service.codexCandidates(req.params.paneId));
