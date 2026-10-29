@@ -62,6 +62,10 @@ agent 和代码都留在本机，服务器只做 HTTPS 和转发，**不需要�
 
 ## 常见问题
 
+**网页终端帧率只有 60**：herdr 把渲染间隔写死为 16ms，所有客户端（包括本机 Ghostty 里的 herdr）最多 60 帧。
+`deploy/herdr/build.sh` 编译把间隔改为 4ms 的 herdr，并用 live handoff 切换正在运行的服务端（pane 不关闭）。
+herdr 官方更新会覆盖这个版本，更新后重新运行一次即可；官方版备份在 `~/.local/bin/herdr-official`。
+
 **网页终端打开后提示符重复、错位（Powerlevel10k）**：网页 attach / 断开时 pane 宽度会变，herdr 重排文字后，
 zsh 按旧的行数重画提示符就会错位。p10k 第一行右侧有内容（✔、耗时等）时第一行撑满整行，最容易触发。
 在 `~/.zshrc` 里 `source ~/.p10k.zsh` 之后加上，只在 herdr pane 里把右侧信息放到输入行：
