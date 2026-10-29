@@ -72,10 +72,11 @@ export const api = {
   restore: (id: string) => request<{ paneId: string }>("POST", `/api/archive/${id}/restore`),
   deleteArchive: (id: string) => request("DELETE", `/api/archive/${id}`),
 
-  upload: (projectId: string, file: Blob, filename: string) => {
+  /** 会话的附件（终端里粘贴 / 拖入、对话输入框）：属于项目时存到项目的 .uploads/，未归属时存到共享目录。 */
+  upload: (paneId: string, file: Blob, filename: string) => {
     const form = new FormData();
     form.append("file", file, filename);
-    return request<UploadResult>("POST", `/api/projects/${projectId}/uploads`, form);
+    return request<UploadResult>("POST", `${pane(paneId)}/uploads`, form);
   },
   // ---- 文件管理器（路径为项目内相对路径） ----
   listDir: (projectId: string, path: string, hidden: boolean) =>

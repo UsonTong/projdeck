@@ -25,7 +25,7 @@ import { loadGhosttyTheme, watchGhosttyTheme } from "./ghosttyTheme.ts";
 import { LiveHub } from "./live.ts";
 import { TerminalBridge } from "./terminal.ts";
 import { httpError, type ProjdeckService } from "./service.ts";
-import { MAX_UPLOAD_BYTES, saveUpload } from "./uploads.ts";
+import { MAX_UPLOAD_BYTES, saveUpload, SHARED_UPLOAD_ROOT } from "./uploads.ts";
 
 /** 解析 Origin 头的 host；格式异常（如 "null"）时返回 null，按跨站处理。 */
 function originHost(origin: string): string | null {
@@ -310,13 +310,12 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
 
   // ---- 图片 ----
 
-  app.post<{ Params: { id: string } }>("/api/projects/:id/uploads", async (req) => {
-    const project = (await service.overview()).projects.find((p) => p.id === req.params.id);
-    if (!project) throw httpError(404, "项目不存在");
+  // 按会话上传（终端里粘贴 / 拖入、对话输入框的附件）：属于项目时存到项目的 .uploads/，未归属时存到共享目录
+  app.post<PaneParams>("/api/sessions/:paneId/uploads", async (req) => {
+    const root = (await service.uploadRootOf(req.params.paneId)) ?? SHARED_UPLOAD_ROOT;
     const file = await req.file();
     if (!file) throw httpError(400, "没有收到文件");
-    const result = await saveUpload(project.path, file.filename, file.mimetype, file.file);
-    // 达到大小上限时 busboy 截断而不报错，删掉写了一半的文件
+    const result = await saveUpload(root, file.filename, file.mimetype, file.file);
     if (file.file.truncated) {
       await unlink(result.path).catch(() => {});
       throw httpError(413, "文件超过 50MB");

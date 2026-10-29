@@ -30,13 +30,12 @@ const draftKey = (paneId: string) => `projdeck:draft:${paneId}`;
 
 export function Composer(props: {
   paneId: string;
-  projectId: string | null;
   kind: SessionKind;
   /** 宽屏对话视图下与消息列同宽居中。 */
   centered?: boolean;
   onSent?: () => void;
 }) {
-  const { paneId, projectId, kind } = props;
+  const { paneId, kind } = props;
   const [text, setText] = useState(() => localStorage.getItem(draftKey(paneId)) ?? "");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [sending, setSending] = useState(false);
@@ -57,15 +56,11 @@ export function Composer(props: {
 
   const addFiles = (files: File[]) => {
     if (!files.length) return;
-    if (!projectId) {
-      toast.error("未归属项目的会话不能上传文件，请先导入它所在的文件夹");
-      return;
-    }
     for (const file of files) {
       const id = nextId++;
       const preview = file.type.startsWith("image/") ? URL.createObjectURL(file) : null;
       setAttachments((xs) => [...xs, { id, name: file.name || "file", size: file.size, preview, path: null }]);
-      void uploadFile(projectId, file).then(
+      void uploadFile(paneId, file).then(
         ({ path }) => setAttachments((xs) => xs.map((a) => (a.id === id ? { ...a, path } : a))),
         (err: Error) => setAttachments((xs) => xs.map((a) => (a.id === id ? { ...a, error: err.message } : a))),
       );
@@ -154,7 +149,7 @@ export function Composer(props: {
           {kind !== "shell" && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <InputGroupButton size="icon-sm" variant="ghost" aria-label="添加附件" disabled={!projectId} onClick={() => fileInput.current?.click()}>
+                <InputGroupButton size="icon-sm" variant="ghost" aria-label="添加附件" onClick={() => fileInput.current?.click()}>
                   <PaperclipIcon />
                 </InputGroupButton>
               </TooltipTrigger>

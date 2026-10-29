@@ -339,6 +339,12 @@ export class ProjdeckService {
     return rect && rect.width > 20 && rect.height > 5 ? { cols: rect.width - 1, rows: rect.height } : null;
   }
 
+  /** 会话上传文件的根目录：所属项目的目录；未归属时为 null。 */
+  async uploadRootOf(paneId: string): Promise<string | null> {
+    const { projectId } = await this.lookup(paneId);
+    return projectId ? (this.store.projects.find((p) => p.id === projectId)?.path ?? null) : null;
+  }
+
   /** 网页终端 attach 的目标。 */
   async terminalIdOf(paneId: string): Promise<string> {
     return (await this.lookup(paneId)).session.terminalId;

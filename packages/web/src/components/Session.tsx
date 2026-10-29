@@ -116,13 +116,9 @@ export function SessionPage({ paneId }: { paneId: string }) {
   const cwdInProject = project && (session.cwd + "/").startsWith(project.path + "/") ? session.cwd.slice(project.path.length + 1) : "";
 
   const upload = async (file: File): Promise<string | null> => {
-    if (!project) {
-      toast.error("未归属项目的会话不能上传文件，请先导入它所在的文件夹");
-      return null;
-    }
     const id = toast.loading(`正在上传 ${file.name}`);
     try {
-      const { path } = await uploadFile(project.id, file);
+      const { path } = await uploadFile(paneId, file);
       toast.success(`已上传 ${file.name}`, { id });
       return path;
     } catch (err) {
@@ -266,7 +262,6 @@ export function SessionPage({ paneId }: { paneId: string }) {
       {(view === "bubbles" || (view === "terminal" && composerOpen)) && (
         <Composer
           paneId={paneId}
-          projectId={project?.id ?? null}
           kind={session.kind}
           centered={view === "bubbles"}
           onSent={() => setComposerOpen(false)}

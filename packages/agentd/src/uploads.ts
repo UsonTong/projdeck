@@ -1,12 +1,16 @@
 import { randomBytes } from "node:crypto";
 import { createWriteStream, existsSync } from "node:fs";
 import { appendFile, mkdir, readdir, readFile, stat, unlink } from "node:fs/promises";
+import { homedir } from "node:os";
 import { extname, join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import type { Readable } from "node:stream";
 import type { UploadResult } from "@projdeck/shared";
 
 export const UPLOAD_DIR = ".uploads";
+
+/** 不属于任何项目的会话，上传的文件放在这里（同样是其下的 .uploads/），不在用户的目录里新建文件夹。 */
+export const SHARED_UPLOAD_ROOT = join(process.env.XDG_DATA_HOME ?? join(homedir(), ".local", "share"), "projdeck");
 export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 const EXT_BY_MIME: Record<string, string> = {

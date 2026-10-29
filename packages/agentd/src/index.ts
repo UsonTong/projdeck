@@ -5,7 +5,7 @@ import { ProjectStore } from "./projects/store.ts";
 import { buildServer } from "./server.ts";
 import { ProjdeckService } from "./service.ts";
 import { startAutoTrust } from "./trust.ts";
-import { pruneUploads } from "./uploads.ts";
+import { pruneUploads, SHARED_UPLOAD_ROOT } from "./uploads.ts";
 
 const config = loadConfig();
 const herdr = new HerdrClient(config.herdrSocket);
@@ -34,7 +34,7 @@ const stopAutoTrust = startAutoTrust(herdr, () => store.settings.autoTrust, (pan
 );
 
 const prune = () =>
-  pruneUploads(store.projects.map((p) => p.path), config.uploadRetentionDays)
+  pruneUploads([...store.projects.map((p) => p.path), SHARED_UPLOAD_ROOT], config.uploadRetentionDays)
     .then((n) => n && app.log.info(`已清理 ${n} 个过期上传文件`))
     .catch((err: Error) => app.log.warn(`清理上传文件失败：${err.message}`));
 void prune();
