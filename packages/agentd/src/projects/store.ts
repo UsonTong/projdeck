@@ -35,7 +35,7 @@ export class ProjectStore {
   constructor() {
     this.projects = readJson<Project[]>(this.projectsFile, []);
     this.archive = readJson<ArchivedSession[]>(this.archiveFile, []);
-    this.settings = { timeZone: null, ...readJson<Partial<Settings>>(this.settingsFile, {}) };
+    this.settings = { timeZone: null, autoTrust: true, ...readJson<Partial<Settings>>(this.settingsFile, {}) };
     this.state = {
       sticky: {},
       hiddenTerminals: [],

@@ -4,6 +4,7 @@ import { SUPPORTED_PROTOCOL } from "./herdr/types.ts";
 import { ProjectStore } from "./projects/store.ts";
 import { buildServer } from "./server.ts";
 import { ProjdeckService } from "./service.ts";
+import { startAutoTrust } from "./trust.ts";
 import { pruneUploads } from "./uploads.ts";
 
 const config = loadConfig();
@@ -28,6 +29,9 @@ herdr
   })
   .catch((err: Error) => app.log.warn(`暂时无法连接 herdr：${err.message}`));
 herdr.subscribe();
+const stopAutoTrust = startAutoTrust(herdr, () => store.settings.autoTrust, (paneId) =>
+  app.log.info(`已自动信任 ${paneId} 的工作目录`),
+);
 
 const prune = () =>
   pruneUploads(store.projects.map((p) => p.path), config.uploadRetentionDays)
@@ -40,6 +44,7 @@ await app.listen({ host: config.host, port: config.port });
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
+    stopAutoTrust();
     herdr.close();
     void app.close().then(() => process.exit(0));
   });

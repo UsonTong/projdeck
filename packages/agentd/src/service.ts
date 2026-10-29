@@ -207,6 +207,7 @@ export class ProjdeckService {
       }
       this.store.settings.timeZone = patch.timeZone;
     }
+    if (patch.autoTrust !== undefined) this.store.settings.autoTrust = patch.autoTrust === true;
     this.store.saveSettings();
     this.snapshot = undefined;
     return this.store.settings;

@@ -46,6 +46,8 @@ export interface ArchivedSession {
 export interface Settings {
   /** IANA 时区名，如 Asia/Shanghai；null 表示跟随各设备自己的时区。 */
   timeZone: string | null;
+  /** Claude / Codex 弹出「信任此文件夹」时自动同意（包括在 projdeck 之外启动、或重启后 herdr 恢复的会话）。 */
+  autoTrust: boolean;
 }
 
 export interface Overview {

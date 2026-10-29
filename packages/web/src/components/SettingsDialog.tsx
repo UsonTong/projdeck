@@ -1,7 +1,9 @@
 import { CheckIcon, SearchIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { allTimeZones, COMMON_TIME_ZONES, deviceTimeZone, formatDateTime, utcOffset } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -15,10 +17,11 @@ interface Option {
   description: string;
 }
 
-/** 设置：时区。用可搜索的列表直接选，不用下拉菜单。 */
+/** 设置：自动信任文件夹、时区。时区用可搜索的列表直接选，不用下拉菜单。 */
 export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { overview } = useLive();
   const current = overview?.settings.timeZone ?? null;
+  const autoTrust = overview?.settings.autoTrust ?? true;
   const [query, setQuery] = useState("");
   const [now, setNow] = useState(() => new Date());
 
@@ -55,6 +58,14 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
     }
   };
 
+  const setAutoTrust = async (on: boolean) => {
+    try {
+      await api.updateSettings({ autoTrust: on });
+    } catch (err) {
+      toast.error((err as Error).message);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
@@ -62,6 +73,15 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
           <DialogTitle>设置</DialogTitle>
           <DialogDescription>保存在你的电脑上，所有设备共享，改了立即生效。</DialogDescription>
         </DialogHeader>
+        <Field orientation="horizontal">
+          <Checkbox id="auto-trust" checked={autoTrust} onCheckedChange={(v) => void setAutoTrust(v === true)} />
+          <FieldContent>
+            <FieldLabel htmlFor="auto-trust">自动信任文件夹</FieldLabel>
+            <FieldDescription>
+              Claude / Codex 问「是否信任这个文件夹」时自动选「信任」，包括电脑重启后自动恢复的会话。
+            </FieldDescription>
+          </FieldContent>
+        </Field>
         <div className="flex min-w-0 flex-col gap-3">
           <div className="text-sm font-medium">时区</div>
           <InputGroup>
