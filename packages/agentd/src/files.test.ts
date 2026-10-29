@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import { test } from "node:test";
-import { checkName, deleteEntry, listDir, makeDir, renameEntry, resolveInProject, saveToDir } from "./files.ts";
+import { checkName, deleteEntry, listDir, makeDir, readForEdit, renameEntry, resolveInProject, saveToDir, writeText } from "./files.ts";
+import { mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 
 function setup() {
   const base = mkdtempSync(join(tmpdir(), "projdeck-files-"));
@@ -61,4 +62,33 @@ test("新建 / 重命名 / 删除", async () => {
   await deleteEntry(root, "escape-link");
   assert.equal(readFileSync(join(base, "outside.txt"), "utf8"), "outside");
   assert.throws(() => checkName("a/b"), /文件名无效/);
+});
+
+test("编辑保存：检查打开之后是否被改过，保留权限，确认后可覆盖", async () => {
+  const root = await mkdtemp(join(tmpdir(), "projdeck-edit-"));
+  const file = join(root, "a.sh");
+  await writeFile(file, "echo 1\n", { mode: 0o755 });
+  const opened = await readForEdit(root, "a.sh");
+  assert.equal(opened.text, "echo 1\n");
+
+  const saved = await writeText(root, "a.sh", "echo 2\n", opened.mtimeMs);
+  assert.equal(await readFile(file, "utf8"), "echo 2\n");
+  assert.equal((await stat(file)).mode & 0o777, 0o755);
+  // 没有遗留临时文件
+  assert.deepEqual((await readdir(root)).sort(), ["a.sh"]);
+
+  // 别人（agent）在此期间改了文件：用旧的修改时间保存会被拒绝
+  await new Promise((r) => setTimeout(r, 20));
+  await writeFile(file, "echo agent\n");
+  await assert.rejects(writeText(root, "a.sh", "echo 3\n", saved.mtimeMs), (e: { statusCode?: number }) => e.statusCode === 409);
+  assert.equal(await readFile(file, "utf8"), "echo agent\n");
+  // 确认覆盖
+  await writeText(root, "a.sh", "echo 3\n", null);
+  assert.equal(await readFile(file, "utf8"), "echo 3\n");
+
+  // 二进制文件不能编辑；项目外不能写
+  await writeFile(join(root, "b.bin"), Buffer.from([1, 0, 2]));
+  await assert.rejects(readForEdit(root, "b.bin"), (e: { statusCode?: number }) => e.statusCode === 415);
+  await assert.rejects(writeText(root, "../x", "", null), (e: { statusCode?: number }) => e.statusCode === 403 || e.statusCode === 404);
+  await rm(root, { recursive: true });
 });

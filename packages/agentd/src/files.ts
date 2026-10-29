@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { createReadStream, createWriteStream } from "node:fs";
-import { lstat, mkdir, open, readdir, realpath, rename, rm, stat } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
+import { lstat, mkdir, open, readdir, readFile, realpath, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import type { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -11,6 +12,8 @@ import { isWithin } from "./projects/attribution.ts";
 export const MAX_FILE_BYTES = 1024 * 1024 * 1024;
 /** 文本预览的上限，超过只提供下载。 */
 const MAX_PREVIEW_BYTES = 512 * 1024;
+/** 网页里编辑的文件大小上限。 */
+export const MAX_EDIT_BYTES = 2 * 1024 * 1024;
 
 const err = (statusCode: number, message: string) => Object.assign(new Error(message), { statusCode });
 
@@ -184,4 +187,39 @@ export async function readText(root: string, rel: string): Promise<{ text: strin
   } finally {
     await fh.close();
   }
+}
+
+/** 读取文本文件用于编辑：完整内容和修改时间（保存时用来检查是否被别人改过）。 */
+export async function readForEdit(root: string, rel: string): Promise<{ text: string; mtimeMs: number }> {
+  const path = await resolveInProject(root, rel);
+  const s = await stat(path);
+  if (!s.isFile()) throw err(400, "不是文件");
+  if (s.size > MAX_EDIT_BYTES) throw err(413, "文件超过 2MB，不能在网页里编辑，请下载后修改");
+  const buf = await readFile(path);
+  if (buf.includes(0)) throw err(415, "这是二进制文件，不能当文本编辑");
+  return { text: buf.toString("utf8"), mtimeMs: s.mtimeMs };
+}
+
+/**
+ * 保存编辑结果。baseMtimeMs 为打开时的修改时间：文件之后被改过（例如 agent 同时在改）时报 409，
+ * 由用户决定覆盖还是重新加载；传 null 表示确认覆盖。
+ * 先写到同目录的临时文件再改名替换，保存中途出错不会留下写了一半的文件；保留原文件的权限。
+ */
+export async function writeText(root: string, rel: string, text: string, baseMtimeMs: number | null): Promise<{ mtimeMs: number }> {
+  const path = await resolveInProject(root, rel);
+  const s = await stat(path);
+  if (!s.isFile()) throw err(400, "不是文件");
+  if (Buffer.byteLength(text) > MAX_EDIT_BYTES) throw err(413, "内容超过 2MB");
+  if (baseMtimeMs !== null && Math.abs(s.mtimeMs - baseMtimeMs) > 1) {
+    throw Object.assign(err(409, "文件在你打开之后被修改过"), { mtimeMs: s.mtimeMs });
+  }
+  const tmp = join(dirname(path), `.${basename(path)}.projdeck-${randomBytes(4).toString("hex")}`);
+  try {
+    await writeFile(tmp, text, { mode: s.mode & 0o7777 });
+    await rename(tmp, path);
+  } catch (e) {
+    await unlink(tmp).catch(() => {});
+    throw e;
+  }
+  return { mtimeMs: (await stat(path)).mtimeMs };
 }

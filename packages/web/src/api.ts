@@ -81,6 +81,12 @@ export const api = {
   // ---- 文件管理器（路径为项目内相对路径） ----
   listDir: (projectId: string, path: string, hidden: boolean) =>
     request<DirListing>("GET", `${files(projectId)}?path=${encodeURIComponent(path)}&hidden=${hidden ? 1 : 0}`),
+  /** 编辑器：完整内容与修改时间。 */
+  readForEdit: (projectId: string, path: string) =>
+    request<{ text: string; mtimeMs: number }>("GET", `${files(projectId)}/edit?path=${encodeURIComponent(path)}`),
+  /** 保存；文件在 baseMtimeMs 之后被改过时返回 409（ApiError.status）。baseMtimeMs 为 null 表示确认覆盖。 */
+  saveFile: (projectId: string, path: string, text: string, baseMtimeMs: number | null) =>
+    request<{ mtimeMs: number }>("PUT", `${files(projectId)}/edit`, { path, text, baseMtimeMs }),
   readText: (projectId: string, path: string) =>
     request<{ text: string; truncated: boolean } | { binary: true }>("GET", `${files(projectId)}/text?path=${encodeURIComponent(path)}`),
   mkdir: (projectId: string, path: string, name: string) => request("POST", `${files(projectId)}/mkdir`, { path, name }),

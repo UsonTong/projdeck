@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { Eye, EyeOff, LayoutGrid, List, Search, X } from "lucide";
 import { MorphIcon } from "morphicons/react";
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -39,6 +39,9 @@ import { copyText } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
 import { api } from "../api.ts";
 import { confirmDialog } from "./Confirm.tsx";
+
+/** VS Code 的编辑器体积较大，打开文件编辑时才加载。 */
+const CodeEditor = lazy(() => import("./CodeEditor.tsx"));
 
 const fail = (err: unknown) => toast.error((err as Error).message);
 const join = (dir: string, name: string) => (dir ? `${dir}/${name}` : name);
@@ -107,7 +110,7 @@ function Thumb({ entry, src }: { entry: FileEntry; src: string }) {
 
 /**
  * 项目文件管理器，界面参照 GNOME「文件」：工具栏（后退 / 前进、路径栏、搜索、视图切换）、左侧位置栏、
- * 网格 / 列表两种视图。单击打开（文件夹进入、文件预览），右键（触屏长按）出菜单。
+ * 网格 / 列表两种视图。单击打开（文件夹进入、图片预览、其他文件用 VS Code 的编辑器打开），右键（触屏长按）出菜单。
  * 范围限定在项目目录内（服务端校验，见 agentd/src/files.ts）。
  */
 export function FileBrowser(props: {
@@ -141,6 +144,9 @@ export function FileBrowser(props: {
   const [upload, setUpload] = useState<{ names: string; ratio: number } | null>(null);
   const [dragging, setDragging] = useState(false);
   const [dialog, setDialog] = useState<null | { kind: "mkdir" } | { kind: "rename"; entry: FileEntry } | { kind: "preview"; entry: FileEntry }>(null);
+  /** 正在编辑的文件（项目内相对路径）；编辑器占据整个文件管理器区域。 */
+  const [editing, setEditing] = useState<string | null>(null);
+  useEffect(() => setEditing(null), [projectId]);
   const fileInput = useRef<HTMLInputElement>(null);
 
   // 后退 / 前进：记录在这个文件管理器里走过的路径
@@ -206,7 +212,9 @@ export function FileBrowser(props: {
     await api.deleteFile(projectId, join(path, e.name)).then(load, fail);
   };
 
-  const open = (e: FileEntry) => (e.type === "dir" ? props.onNavigate(join(path, e.name)) : setDialog({ kind: "preview", entry: e }));
+  // 文件夹进入；图片预览；其他文件用编辑器打开（二进制或太大的文件编辑器里会提示并提供下载）
+  const open = (e: FileEntry) =>
+    e.type === "dir" ? props.onNavigate(join(path, e.name)) : IMAGE.test(e.name) ? setDialog({ kind: "preview", entry: e }) : setEditing(join(path, e.name));
   const copyPath = (e: FileEntry) => {
     const rel = join(path, e.name);
     void copyText(`${props.projectPath}/${rel}`).then(() => {
@@ -254,9 +262,12 @@ export function FileBrowser(props: {
   const itemMenu = (e: FileEntry) => (
     <ContextMenuContent className="w-52">
       <ContextMenuItem onSelect={() => open(e)}>
-        {e.type === "dir" ? "打开" : "预览"}
+        {e.type === "dir" ? "打开" : IMAGE.test(e.name) ? "预览" : "编辑"}
         <ContextMenuShortcut>Enter</ContextMenuShortcut>
       </ContextMenuItem>
+      {e.type === "file" && !IMAGE.test(e.name) && (
+        <ContextMenuItem onSelect={() => setDialog({ kind: "preview", entry: e })}>只读预览</ContextMenuItem>
+      )}
       <ContextMenuItem onSelect={() => download(e)}>{e.type === "dir" ? "打包下载（.tar.gz）" : "下载"}</ContextMenuItem>
       <ContextMenuItem onSelect={() => copyPath(e)}>{copied === join(path, e.name) ? "已复制" : "复制路径"}</ContextMenuItem>
       <ContextMenuSeparator />
@@ -282,6 +293,20 @@ export function FileBrowser(props: {
   );
 
   const showSidebar = !props.compact && (props.projects?.length ?? 0) > 0;
+
+  if (editing) {
+    return (
+      <Suspense
+        fallback={
+          <div className="flex flex-1 items-center justify-center">
+            <Spinner className="size-5" />
+          </div>
+        }
+      >
+        <CodeEditor projectId={projectId} path={editing} onClose={() => (setEditing(null), load())} />
+      </Suspense>
+    );
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">

@@ -20,7 +20,18 @@ import type {
 import { ACCESS_KEY_COOKIE, AccessKey, LoginLimiter, SESSION_COOKIE, SESSION_TTL_MS, SessionStore, verifyPassword } from "./auth.ts";
 import type { Config } from "./config.ts";
 import type { HerdrClient } from "./herdr/client.ts";
-import { deleteEntry, listDir, makeDir, MAX_FILE_BYTES, openForDownload, readText, renameEntry, saveToDir } from "./files.ts";
+import {
+  deleteEntry,
+  listDir,
+  makeDir,
+  MAX_FILE_BYTES,
+  openForDownload,
+  readForEdit,
+  readText,
+  renameEntry,
+  saveToDir,
+  writeText,
+} from "./files.ts";
 import { DesktopFocus } from "./desktopFocus.ts";
 import { loadGhosttyTheme, watchGhosttyTheme } from "./ghosttyTheme.ts";
 import { LiveHub } from "./live.ts";
@@ -283,6 +294,24 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
     const r = await readText(rootOf(req), req.query.path ?? "");
     return r ?? { binary: true };
   });
+
+  // 网页编辑器：读取完整内容与修改时间；保存时检查打开之后是否被改过（409 时由用户决定覆盖或重新加载）
+  app.get<FilesReq>("/api/projects/:id/files/edit", async (req) => readForEdit(rootOf(req), req.query.path ?? ""));
+  app.put<FilesReq & { Body: { path?: string; text?: string; baseMtimeMs?: number | null } }>(
+    "/api/projects/:id/files/edit",
+    { bodyLimit: 5 * 1024 * 1024 }, // 文件上限 2MB，JSON 转义后会变大
+    async (req, reply) => {
+      const { path = "", text, baseMtimeMs = null } = req.body ?? {};
+      if (typeof text !== "string") throw httpError(400, "缺少文件内容");
+      try {
+        return await writeText(rootOf(req), path, text, typeof baseMtimeMs === "number" ? baseMtimeMs : null);
+      } catch (e) {
+        const conflict = e as { statusCode?: number; mtimeMs?: number; message: string };
+        if (conflict.statusCode === 409) return reply.status(409).send({ error: conflict.message, mtimeMs: conflict.mtimeMs });
+        throw e;
+      }
+    },
+  );
 
   app.post<FilesReq>("/api/projects/:id/files/upload", async (req) => {
     const root = rootOf(req);

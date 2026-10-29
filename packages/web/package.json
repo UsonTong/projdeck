@@ -17,6 +17,7 @@
     "lucide": "^1.63.0",
     "lucide-react": "^1.62.0",
     "marked": "^18.1.2",
+    "monaco-editor": "^0.57.0",
     "morphicons": "^2.0.2",
     "radix-ui": "^1.8.1",
     "react": "^19.3.1",
