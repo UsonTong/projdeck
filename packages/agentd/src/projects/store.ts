@@ -88,6 +88,9 @@ export class ProjectStore {
     this.getProject(id);
     this.projects = this.projects.filter((p) => p.id !== id);
     this.saveProjects();
+    // 归属记录一起清掉，否则以后再登记同名项目时，这些会话会自己回到里面
+    for (const [terminal, project] of Object.entries(this.state.sticky)) if (project === id) delete this.state.sticky[terminal];
+    this.saveState();
   }
 
   private uniqueId(name: string): string {
