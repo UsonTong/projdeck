@@ -350,7 +350,7 @@ function SessionRow({ session: s, project, active }: { session: Session; project
           </div>
           <div className={cn("relative z-10 flex shrink-0 items-center", HOVER_REVEAL)}>
             {!projectId && s.kind !== "shell" && (
-              <IconAction label="把这个目录导入为项目" onClick={() => void importFolder()}>
+              <IconAction label={`把会话启动时的目录 ${shortPath(s.cwd)} 导入为项目`} onClick={() => void importFolder()}>
                 <FolderInputIcon />
               </IconAction>
             )}
@@ -376,7 +376,7 @@ function SessionRow({ session: s, project, active }: { session: Session; project
           <ContextMenuItem onSelect={() => openFiles(project.id, s.cwd.slice(project.path.length + 1))}>在文件中查看</ContextMenuItem>
         )}
         <ContextMenuItem onSelect={() => setMoving(true)}>{projectId ? "移到其他项目…" : "移到项目…"}</ContextMenuItem>
-        {!projectId && <ContextMenuItem onSelect={() => void importFolder()}>把这个目录导入为项目</ContextMenuItem>}
+        {!projectId && <ContextMenuItem onSelect={() => void importFolder()}>导入 {shortPath(s.cwd)} 为项目</ContextMenuItem>}
         <ContextMenuSeparator />
         <ContextMenuItem onSelect={() => void api.setHidden(s.paneId, !s.hidden).catch(fail)}>{s.hidden ? "取消隐藏" : "隐藏"}</ContextMenuItem>
         {s.kind !== "shell" && projectId && <ContextMenuItem onSelect={() => void archive()}>归档（关闭 pane，保留对话）</ContextMenuItem>}
