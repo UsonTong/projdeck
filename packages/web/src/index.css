@@ -9,6 +9,7 @@
     --color-status-working: var(--status-working);
     --color-status-blocked: var(--status-blocked);
     --color-status-done: var(--status-done);
+    --color-folder: var(--folder);
     --font-heading: var(--font-sans);
     --font-sans: 'Geist Variable', sans-serif;
     --color-sidebar-ring: var(--sidebar-ring);
@@ -53,6 +54,7 @@
 
 :root {
     --status-working: oklch(0.83 0.16 84);
+    --folder: oklch(0.72 0.12 250);
     --status-blocked: oklch(0.64 0.21 25);
     --status-done: oklch(0.7 0.15 162);
     --background: oklch(1 0 0);

@@ -47,6 +47,8 @@ export function FilesPage({ projectId, path }: { projectId: string; path: string
           projectPath={project.path}
           path={path}
           onNavigate={(p) => openFiles(projectId, p)}
+          projects={overview?.projects.filter((p) => !p.archived)}
+          onOpenProject={(id) => openFiles(id)}
           compact={!wide}
         />
       )}

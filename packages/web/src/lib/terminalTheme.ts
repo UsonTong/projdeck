@@ -103,6 +103,8 @@ function applyAppTheme(t: TerminalTheme): void {
     "--status-working": t.palette[3] ?? "#e5c07b",
     "--status-blocked": t.palette[1] ?? "#e06c75",
     "--status-done": t.palette[2] ?? "#98c379",
+    // 文件管理器的文件夹颜色：取调色板的「蓝」，跟随主题
+    "--folder": t.palette[4] ?? "#61afef",
   };
   const root = document.documentElement.style;
   for (const [k, v] of Object.entries(vars)) root.setProperty(k, v);

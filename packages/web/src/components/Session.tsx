@@ -12,7 +12,7 @@ import { uploadFile } from "@/lib/upload";
 import { api } from "../api.ts";
 import { useTerminalSizing } from "@/lib/devicePrefs";
 import { useLive, usePane, useWide } from "../live.ts";
-import { openSession } from "../router.ts";
+import { openFiles, openSession } from "../router.ts";
 import { Bubbles } from "./Bubbles.tsx";
 import { Composer } from "./Composer.tsx";
 import { FileBrowser } from "./FileBrowser.tsx";
@@ -212,6 +212,8 @@ export function SessionPage({ paneId }: { paneId: string }) {
             projectPath={project.path}
             path={filesPath ?? cwdInProject}
             onNavigate={setFilesPath}
+            projects={overview.projects.filter((p) => !p.archived)}
+            onOpenProject={(id) => openFiles(id)}
             compact={!wide}
           />
         ) : (

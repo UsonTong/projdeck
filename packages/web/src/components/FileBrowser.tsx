@@ -1,7 +1,7 @@
 import type { DirListing, FileEntry } from "@projdeck/shared";
 import {
+  ChevronLeftIcon,
   ChevronRightIcon,
-  CornerLeftUpIcon,
   DownloadIcon,
   FileArchiveIcon,
   FileCodeIcon,
@@ -11,21 +11,28 @@ import {
   FolderIcon,
   FolderPlusIcon,
   type LucideIcon,
-  PencilIcon,
   RotateCwIcon,
-  Trash2Icon,
   UploadIcon,
 } from "lucide-react";
-import { Check, Copy, Eye, EyeOff } from "lucide";
+import { Eye, EyeOff, LayoutGrid, List, Search, X } from "lucide";
 import { MorphIcon } from "morphicons/react";
-import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuShortcut,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { setDevicePref, useDevicePref } from "@/lib/devicePrefs";
 import { formatDateTime, useTimeZone } from "@/lib/time";
 import { formatSize } from "@/lib/upload";
 import { copyText } from "@/lib/clipboard";
@@ -37,9 +44,6 @@ const fail = (err: unknown) => toast.error((err as Error).message);
 const join = (dir: string, name: string) => (dir ? `${dir}/${name}` : name);
 const IMAGE = /\.(png|jpe?g|gif|webp)$/i;
 
-/** 鼠标悬停才出现的操作；触屏设备没有悬停，始终显示。 */
-const HOVER_REVEAL = "opacity-0 transition-opacity group-hover/row:opacity-100 group-focus-within/row:opacity-100 [@media(hover:none)]:opacity-100";
-
 function iconFor(e: FileEntry): LucideIcon {
   if (e.type === "dir") return FolderIcon;
   const n = e.name.toLowerCase();
@@ -50,8 +54,17 @@ function iconFor(e: FileEntry): LucideIcon {
   return FileIcon;
 }
 
+const extOf = (name: string) => {
+  const i = name.lastIndexOf(".");
+  return i > 0 && name.length - i <= 6 ? name.slice(i + 1) : "";
+};
 
-function IconButton(props: { label: string; onClick: () => void; children: ReactNode; className?: string; destructive?: boolean; active?: boolean }) {
+/** 触屏设备没有双击和右键：单击直接打开，长按出菜单。 */
+const coarsePointer = () => matchMedia("(pointer: coarse)").matches;
+
+type SortKey = "name" | "modified" | "size";
+
+function IconButton(props: { label: string; onClick: () => void; children: ReactNode; className?: string; active?: boolean; disabled?: boolean }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -59,7 +72,8 @@ function IconButton(props: { label: string; onClick: () => void; children: React
           variant={props.active ? "secondary" : "ghost"}
           size="icon-sm"
           aria-label={props.label}
-          className={cn(props.destructive && "hover:text-destructive", props.className)}
+          disabled={props.disabled}
+          className={props.className}
           onClick={(e) => {
             e.stopPropagation();
             props.onClick();
@@ -73,8 +87,29 @@ function IconButton(props: { label: string; onClick: () => void; children: React
   );
 }
 
+/** 网格视图里的大图标：文件夹用主题色、图片直接显示缩略图、其他文件显示类型图标和扩展名。 */
+function Thumb({ entry, src }: { entry: FileEntry; src: string }) {
+  if (entry.type === "dir") return <FolderIcon className="size-14 fill-folder/25 text-folder" strokeWidth={1.25} />;
+  if (IMAGE.test(entry.name)) {
+    return <img src={src} alt="" loading="lazy" draggable={false} className="size-14 rounded-md bg-muted object-cover ring-1 ring-border" />;
+  }
+  const Icon = iconFor(entry);
+  const ext = extOf(entry.name);
+  return (
+    <span className="relative flex size-14 items-center justify-center">
+      <Icon className="size-12 text-muted-foreground" strokeWidth={1.25} />
+      {ext && (
+        <span className="absolute bottom-1 max-w-12 truncate rounded bg-secondary px-1 text-[9px] leading-3.5 font-medium text-secondary-foreground uppercase">
+          {ext}
+        </span>
+      )}
+    </span>
+  );
+}
+
 /**
- * 项目文件管理器（类似 SFTP）：浏览、上传、下载、预览、新建文件夹、重命名、删除。
+ * 项目文件管理器，界面参照 GNOME「文件」：工具栏（后退 / 前进、路径栏、搜索、视图切换）、左侧位置栏、
+ * 网格 / 列表两种视图。单击选中、双击打开（触屏单击打开），右键（触屏长按）出菜单。
  * 范围限定在项目目录内（服务端校验，见 agentd/src/files.ts）。
  */
 export function FileBrowser(props: {
@@ -84,6 +119,9 @@ export function FileBrowser(props: {
   projectPath: string;
   path: string;
   onNavigate: (path: string) => void;
+  /** 位置栏里列出的项目；点击切换到该项目的文件。 */
+  projects?: { id: string; name: string }[];
+  onOpenProject?: (projectId: string) => void;
   compact?: boolean;
 }) {
   const { projectId, path } = props;
@@ -91,7 +129,11 @@ export function FileBrowser(props: {
   const [listing, setListing] = useState<DirListing | null>(null);
   const [error, setError] = useState("");
   const [showHidden, setShowHidden] = useState(() => localStorage.getItem("projdeck:showHiddenFiles") === "1");
-  // 刚复制过路径的条目，复制按钮短暂显示对勾
+  const view = useDevicePref<"grid" | "list">("fileView", "grid");
+  const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "name", desc: false });
+  const [query, setQuery] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  // 刚复制过路径的条目，菜单里短暂显示对勾
   const [copied, setCopied] = useState<string | null>(null);
   useEffect(() => {
     if (!copied) return;
@@ -103,6 +145,22 @@ export function FileBrowser(props: {
   const [dialog, setDialog] = useState<null | { kind: "mkdir" } | { kind: "rename"; entry: FileEntry } | { kind: "preview"; entry: FileEntry }>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
+  // 后退 / 前进：记录在这个文件管理器里走过的路径
+  const history = useRef({ stack: [path], index: 0 });
+  useEffect(() => {
+    const h = history.current;
+    if (h.stack[h.index] === path) return;
+    h.stack = [...h.stack.slice(0, h.index + 1), path];
+    h.index = h.stack.length - 1;
+  }, [path]);
+  const go = (delta: -1 | 1) => {
+    const h = history.current;
+    const next = h.index + delta;
+    if (next < 0 || next >= h.stack.length) return;
+    h.index = next;
+    props.onNavigate(h.stack[next]!);
+  };
+
   const load = useCallback(() => {
     setError("");
     api.listDir(projectId, path, showHidden).then(setListing, (err: Error) => {
@@ -112,6 +170,11 @@ export function FileBrowser(props: {
   }, [projectId, path, showHidden]);
 
   useEffect(load, [load]);
+  // 换了目录：清掉选中和搜索
+  useEffect(() => {
+    setSelected(null);
+    setQuery(null);
+  }, [projectId, path]);
 
   const toggleHidden = () => {
     localStorage.setItem("projdeck:showHiddenFiles", showHidden ? "0" : "1");
@@ -146,6 +209,23 @@ export function FileBrowser(props: {
   };
 
   const open = (e: FileEntry) => (e.type === "dir" ? props.onNavigate(join(path, e.name)) : setDialog({ kind: "preview", entry: e }));
+  const copyPath = (e: FileEntry) => {
+    const rel = join(path, e.name);
+    void copyText(`${props.projectPath}/${rel}`).then(() => {
+      setCopied(rel);
+      toast.success("已复制路径");
+    });
+  };
+  const download = (e: FileEntry) => (location.href = api.downloadUrl(projectId, join(path, e.name)));
+
+  // 文件夹在前，再按选定的列排序；搜索只过滤当前文件夹
+  const entries = useMemo(() => {
+    const q = query?.trim().toLowerCase();
+    const list = (listing?.entries ?? []).filter((e) => !q || e.name.toLowerCase().includes(q));
+    const by = (a: FileEntry, b: FileEntry) =>
+      sort.key === "size" ? a.size - b.size : sort.key === "modified" ? a.modifiedAt.localeCompare(b.modifiedAt) : a.name.localeCompare(b.name, "zh");
+    return list.sort((a, b) => (a.type !== b.type ? (a.type === "dir" ? -1 : 1) : sort.desc ? by(b, a) : by(a, b)));
+  }, [listing, query, sort]);
 
   const segments = path ? path.split("/") : [];
   const onDrop = (e: DragEvent) => {
@@ -154,32 +234,109 @@ export function FileBrowser(props: {
     void uploadFiles([...e.dataTransfer.files]);
   };
 
+  // 键盘：Enter 打开、Delete 删除、F2 重命名、Alt+← / Backspace 后退
+  const onKeyDown = (e: KeyboardEvent) => {
+    if ((e.target as HTMLElement).tagName === "INPUT") return;
+    const entry = entries.find((x) => x.name === selected);
+    if (e.key === "Enter" && entry) open(entry);
+    else if (e.key === "Delete" && entry) void remove(entry);
+    else if (e.key === "F2" && entry) setDialog({ kind: "rename", entry });
+    else if ((e.altKey && e.key === "ArrowLeft") || e.key === "Backspace") go(-1);
+    else if (e.altKey && e.key === "ArrowRight") go(1);
+    else return;
+    e.preventDefault();
+  };
+
+  const itemHandlers = (e: FileEntry) => ({
+    onClick: () => (coarsePointer() ? open(e) : setSelected(e.name)),
+    onDoubleClick: () => open(e),
+    onContextMenu: () => setSelected(e.name),
+  });
+
+  const itemMenu = (e: FileEntry) => (
+    <ContextMenuContent className="w-52">
+      <ContextMenuItem onSelect={() => open(e)}>
+        {e.type === "dir" ? "打开" : "预览"}
+        <ContextMenuShortcut>Enter</ContextMenuShortcut>
+      </ContextMenuItem>
+      <ContextMenuItem onSelect={() => download(e)}>{e.type === "dir" ? "打包下载（.tar.gz）" : "下载"}</ContextMenuItem>
+      <ContextMenuItem onSelect={() => copyPath(e)}>{copied === join(path, e.name) ? "已复制" : "复制路径"}</ContextMenuItem>
+      <ContextMenuSeparator />
+      <ContextMenuItem onSelect={() => setDialog({ kind: "rename", entry: e })}>
+        重命名…
+        <ContextMenuShortcut>F2</ContextMenuShortcut>
+      </ContextMenuItem>
+      <ContextMenuItem variant="destructive" onSelect={() => void remove(e)}>
+        删除
+        <ContextMenuShortcut>Delete</ContextMenuShortcut>
+      </ContextMenuItem>
+    </ContextMenuContent>
+  );
+
+  const sortHeader = (key: SortKey, label: string, className?: string) => (
+    <button
+      className={cn("flex items-center gap-1 hover:text-foreground", className, sort.key === key && "text-foreground")}
+      onClick={() => setSort((s) => ({ key, desc: s.key === key ? !s.desc : key !== "name" }))}
+    >
+      {label}
+      {sort.key === key && <span className="text-[10px]">{sort.desc ? "▼" : "▲"}</span>}
+    </button>
+  );
+
+  const showSidebar = !props.compact && (props.projects?.length ?? 0) > 0;
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* 工具栏：路径 + 操作 */}
-      <div className="flex items-center gap-1 border-b px-3 py-2">
-        <nav className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto text-sm [scrollbar-width:none]">
-          <button className="shrink-0 rounded px-1.5 py-0.5 font-medium hover:bg-accent" onClick={() => props.onNavigate("")}>
-            {props.projectName}
-          </button>
-          {segments.map((seg, i) => (
-            <span key={i} className="flex shrink-0 items-center gap-0.5">
-              <ChevronRightIcon className="size-3.5 text-muted-foreground" />
-              <button className="rounded px-1.5 py-0.5 hover:bg-accent" onClick={() => props.onNavigate(segments.slice(0, i + 1).join("/"))}>
-                {seg}
-              </button>
-            </span>
-          ))}
-        </nav>
+      {/* 工具栏：后退 / 前进、路径栏（搜索时换成搜索框）、视图与操作 */}
+      <div className="flex items-center gap-1 border-b px-2 py-1.5">
+        <IconButton label="后退（Alt+←）" disabled={history.current.index === 0} onClick={() => go(-1)}>
+          <ChevronLeftIcon />
+        </IconButton>
+        <IconButton label="前进（Alt+→）" disabled={history.current.index >= history.current.stack.length - 1} onClick={() => go(1)}>
+          <ChevronRightIcon />
+        </IconButton>
+        {query === null ? (
+          <nav className="flex h-8 min-w-0 flex-1 items-center gap-0.5 overflow-x-auto rounded-lg bg-muted/60 px-1 text-sm [scrollbar-width:none]">
+            <button className="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-0.5 font-medium hover:bg-accent" onClick={() => props.onNavigate("")}>
+              <FolderIcon className="size-3.5 fill-folder/25 text-folder" />
+              {props.projectName}
+            </button>
+            {segments.map((seg, i) => (
+              <span key={i} className="flex shrink-0 items-center gap-0.5">
+                <span className="text-muted-foreground">/</span>
+                <button
+                  className={cn("rounded-md px-2 py-0.5 hover:bg-accent", i === segments.length - 1 && "font-medium")}
+                  onClick={() => props.onNavigate(segments.slice(0, i + 1).join("/"))}
+                >
+                  {seg}
+                </button>
+              </span>
+            ))}
+          </nav>
+        ) : (
+          <Input
+            autoFocus
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === "Escape" && setQuery(null)}
+            placeholder={`在「${segments.at(-1) ?? props.projectName}」中搜索`}
+            className="h-8 min-w-0 flex-1"
+          />
+        )}
+        <IconButton label={query === null ? "搜索" : "关闭搜索"} active={query !== null} onClick={() => setQuery(query === null ? "" : null)}>
+          <MorphIcon icon={query === null ? Search : X} />
+        </IconButton>
+        <IconButton label={view === "grid" ? "列表视图" : "网格视图"} onClick={() => setDevicePref("fileView", view === "grid" ? "list" : "grid")}>
+          <MorphIcon icon={view === "grid" ? List : LayoutGrid} />
+        </IconButton>
         <IconButton label={showHidden ? "不显示隐藏文件" : "显示隐藏文件"} active={showHidden} onClick={toggleHidden}>
           <MorphIcon icon={showHidden ? Eye : EyeOff} />
         </IconButton>
-        <IconButton label="新建文件夹" onClick={() => setDialog({ kind: "mkdir" })}>
-          <FolderPlusIcon />
-        </IconButton>
-        <IconButton label="刷新" onClick={load}>
-          <RotateCwIcon />
-        </IconButton>
+        {!props.compact && (
+          <IconButton label="新建文件夹" onClick={() => setDialog({ kind: "mkdir" })}>
+            <FolderPlusIcon />
+          </IconButton>
+        )}
         <Button size="sm" onClick={() => fileInput.current?.click()} disabled={!!upload}>
           <UploadIcon data-icon="inline-start" />
           上传
@@ -209,88 +366,150 @@ export function FileBrowser(props: {
         </div>
       )}
 
-      {/* 列表，也是拖放上传区域 */}
-      <div
-        className={cn("relative min-h-0 flex-1 overflow-y-auto p-2", dragging && "bg-accent/40 outline-2 -outline-offset-4 outline-dashed outline-ring")}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragging(true);
-        }}
-        onDragLeave={(e) => e.currentTarget === e.target && setDragging(false)}
-        onDrop={onDrop}
-      >
-        {error ? (
-          <p className="p-6 text-center text-sm text-destructive">{error}</p>
-        ) : !listing ? (
-          <div className="flex justify-center p-8">
-            <Spinner />
-          </div>
-        ) : (
-          <div className="mx-auto flex max-w-5xl flex-col gap-0.5">
-            {path && (
-              <button className="flex items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-muted-foreground hover:bg-accent/60" onClick={() => props.onNavigate(segments.slice(0, -1).join("/"))}>
-                <CornerLeftUpIcon className="size-4" />
-                上一级
+      <div className="flex min-h-0 flex-1">
+        {/* 位置栏：所有项目 */}
+        {showSidebar && (
+          <aside className="flex w-48 shrink-0 flex-col gap-0.5 overflow-y-auto border-r p-2">
+            <p className="px-2 pb-1 text-xs font-medium text-muted-foreground">项目</p>
+            {props.projects!.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => (p.id === projectId ? props.onNavigate("") : props.onOpenProject?.(p.id))}
+                className={cn(
+                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent",
+                  p.id === projectId && "bg-accent font-medium",
+                )}
+              >
+                <FolderIcon className="size-4 shrink-0 fill-folder/25 text-folder" />
+                <span className="truncate">{p.name}</span>
               </button>
-            )}
-            {listing.entries.map((e) => {
-              const Icon = iconFor(e);
-              const rel = join(path, e.name);
-              return (
-                <div key={e.name} className="group/row relative flex items-center gap-3 rounded-lg px-3 py-1.5 hover:bg-accent/60">
-                  <Icon className={cn("size-4 shrink-0", e.type === "dir" ? "text-status-working" : "text-muted-foreground")} />
-                  <div className="min-w-0 flex-1">
-                    {/* after: 伪元素铺满整行，整行可点 */}
-                    <button className="block w-full truncate text-left text-sm after:absolute after:inset-0" onClick={() => open(e)}>
-                      {e.name}
-                      {e.symlink && <span className="ml-1.5 text-xs text-muted-foreground">↗</span>}
-                    </button>
-                    {props.compact && (
-                      <div className="truncate text-xs text-muted-foreground">
-                        {e.type === "file" && `${formatSize(e.size)} · `}
-                        {formatDateTime(e.modifiedAt, timeZone)}
-                      </div>
-                    )}
-                  </div>
-                  {!props.compact && (
-                    <>
-                      <span className="w-20 shrink-0 text-right text-xs text-muted-foreground tabular-nums">{e.type === "file" ? formatSize(e.size) : ""}</span>
-                      <span className="w-36 shrink-0 text-right text-xs text-muted-foreground tabular-nums">{formatDateTime(e.modifiedAt, timeZone)}</span>
-                    </>
-                  )}
-                  <div className={cn("relative z-10 flex shrink-0 items-center", HOVER_REVEAL)}>
-                    <IconButton
-                      label={copied === rel ? "已复制" : "复制绝对路径"}
-                      onClick={() => void copyText(`${props.projectPath}/${rel}`).then(() => setCopied(rel))}
-                    >
-                      <MorphIcon icon={copied === rel ? Check : Copy} />
-                    </IconButton>
-                    <IconButton label={e.type === "dir" ? "打包下载（.tar.gz）" : "下载"} onClick={() => (location.href = api.downloadUrl(projectId, rel))}>
-                      <DownloadIcon />
-                    </IconButton>
-                    <IconButton label="重命名" onClick={() => setDialog({ kind: "rename", entry: e })}>
-                      <PencilIcon />
-                    </IconButton>
-                    <IconButton label="删除" destructive onClick={() => void remove(e)}>
-                      <Trash2Icon />
-                    </IconButton>
-                  </div>
-                </div>
-              );
-            })}
-            {listing.entries.length === 0 && (
-              <Empty className="mt-4">
-                <EmptyHeader>
-                  <EmptyMedia variant="icon">
-                    <FolderIcon />
-                  </EmptyMedia>
-                  <EmptyTitle>空文件夹</EmptyTitle>
-                  <EmptyDescription>点「上传」，或把文件拖到这里。</EmptyDescription>
-                </EmptyHeader>
-              </Empty>
-            )}
-          </div>
+            ))}
+          </aside>
         )}
+
+        {/* 内容区，也是拖放上传区域；右键空白处出菜单 */}
+        <ContextMenu>
+          <ContextMenuTrigger asChild>
+            <div
+              tabIndex={0}
+              onKeyDown={onKeyDown}
+              onClick={(e) => e.target === e.currentTarget && setSelected(null)}
+              className={cn(
+                "relative min-h-0 flex-1 overflow-y-auto p-2 outline-none",
+                dragging && "bg-accent/40 outline-2 -outline-offset-4 outline-dashed outline-ring",
+              )}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragging(true);
+              }}
+              onDragLeave={(e) => e.currentTarget === e.target && setDragging(false)}
+              onDrop={onDrop}
+            >
+              {error ? (
+                <p className="p-6 text-center text-sm text-destructive">{error}</p>
+              ) : !listing ? (
+                <div className="flex justify-center p-8">
+                  <Spinner />
+                </div>
+              ) : entries.length === 0 ? (
+                <Empty className="mt-4">
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">{query ? <MorphIcon icon={Search} /> : <FolderIcon />}</EmptyMedia>
+                    <EmptyTitle>{query ? "没有匹配的文件" : "空文件夹"}</EmptyTitle>
+                    <EmptyDescription>{query ? "搜索只在当前文件夹里查找。" : "点「上传」，或把文件拖到这里。"}</EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              ) : view === "grid" ? (
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(6.5rem,1fr))] gap-1" onClick={(e) => e.target === e.currentTarget && setSelected(null)}>
+                  {entries.map((e) => (
+                    <ContextMenu key={e.name}>
+                      <ContextMenuTrigger asChild>
+                        <button
+                          {...itemHandlers(e)}
+                          title={e.name}
+                          className={cn(
+                            "flex flex-col items-center gap-1.5 rounded-xl px-1.5 pt-2 pb-1.5 text-center transition-colors hover:bg-accent/60",
+                            selected === e.name && "bg-accent hover:bg-accent",
+                          )}
+                        >
+                          <Thumb entry={e} src={api.rawUrl(projectId, join(path, e.name))} />
+                          <span className={cn("line-clamp-2 w-full text-xs break-all", selected === e.name && "font-medium")}>
+                            {e.name}
+                            {e.symlink && <span className="text-muted-foreground"> ↗</span>}
+                          </span>
+                        </button>
+                      </ContextMenuTrigger>
+                      {itemMenu(e)}
+                    </ContextMenu>
+                  ))}
+                </div>
+              ) : (
+                <div className="mx-auto flex max-w-5xl flex-col">
+                  {!props.compact && (
+                    <div className="flex items-center gap-3 border-b px-3 pb-1.5 text-xs text-muted-foreground">
+                      <span className="size-4 shrink-0" />
+                      {sortHeader("name", "名称", "min-w-0 flex-1")}
+                      {sortHeader("size", "大小", "w-20 shrink-0 justify-end")}
+                      {sortHeader("modified", "修改时间", "w-36 shrink-0 justify-end")}
+                    </div>
+                  )}
+                  {entries.map((e) => {
+                    const Icon = iconFor(e);
+                    return (
+                      <ContextMenu key={e.name}>
+                        <ContextMenuTrigger asChild>
+                          <button
+                            {...itemHandlers(e)}
+                            className={cn(
+                              "flex items-center gap-3 rounded-lg px-3 py-1.5 text-left transition-colors hover:bg-accent/60",
+                              selected === e.name && "bg-accent hover:bg-accent",
+                            )}
+                          >
+                            <Icon className={cn("size-4 shrink-0", e.type === "dir" ? "fill-folder/25 text-folder" : "text-muted-foreground")} />
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-sm">
+                                {e.name}
+                                {e.symlink && <span className="ml-1.5 text-xs text-muted-foreground">↗</span>}
+                              </div>
+                              {props.compact && (
+                                <div className="truncate text-xs text-muted-foreground">
+                                  {e.type === "file" && `${formatSize(e.size)} · `}
+                                  {formatDateTime(e.modifiedAt, timeZone)}
+                                </div>
+                              )}
+                            </div>
+                            {!props.compact && (
+                              <>
+                                <span className="w-20 shrink-0 text-right text-xs text-muted-foreground tabular-nums">{e.type === "file" ? formatSize(e.size) : ""}</span>
+                                <span className="w-36 shrink-0 text-right text-xs text-muted-foreground tabular-nums">{formatDateTime(e.modifiedAt, timeZone)}</span>
+                              </>
+                            )}
+                          </button>
+                        </ContextMenuTrigger>
+                        {itemMenu(e)}
+                      </ContextMenu>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </ContextMenuTrigger>
+          <ContextMenuContent className="w-52">
+            <ContextMenuItem onSelect={() => setDialog({ kind: "mkdir" })}>新建文件夹…</ContextMenuItem>
+            <ContextMenuItem onSelect={() => fileInput.current?.click()}>上传文件…</ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem onSelect={() => setDevicePref("fileView", view === "grid" ? "list" : "grid")}>
+              {view === "grid" ? "列表视图" : "网格视图"}
+            </ContextMenuItem>
+            <ContextMenuItem onSelect={toggleHidden}>{showHidden ? "不显示隐藏文件" : "显示隐藏文件"}</ContextMenuItem>
+            <ContextMenuItem onSelect={load}>
+              刷新
+              <ContextMenuShortcut>
+                <RotateCwIcon className="size-3.5" />
+              </ContextMenuShortcut>
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
       </div>
 
       {dialog?.kind === "mkdir" && (
