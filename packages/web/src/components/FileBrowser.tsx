@@ -59,8 +59,6 @@ const extOf = (name: string) => {
   return i > 0 && name.length - i <= 6 ? name.slice(i + 1) : "";
 };
 
-/** 触屏设备没有双击和右键：单击直接打开，长按出菜单。 */
-const coarsePointer = () => matchMedia("(pointer: coarse)").matches;
 
 type SortKey = "name" | "modified" | "size";
 
@@ -109,7 +107,7 @@ function Thumb({ entry, src }: { entry: FileEntry; src: string }) {
 
 /**
  * 项目文件管理器，界面参照 GNOME「文件」：工具栏（后退 / 前进、路径栏、搜索、视图切换）、左侧位置栏、
- * 网格 / 列表两种视图。单击选中、双击打开（触屏单击打开），右键（触屏长按）出菜单。
+ * 网格 / 列表两种视图。单击打开（文件夹进入、文件预览），右键（触屏长按）出菜单。
  * 范围限定在项目目录内（服务端校验，见 agentd/src/files.ts）。
  */
 export function FileBrowser(props: {
@@ -247,9 +245,9 @@ export function FileBrowser(props: {
     e.preventDefault();
   };
 
+  // 单击打开（文件夹进入、文件预览）；右键时选中，供键盘快捷键使用
   const itemHandlers = (e: FileEntry) => ({
-    onClick: () => (coarsePointer() ? open(e) : setSelected(e.name)),
-    onDoubleClick: () => open(e),
+    onClick: () => open(e),
     onContextMenu: () => setSelected(e.name),
   });
 

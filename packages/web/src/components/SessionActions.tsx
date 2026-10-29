@@ -30,7 +30,6 @@ interface Action {
  */
 export function SessionActions(props: {
   session: Session;
-  canArchive: boolean;
   wide: boolean;
   fontSize: number | null;
   onFontSize: (delta: 1 | -1) => void;
@@ -71,7 +70,7 @@ export function SessionActions(props: {
     run: () => void api.setHidden(session.paneId, !session.hidden).catch(fail),
   });
   if (session.kind === "codex") actions.push({ key: "codex", label: "选择对话记录", icon: HistoryIcon, run: () => setCodexPicker(true) });
-  if (session.kind !== "shell" && props.canArchive) {
+  if (session.kind !== "shell") {
     actions.push({ key: "archive", label: "归档（关闭 pane，保留对话）", icon: ArchiveIcon, run: () => void archive() });
   }
 

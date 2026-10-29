@@ -20,7 +20,7 @@ import type { Config } from "./config.ts";
 import type { HerdrClient } from "./herdr/client.ts";
 import type { HerdrAgent, HerdrPane } from "./herdr/types.ts";
 import { attribute, isWithin } from "./projects/attribution.ts";
-import type { ProjectStore } from "./projects/store.ts";
+import { defaultArgs, type ProjectStore } from "./projects/store.ts";
 import { findClaudeTranscript, parseClaudeRecords } from "./transcript/claude.ts";
 import { listCodexRollouts, matchCodexRollouts, parseCodexRecords, type CodexRollout } from "./transcript/codex.ts";
 import { readJsonl } from "./transcript/jsonl.ts";
@@ -312,19 +312,22 @@ export class ProjdeckService {
   // ---- 会话 ----
 
   /** 在项目所在的 herdr workspace 中新开一个 tab；没有则新建 workspace。返回新 pane。 */
-  private async openPane(project: Project): Promise<string> {
-    const snap = await this.refresh();
-    const view = snap.overview.projects.find((p) => p.id === project.id);
-    const workspaceId = view?.sessions[0]?.workspaceId;
-    if (workspaceId) return (await this.herdr.createTab(workspaceId, project.path)).paneId;
-    return (await this.herdr.createWorkspace(project.path, project.name)).paneId;
+  /** 新开一个 pane：项目已有 herdr workspace 时开在其中的新标签页，否则新建 workspace。cwd 默认为项目目录。 */
+  private async openPane(project: Project | null, cwd = project?.path ?? homedir()): Promise<string> {
+    if (project) {
+      const snap = await this.refresh();
+      const workspaceId = snap.overview.projects.find((p) => p.id === project.id)?.sessions[0]?.workspaceId;
+      if (workspaceId) return (await this.herdr.createTab(workspaceId, cwd)).paneId;
+    }
+    return (await this.herdr.createWorkspace(cwd, project?.name ?? basename(cwd))).paneId;
   }
 
-  private async launchAgent(paneId: string, project: Project, kind: AgentKind, extraArgs: string[]): Promise<void> {
-    const name = `${project.id}-${kind}-${Date.now().toString(36).slice(-4)}`;
-    await this.herdr.startAgent(paneId, kind, name, [...extraArgs, ...project.agentArgs[kind]]);
+  private async launchAgent(paneId: string, project: Project | null, kind: AgentKind, extraArgs: string[]): Promise<void> {
+    const name = `${project?.id ?? "session"}-${kind}-${Date.now().toString(36).slice(-4)}`;
+    await this.herdr.startAgent(paneId, kind, name, [...extraArgs, ...(project?.agentArgs[kind] ?? defaultArgs[kind])]);
     // 项目目录是用户主动新建或导入的，自动通过「信任此文件夹」确认；后台进行，不阻塞请求
-    void acceptTrustPrompt(this.herdr, paneId).catch(() => {});
+    // （其他目录由设置里的「自动信任文件夹」处理）
+    if (project) void acceptTrustPrompt(this.herdr, paneId).catch(() => {});
   }
 
   /**
@@ -412,7 +415,6 @@ export class ProjdeckService {
     const { session, projectId } = await this.lookup(paneId);
     if (session.kind === "shell") throw httpError(400, "临时终端没有对话可归档，请直接关闭");
     if (!session.conversationId) throw httpError(409, "找不到该会话的对话 ID，无法归档后恢复");
-    if (!projectId) throw httpError(409, "未归属项目的会话请先导入项目再归档");
     const item: ArchivedSession = {
       id: `${Date.now().toString(36)}-${session.conversationId.slice(0, 8)}`,
       projectId,
@@ -439,8 +441,12 @@ export class ProjdeckService {
   async restore(archiveId: string): Promise<{ paneId: string }> {
     const item = this.store.archive.find((a) => a.id === archiveId);
     if (!item) throw httpError(404, "归档记录不存在");
-    const project = this.store.getProject(item.projectId);
-    const paneId = await this.openPane(project);
+    // 项目可能已取消登记，那就按未归属恢复
+    const project = this.store.projects.find((p) => p.id === item.projectId) ?? null;
+    // 在原来的目录里恢复：Claude 按启动目录保存对话，换了目录 --resume 找不到。
+    // 原目录不在项目里时（例如在上级目录启动后手动移到项目的会话），记为 sticky 让它仍归在原项目
+    const paneId = await this.openPane(project, existsSync(item.cwd) ? item.cwd : (project?.path ?? homedir()));
+    if (project) this.store.setSticky(await this.terminalIdOf(paneId), project.id);
     const resumeArgs = item.kind === "claude" ? ["--resume", item.conversationId] : ["resume", item.conversationId];
     await this.launchAgent(paneId, project, item.kind, resumeArgs);
     this.store.archive = this.store.archive.filter((a) => a.id !== archiveId);

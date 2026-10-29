@@ -34,7 +34,8 @@ export interface ProjectView extends Project {
 
 export interface ArchivedSession {
   id: string;
-  projectId: string;
+  /** 归档时所在的项目；未归属的会话为 null。 */
+  projectId: string | null;
   kind: AgentKind;
   conversationId: string;
   title: string;

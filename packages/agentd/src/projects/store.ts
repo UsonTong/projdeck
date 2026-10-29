@@ -15,7 +15,7 @@ interface State {
   seenDone: string[];
 }
 
-const defaultArgs: Record<AgentKind, string[]> = {
+export const defaultArgs: Record<AgentKind, string[]> = {
   claude: ["--dangerously-skip-permissions"],
   codex: ["--yolo"],
 };

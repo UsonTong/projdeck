@@ -176,7 +176,6 @@ export function SessionPage({ paneId }: { paneId: string }) {
         )}
         <SessionActions
           session={session}
-          canArchive={!!project}
           wide={wide}
           fontSize={view === "terminal" ? fontSize : null}
           onFontSize={changeFontSize}

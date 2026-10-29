@@ -357,7 +357,7 @@ function SessionRow({ session: s, project, active }: { session: Session; project
             <IconAction label={s.hidden ? "取消隐藏" : "隐藏"} onClick={() => void api.setHidden(s.paneId, !s.hidden).catch(fail)}>
               <MorphIcon icon={s.hidden ? Eye : EyeOff} />
             </IconAction>
-            {s.kind !== "shell" && projectId && (
+            {s.kind !== "shell" && (
               <IconAction label="归档（关闭 pane，保留对话）" onClick={() => void archive()}>
                 <ArchiveIcon />
               </IconAction>
@@ -379,7 +379,7 @@ function SessionRow({ session: s, project, active }: { session: Session; project
         {!projectId && <ContextMenuItem onSelect={() => void importFolder()}>导入 {shortPath(s.cwd)} 为项目</ContextMenuItem>}
         <ContextMenuSeparator />
         <ContextMenuItem onSelect={() => void api.setHidden(s.paneId, !s.hidden).catch(fail)}>{s.hidden ? "取消隐藏" : "隐藏"}</ContextMenuItem>
-        {s.kind !== "shell" && projectId && <ContextMenuItem onSelect={() => void archive()}>归档（关闭 pane，保留对话）</ContextMenuItem>}
+        {s.kind !== "shell" && <ContextMenuItem onSelect={() => void archive()}>归档（关闭 pane，保留对话）</ContextMenuItem>}
         {s.kind === "shell" && (
           <ContextMenuItem variant="destructive" onSelect={() => void close()}>
             关闭终端
@@ -540,7 +540,7 @@ function ArchivedRow({ item, projectName }: { item: ArchivedSession; projectName
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm">{item.title}</div>
             <div className="truncate text-xs text-muted-foreground">
-              {projectName ?? item.projectId} · {formatDateTime(item.archivedAt, timeZone)}
+              {projectName ?? (item.projectId ? item.projectId : "未归属")} · {formatDateTime(item.archivedAt, timeZone)}
             </div>
           </div>
           <IconAction label="删除归档记录" destructive className={HOVER_REVEAL} onClick={() => void remove()}>
