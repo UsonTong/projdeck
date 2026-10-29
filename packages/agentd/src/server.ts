@@ -149,6 +149,7 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
     return settings;
   });
   app.get("/api/projects/suggestions", async () => service.suggestions());
+  app.get<{ Querystring: { path?: string } }>("/api/folders", async (req) => service.listFolders(req.query.path ?? "~"));
 
   app.post<{ Body: CreateProjectBody }>("/api/projects", async (req) => {
     const body = req.body;

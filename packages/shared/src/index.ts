@@ -110,6 +110,16 @@ export interface UploadResult {
   image: boolean;
 }
 
+/** 导入项目时浏览文件夹。 */
+export interface FolderListing {
+  /** 绝对路径；display 为把主目录写成 ~ 的形式。 */
+  path: string;
+  display: string;
+  /** 上一级（已在主目录时为 null）。 */
+  parent: string | null;
+  dirs: { name: string; path: string; git: boolean }[];
+}
+
 // ---- 文件管理器 ----
 
 export interface FileEntry {

@@ -1,8 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, realpathSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, realpathSync, statSync } from "node:fs";
+import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import type {
+  FolderListing,
   AgentKind,
   ArchivedSession,
   Overview,
@@ -266,6 +268,32 @@ export class ProjdeckService {
 
   removeProject(id: string): void {
     this.store.removeProject(id);
+  }
+
+  /**
+   * 导入项目时浏览文件夹：列出子文件夹（不含隐藏的），标出 git 仓库。只允许主目录之内。
+   * 路径不存在时退到最近一级存在的上级目录，方便边输入边浏览。
+   */
+  async listFolders(rawPath: string): Promise<FolderListing> {
+    const home = homedir();
+    let dir = resolve(expandHome(rawPath.trim() || "~"));
+    while (dir !== home && !existsSync(dir)) dir = dirname(dir);
+    try {
+      dir = realpathSync(dir);
+    } catch {
+      dir = home;
+    }
+    if (!isWithin(dir, home) || !statSync(dir).isDirectory()) dir = home;
+    const dirs: FolderListing["dirs"] = [];
+    for (const entry of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
+      if (entry.name.startsWith(".")) continue;
+      const path = join(dir, entry.name);
+      const isDir = entry.isDirectory() || (entry.isSymbolicLink() && (await stat(path).then((s) => s.isDirectory(), () => false)));
+      if (isDir) dirs.push({ name: entry.name, path, git: existsSync(join(path, ".git")) });
+    }
+    dirs.sort((a, b) => a.name.localeCompare(b.name));
+    const display = (p: string) => (p === home ? "~" : p.startsWith(home + "/") ? `~/${p.slice(home.length + 1)}` : p);
+    return { path: dir, display: display(dir), parent: dir === home ? null : dirname(dir), dirs: dirs.slice(0, 500) };
   }
 
   /** 从 herdr 现有会话的目录推测可导入的项目。 */
