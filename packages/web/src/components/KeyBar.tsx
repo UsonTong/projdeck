@@ -1,4 +1,6 @@
-import { KeyboardIcon, PaperclipIcon } from "lucide-react";
+import { PaperclipIcon } from "lucide-react";
+import { Keyboard, X } from "lucide";
+import { MorphIcon } from "morphicons/react";
 import type { PointerEvent, ReactNode, RefObject } from "react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -92,7 +94,7 @@ export function KeyBar(props: {
               aria-pressed={props.composerOpen}
               onPointerDown={press(props.onToggleComposer)}
             >
-              <KeyboardIcon />
+              <MorphIcon icon={props.composerOpen ? X : Keyboard} />
             </Button>
           </TooltipTrigger>
           <TooltipContent>输入框：适合长文本、中文输入法和图片附件</TooltipContent>

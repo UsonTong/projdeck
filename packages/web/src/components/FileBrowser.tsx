@@ -1,7 +1,6 @@
 import type { DirListing, FileEntry } from "@projdeck/shared";
 import {
   ChevronRightIcon,
-  CopyIcon,
   CornerLeftUpIcon,
   DownloadIcon,
   FileArchiveIcon,
@@ -17,7 +16,7 @@ import {
   Trash2Icon,
   UploadIcon,
 } from "lucide-react";
-import { Eye, EyeOff } from "lucide";
+import { Check, Copy, Eye, EyeOff } from "lucide";
 import { MorphIcon } from "morphicons/react";
 import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from "react";
 import { toast } from "sonner";
@@ -107,6 +106,13 @@ export function FileBrowser(props: {
   const [listing, setListing] = useState<DirListing | null>(null);
   const [error, setError] = useState("");
   const [showHidden, setShowHidden] = useState(() => localStorage.getItem("projdeck:showHiddenFiles") === "1");
+  // 刚复制过路径的条目，复制按钮短暂显示对勾
+  const [copied, setCopied] = useState<string | null>(null);
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(null), 1500);
+    return () => clearTimeout(t);
+  }, [copied]);
   const [upload, setUpload] = useState<{ names: string; ratio: number } | null>(null);
   const [dragging, setDragging] = useState(false);
   const [dialog, setDialog] = useState<null | { kind: "mkdir" } | { kind: "rename"; entry: FileEntry } | { kind: "preview"; entry: FileEntry }>(null);
@@ -268,8 +274,11 @@ export function FileBrowser(props: {
                     </>
                   )}
                   <div className={cn("relative z-10 flex shrink-0 items-center", HOVER_REVEAL)}>
-                    <IconButton label="复制绝对路径" onClick={() => void copyText(`${props.projectPath}/${rel}`)}>
-                      <CopyIcon />
+                    <IconButton
+                      label={copied === rel ? "已复制" : "复制绝对路径"}
+                      onClick={() => void copyText(`${props.projectPath}/${rel}`).then(() => setCopied(rel))}
+                    >
+                      <MorphIcon icon={copied === rel ? Check : Copy} />
                     </IconButton>
                     <IconButton label={e.type === "dir" ? "打包下载（.tar.gz）" : "下载"} onClick={() => (location.href = api.downloadUrl(projectId, rel))}>
                       <DownloadIcon />

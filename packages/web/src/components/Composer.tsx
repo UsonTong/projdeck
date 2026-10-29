@@ -1,5 +1,7 @@
 import type { SessionKind } from "@projdeck/shared";
-import { ArrowUpIcon, FileIcon, PaperclipIcon, TriangleAlertIcon, XIcon } from "lucide-react";
+import { FileIcon, PaperclipIcon, TriangleAlertIcon, XIcon } from "lucide-react";
+import { ArrowUp, Check, LoaderCircle } from "lucide";
+import { MorphIcon } from "morphicons/react";
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent } from "react";
 import { toast } from "sonner";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
@@ -38,6 +40,13 @@ export function Composer(props: {
   const [text, setText] = useState(() => localStorage.getItem(draftKey(paneId)) ?? "");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [sending, setSending] = useState(false);
+  // 发送成功后发送按钮短暂显示对勾
+  const [sent, setSent] = useState(false);
+  useEffect(() => {
+    if (!sent) return;
+    const t = setTimeout(() => setSent(false), 1200);
+    return () => clearTimeout(t);
+  }, [sent]);
   const [dragging, setDragging] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -96,6 +105,7 @@ export function Composer(props: {
       setText("");
       attachments.forEach((a) => a.preview && URL.revokeObjectURL(a.preview));
       setAttachments([]);
+      setSent(true);
       props.onSent?.();
     } catch (err) {
       toast.error((err as Error).message);
@@ -156,7 +166,10 @@ export function Composer(props: {
           </span>
           {/* 手机上没有上面的快捷键提示，ml-auto 让发送按钮始终靠右 */}
           <InputGroupButton size="icon-sm" variant="default" className="ml-auto rounded-full md:ml-0" aria-label="发送" disabled={!canSend} onClick={() => void send()}>
-            {sending || uploading ? <Spinner /> : <ArrowUpIcon />}
+            <MorphIcon
+              icon={sending || uploading ? LoaderCircle : sent ? Check : ArrowUp}
+              className={cn(sending || uploading ? "animate-spin" : undefined)}
+            />
           </InputGroupButton>
         </InputGroupAddon>
       </InputGroup>

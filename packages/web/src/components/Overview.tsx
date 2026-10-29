@@ -10,7 +10,7 @@ import {
   SettingsIcon,
   Trash2Icon,
 } from "lucide-react";
-import { Eye, EyeOff } from "lucide";
+import { Eye, EyeOff, Plus, X } from "lucide";
 import { MorphIcon } from "morphicons/react";
 import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
@@ -62,8 +62,22 @@ export function OverviewPage({ activePane, activeFiles }: { activePane: string |
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex items-center justify-end gap-2 px-4 pt-[calc(0.75rem+env(safe-area-inset-top))] pb-3">
-        <div className="flex items-center gap-1">
+      {/* 一行：左边切换列表，右边操作 */}
+      <header className="flex items-center gap-1 px-3 pt-[calc(0.75rem+env(safe-area-inset-top))] pb-2">
+        <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="min-w-0 flex-1">
+          <TabsList className="w-full">
+            <TabsTrigger value="projects">项目</TabsTrigger>
+            <TabsTrigger value="unassigned">
+              未归属
+              {unassigned.length > 0 && <Count n={unassigned.length} />}
+            </TabsTrigger>
+            <TabsTrigger value="archived">
+              归档
+              {archivedCount > 0 && <Count n={archivedCount} />}
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+        <div className="flex shrink-0 items-center">
           {hiddenCount > 0 && (
             <IconAction label={showHidden ? "不显示隐藏的会话" : `显示隐藏的会话（${hiddenCount}）`} onClick={() => setShowHidden(!showHidden)}>
               <MorphIcon icon={showHidden ? Eye : EyeOff} />
@@ -72,26 +86,11 @@ export function OverviewPage({ activePane, activeFiles }: { activePane: string |
           <IconAction label="设置" onClick={() => setSettings(true)}>
             <SettingsIcon />
           </IconAction>
-          <Button size="sm" onClick={() => setAdding(true)}>
-            <PlusIcon data-icon="inline-start" />
-            项目
-          </Button>
+          <IconAction label="添加项目" primary onClick={() => setAdding(true)}>
+            <MorphIcon icon={adding ? X : Plus} />
+          </IconAction>
         </div>
       </header>
-
-      <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="px-3 pb-2">
-        <TabsList className="w-full">
-          <TabsTrigger value="projects">项目</TabsTrigger>
-          <TabsTrigger value="unassigned">
-            未归属
-            {unassigned.length > 0 && <Count n={unassigned.length} />}
-          </TabsTrigger>
-          <TabsTrigger value="archived">
-            归档
-            {archivedCount > 0 && <Count n={archivedCount} />}
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
         {tab === "projects" && (
@@ -112,12 +111,20 @@ function Count({ n }: { n: number }) {
 }
 
 /** 带提示的图标按钮。 */
-function IconAction(props: { label: string; onClick: () => void; children: ReactNode; className?: string; destructive?: boolean }) {
+function IconAction(props: {
+  label: string;
+  onClick: () => void;
+  children: ReactNode;
+  className?: string;
+  destructive?: boolean;
+  /** 主要操作：实心按钮。 */
+  primary?: boolean;
+}) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
-          variant="ghost"
+          variant={props.primary ? "default" : "ghost"}
           size="icon-sm"
           aria-label={props.label}
           className={cn(props.destructive && "hover:text-destructive", props.className)}
