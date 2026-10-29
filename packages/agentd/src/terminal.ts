@@ -3,6 +3,7 @@ import pty from "node-pty";
 import type { WebSocket } from "ws";
 import type { Config } from "./config.ts";
 import { desktopClientConnected } from "./desktop.ts";
+import type { DesktopFocus } from "./desktopFocus.ts";
 import type { ProjdeckService } from "./service.ts";
 
 /** 同时打开的网页终端上限，防止忘关的标签页无限占用 PTY。 */
@@ -10,7 +11,7 @@ const MAX_TERMINALS = 12;
 /** WebSocket 发送缓冲超过此值时暂停读取 PTY，避免慢网络下内存堆积。 */
 const HIGH_WATER = 2 * 1024 * 1024;
 
-/** a：网页是否正在被操作（窗口有焦点）。 */
+/** a：网页刚被操作过（获得焦点、点击、按键）。 */
 type ClientFrame = { t: "i"; d: string } | { t: "r"; c: number; r: number } | { t: "a"; active: boolean };
 type ServerFrame =
   | { t: "error"; message: string }
@@ -22,8 +23,8 @@ type ServerFrame =
  * 网页终端的尺寸策略。
  * - fit：pane 改为网页的尺寸（手机等，电脑上的 herdr 会被裁切）；
  * - desktop：保持电脑上的尺寸，网页缩放显示；
- * - auto：谁在操作谁优先。网页正被操作时适配网页；网页没在操作（切到了电脑上的 Ghostty 等）
- *   且电脑上开着 herdr 客户端时，恢复电脑上的尺寸。
+ * - auto：谁最近在操作谁优先。网页被操作后适配网页；电脑上切到 Ghostty（niri 报告的窗口焦点切换）后，
+ *   且电脑上开着 herdr 客户端时，恢复电脑上的尺寸。网页只是失去焦点（例如在另一台电脑上点了任务栏）不算。
  */
 export type TerminalSizing = "fit" | "desktop" | "auto";
 
@@ -51,9 +52,12 @@ export class TerminalBridge {
   private readonly service: ProjdeckService;
   private readonly active = new Set<IPty>();
 
-  constructor(config: Config, service: ProjdeckService) {
+  private readonly desktopFocus: DesktopFocus;
+
+  constructor(config: Config, service: ProjdeckService, desktopFocus: DesktopFocus) {
     this.config = config;
     this.service = service;
+    this.desktopFocus = desktopFocus;
   }
 
   async open(
@@ -89,9 +93,11 @@ export class TerminalBridge {
     env.TERM = "xterm-256color";
     env.COLORTERM = "truecolor";
 
-    let active = initiallyActive;
+    // 网页最近一次被操作的时间；与电脑上 Ghostty 最近一次切到前台的时间比较
+    let webActiveAt = initiallyActive ? Date.now() : 0;
     const desired = async () => {
-      if (sizing === "fit" || (sizing === "auto" && active)) return null;
+      if (sizing === "fit") return null;
+      if (sizing === "auto" && webActiveAt >= this.desktopFocus.focusedAt) return null;
       if (sizing === "auto" && !(await desktopClientConnected(this.config.herdrSocket))) return null;
       return this.service.desktopSize(paneId).catch(() => null);
     };
@@ -118,8 +124,10 @@ export class TerminalBridge {
       term.resize(target().cols, target().rows);
       control({ t: "size", follow });
     };
-    // 电脑上改了窗口大小、或关掉 / 打开了 herdr 客户端时跟着变
+    // 电脑上改了窗口大小、或关掉 / 打开了 herdr 客户端时跟着变；电脑上切到 Ghostty 时立即变
     const poll = setInterval(() => void update(), FOLLOW_POLL_MS);
+    const onDesktopFocus = () => void update();
+    this.desktopFocus.on("change", onDesktopFocus);
 
     // attach 失败时 herdr 会输出一行 JSON 错误然后退出，转成可读的提示
     let started = false;
@@ -149,6 +157,7 @@ export class TerminalBridge {
 
     term.onExit(() => {
       clearInterval(poll);
+      this.desktopFocus.off("change", onDesktopFocus);
       this.active.delete(term);
       control({ t: "exit" });
       ws.close();
@@ -163,8 +172,8 @@ export class TerminalBridge {
         return;
       }
       if (frame.t === "i" && typeof frame.d === "string") term.write(frame.d.replaceAll("\x02", "\x02\x02"));
-      if (frame.t === "a" && typeof frame.active === "boolean" && frame.active !== active) {
-        active = frame.active;
+      if (frame.t === "a" && frame.active === true) {
+        webActiveAt = Date.now();
         void update(); // 切换操作的一边要立即生效
       }
       if (frame.t === "r") {
@@ -176,6 +185,7 @@ export class TerminalBridge {
     // 关闭网页即断开 attach，pane 尺寸随之恢复
     ws.on("close", () => {
       clearInterval(poll);
+      this.desktopFocus.off("change", onDesktopFocus);
       void viewing.then((end) => end());
       if (this.active.delete(term)) term.kill();
     });

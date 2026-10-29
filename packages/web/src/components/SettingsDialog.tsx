@@ -100,8 +100,8 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
             <ToggleGroupItem value="desktop" className="flex-1">跟随电脑</ToggleGroupItem>
           </ToggleGroup>
           <p className="text-xs text-muted-foreground">
-            一个终端同一时刻只能有一种尺寸。自动：谁在操作谁优先，在浏览器里操作时用网页的尺寸，切回电脑上的 Ghostty
-            时恢复电脑的尺寸（这时网页按电脑的行列数缩小显示）。手机上始终适配本设备。
+            一个终端同一时刻只能有一种尺寸。自动：谁最近在操作谁优先，在网页上点击、打字时用网页的尺寸，在电脑上切到
+            Ghostty 时恢复电脑的尺寸（这时网页按电脑的行列数缩小显示）。网页只是失去焦点不会让出尺寸。手机上始终适配本设备。
           </p>
         </div>
         <div className="flex min-w-0 flex-col gap-3">

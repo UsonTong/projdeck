@@ -299,7 +299,8 @@ export const GhosttyTerminal = forwardRef<TerminalHandle, Props>(function Ghostt
     const term = termRef.current;
     if (!term || reconnectTick === 0) return;
     const proto = location.protocol === "https:" ? "wss" : "ws";
-    // 谁在操作谁优先（尺寸策略为「自动」时）：浏览器窗口有焦点就用网页的尺寸，切到别处（如电脑上的 Ghostty）就让回给电脑
+    // 谁最近在操作谁优先（尺寸策略为「自动」时）：网页被操作就用网页的尺寸；电脑上切到 Ghostty 时由 agentd 让回给电脑。
+    // 只报告「被操作了」，不报告失去焦点：在另一台电脑上点任务栏、切到别的程序，不代表回到了电脑上的 Ghostty
     const isActive = () => document.visibilityState === "visible" && document.hasFocus();
     const params = new URLSearchParams({
       pane: props.paneId,
@@ -376,29 +377,25 @@ export const GhosttyTerminal = forwardRef<TerminalHandle, Props>(function Ghostt
     };
     document.addEventListener("visibilitychange", onVisibility);
 
-    // 焦点在窗口间切换时会连着触发好几个事件，稍等稳定后再报告
-    let lastActive = isActive();
-    let activeTimer: ReturnType<typeof setTimeout> | undefined;
+    // 获得焦点、点击、按键时报告，最多每秒一次
+    let reportedAt = 0;
     const reportActive = () => {
-      clearTimeout(activeTimer);
-      activeTimer = setTimeout(() => {
-        const active = isActive();
-        if (active === lastActive) return;
-        lastActive = active;
-        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ t: "a", active }));
-      }, 150);
+      if (!isActive() || Date.now() - reportedAt < 1_000 || ws.readyState !== WebSocket.OPEN) return;
+      reportedAt = Date.now();
+      ws.send(JSON.stringify({ t: "a", active: true }));
     };
     window.addEventListener("focus", reportActive);
-    window.addEventListener("blur", reportActive);
+    window.addEventListener("pointerdown", reportActive, true);
+    window.addEventListener("keydown", reportActive, true);
     document.addEventListener("visibilitychange", reportActive);
 
     return () => {
       intentional = true;
       clearTimeout(hiddenTimer);
       document.removeEventListener("visibilitychange", onVisibility);
-      clearTimeout(activeTimer);
       window.removeEventListener("focus", reportActive);
-      window.removeEventListener("blur", reportActive);
+      window.removeEventListener("pointerdown", reportActive, true);
+      window.removeEventListener("keydown", reportActive, true);
       document.removeEventListener("visibilitychange", reportActive);
       ws.close();
     };

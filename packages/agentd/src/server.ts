@@ -21,6 +21,7 @@ import { ACCESS_KEY_COOKIE, AccessKey, LoginLimiter, SESSION_COOKIE, SESSION_TTL
 import type { Config } from "./config.ts";
 import type { HerdrClient } from "./herdr/client.ts";
 import { deleteEntry, listDir, makeDir, MAX_FILE_BYTES, openForDownload, readText, renameEntry, saveToDir } from "./files.ts";
+import { DesktopFocus } from "./desktopFocus.ts";
 import { loadGhosttyTheme, watchGhosttyTheme } from "./ghosttyTheme.ts";
 import { LiveHub } from "./live.ts";
 import { TerminalBridge } from "./terminal.ts";
@@ -53,7 +54,11 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
   service.onSeen = () => live.scheduleOverview();
   const stopThemeWatch = watchGhosttyTheme(() => live.broadcast({ type: "theme" }));
   app.addHook("onClose", async () => stopThemeWatch());
-  const terminals = new TerminalBridge(config, service);
+  // 电脑上 Ghostty 是否被切到前台（终端尺寸「自动」模式用）
+  const desktopFocus = new DesktopFocus();
+  desktopFocus.start();
+  app.addHook("onClose", async () => desktopFocus.stop());
+  const terminals = new TerminalBridge(config, service, desktopFocus);
   app.addHook("onClose", async () => terminals.closeAll());
 
   await app.register(cookie);
