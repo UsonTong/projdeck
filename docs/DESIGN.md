@@ -351,7 +351,7 @@ projdeck 启动 agent（新建会话、归档恢复）后，观察 pane 最多 2
 
 ## 9. 前端设计
 
-React + Vite，移动端优先，PWA（可添加到主屏幕）。
+React + Vite，移动端优先，PWA（可添加到主屏幕）。界面基于 [shadcn/ui](https://ui.shadcn.com)（Radix 底层、Nova 预设、Tailwind CSS v4），只用暗色主题；组件源码在 `packages/web/src/components/ui/`，可直接修改。
 
 ### 9.1 总览页
 
@@ -417,7 +417,7 @@ projdeck/
 │   │       ├── uploads/
 │   │       ├── auth/
 │   │       └── live/        # WebSocket、输出轮询
-│   └── web/                 # React + Vite + PWA
+│   └── web/                 # React + Vite + shadcn/ui + Tailwind，PWA
 ├── deploy/
 │   ├── Caddyfile
 │   ├── projdeck-agentd.service   # systemd --user

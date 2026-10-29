@@ -1,6 +1,9 @@
+import { execFile } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
+import { unlink } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import cookie from "@fastify/cookie";
 import multipart from "@fastify/multipart";
 import fastifyStatic from "@fastify/static";
@@ -10,16 +13,19 @@ import type {
   CreateProjectBody,
   KeysBody,
   PromptBody,
+  Settings,
   StartSessionBody,
   UpdateProjectBody,
 } from "@projdeck/shared";
-import { LoginLimiter, SESSION_COOKIE, SESSION_TTL_MS, SessionStore, verifyPassword } from "./auth.ts";
+import { ACCESS_KEY_COOKIE, AccessKey, LoginLimiter, SESSION_COOKIE, SESSION_TTL_MS, SessionStore, verifyPassword } from "./auth.ts";
 import type { Config } from "./config.ts";
 import type { HerdrClient } from "./herdr/client.ts";
+import { deleteEntry, listDir, makeDir, MAX_FILE_BYTES, openForDownload, readText, renameEntry, saveToDir } from "./files.ts";
+import { loadGhosttyTheme } from "./ghosttyTheme.ts";
 import { LiveHub } from "./live.ts";
 import { TerminalBridge } from "./terminal.ts";
 import { httpError, type ProjdeckService } from "./service.ts";
-import { isAllowedMime, saveUpload } from "./uploads.ts";
+import { MAX_UPLOAD_BYTES, saveUpload } from "./uploads.ts";
 
 /** 解析 Origin 头的 host；格式异常（如 "null"）时返回 null，按跨站处理。 */
 function originHost(origin: string): string | null {
@@ -40,13 +46,15 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
     bodyLimit: 1024 * 1024,
   });
   const sessions = new SessionStore();
+  const accessKey = new AccessKey(config.accessKeyFile);
+  if (accessKey.enabled) app.log.info("已启用访问 key：带有效 key 的请求无需密码");
   const limiter = new LoginLimiter();
   const live = new LiveHub(service, herdr);
   const terminals = new TerminalBridge(config, service);
   app.addHook("onClose", async () => terminals.closeAll());
 
   await app.register(cookie);
-  await app.register(multipart, { limits: { fileSize: 20 * 1024 * 1024, files: 1 } });
+  await app.register(multipart, { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } });
   await app.register(websocket, { options: { perMessageDeflate: true, maxPayload: 64 * 1024 } });
 
   app.setErrorHandler((err: Error & { statusCode?: number }, req, reply) => {
@@ -55,7 +63,9 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
     void reply.status(status).send({ error: err.message });
   });
 
-  const authed = (req: FastifyRequest) => sessions.valid(req.cookies[SESSION_COOKIE]);
+  // 已登录 = 有效的密码登录会话，或有效的访问 key（公网入口）
+  const authed = (req: FastifyRequest) =>
+    sessions.valid(req.cookies[SESSION_COOKIE]) || accessKey.valid(req.cookies[ACCESS_KEY_COOKIE]);
 
   // 除登录外所有 /api 与 /ws 都需要登录
   app.addHook("onRequest", async (req, reply) => {
@@ -108,11 +118,38 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
   // ---- 总览与项目 ----
 
   app.get("/api/overview", async () => service.overview());
+  app.get("/api/terminal-theme", async () => loadGhosttyTheme());
+
+  // herdr 没在运行（电脑重启后还没开、或被关掉了）时从网页启动。服务端由 systemd 托管，见 deploy/herdr-server.service
+  app.post("/api/herdr/start", async () => {
+    if (herdr.online) return { ok: true };
+    try {
+      await promisify(execFile)("systemctl", ["--user", "start", config.herdrUnit], { timeout: 15_000 });
+    } catch (err) {
+      const stderr = String((err as { stderr?: string }).stderr ?? "");
+      throw httpError(
+        500,
+        /not (found|loaded)/i.test(stderr)
+          ? `没有安装 ${config.herdrUnit}，见 deploy/herdr-server.service`
+          : `启动失败：${stderr.trim() || (err as Error).message}`,
+      );
+    }
+    herdr.reconnectNow();
+    for (let i = 0; i < 20 && !herdr.online; i++) await new Promise((r) => setTimeout(r, 250));
+    if (!herdr.online) throw httpError(502, "herdr 已启动，但暂时连不上，请稍后再看");
+    return { ok: true };
+  });
+
+  app.patch<{ Body: Partial<Settings> }>("/api/settings", async (req) => {
+    const settings = service.updateSettings(req.body ?? {});
+    live.scheduleOverview();
+    return settings;
+  });
   app.get("/api/projects/suggestions", async () => service.suggestions());
 
   app.post<{ Body: CreateProjectBody }>("/api/projects", async (req) => {
     const body = req.body;
-    const project = "path" in body ? service.importProject(body.path, body.name) : service.createProject(body.name);
+    const project = "path" in body ? service.importProject(body.path, body.name) : service.createProject(body.name, body.git ?? true);
     live.scheduleOverview();
     return project;
   });
@@ -148,7 +185,7 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
   );
 
   app.post<PaneParams & { Body: PromptBody }>("/api/sessions/:paneId/prompt", async (req) => {
-    await service.prompt(req.params.paneId, req.body.text ?? "", req.body.images);
+    await service.prompt(req.params.paneId, req.body.text ?? "", req.body.files);
     live.scheduleOverview();
     return { ok: true };
   });
@@ -192,6 +229,69 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
     return { ok: true };
   });
 
+  // ---- 文件管理器（范围限定在项目目录内，见 files.ts） ----
+
+  type FilesReq = { Params: { id: string }; Querystring: { path?: string; hidden?: string } };
+  const rootOf = (req: { params: { id: string } }) => service.projectPath(req.params.id);
+  /** RFC 5987：中文文件名下载。 */
+  const disposition = (kind: "attachment" | "inline", name: string) =>
+    `${kind}; filename="${name.replace(/[^\x20-\x7e]|["\\]/g, "_")}"; filename*=UTF-8''${encodeURIComponent(name)}`;
+
+  app.get<FilesReq>("/api/projects/:id/files", async (req) => listDir(rootOf(req), req.query.path ?? "", req.query.hidden === "1"));
+
+  app.get<FilesReq>("/api/projects/:id/files/download", async (req, reply) => {
+    const f = await openForDownload(rootOf(req), req.query.path ?? "");
+    void reply.header("Content-Type", f.contentType).header("Content-Disposition", disposition("attachment", f.name));
+    if (f.size !== undefined) void reply.header("Content-Length", f.size);
+    return reply.send(f.stream);
+  });
+
+  /** 图片预览。只内联图片，并加沙箱 CSP：防止 SVG / HTML 等在本站域名下执行脚本。 */
+  app.get<FilesReq>("/api/projects/:id/files/raw", async (req, reply) => {
+    const f = await openForDownload(rootOf(req), req.query.path ?? "");
+    const inline = /^image\/(png|jpeg|gif|webp)$/.test(f.contentType);
+    void reply
+      .header("Content-Type", inline ? f.contentType : "application/octet-stream")
+      .header("Content-Disposition", disposition(inline ? "inline" : "attachment", f.name))
+      .header("Content-Security-Policy", "default-src 'none'; sandbox")
+      .header("X-Content-Type-Options", "nosniff");
+    return reply.send(f.stream);
+  });
+
+  app.get<FilesReq>("/api/projects/:id/files/text", async (req) => {
+    const r = await readText(rootOf(req), req.query.path ?? "");
+    return r ?? { binary: true };
+  });
+
+  app.post<FilesReq>("/api/projects/:id/files/upload", async (req) => {
+    const root = rootOf(req);
+    const saved: { name: string; size: number }[] = [];
+    for await (const part of req.files({ limits: { fileSize: MAX_FILE_BYTES, files: 100 } })) {
+      const r = await saveToDir(root, req.query.path ?? "", part.filename || "file", part.file);
+      if (part.file.truncated) {
+        await deleteEntry(root, [req.query.path, r.name].filter(Boolean).join("/")).catch(() => {});
+        throw httpError(413, `${part.filename} 超过 1GB`);
+      }
+      saved.push(r);
+    }
+    return saved;
+  });
+
+  app.post<{ Params: { id: string }; Body: { path?: string; name: string } }>("/api/projects/:id/files/mkdir", async (req) => {
+    await makeDir(rootOf(req), req.body.path ?? "", req.body.name);
+    return { ok: true };
+  });
+
+  app.post<{ Params: { id: string }; Body: { path: string; name: string } }>("/api/projects/:id/files/rename", async (req) => {
+    await renameEntry(rootOf(req), req.body.path, req.body.name);
+    return { ok: true };
+  });
+
+  app.delete<FilesReq>("/api/projects/:id/files", async (req) => {
+    await deleteEntry(rootOf(req), req.query.path ?? "");
+    return { ok: true };
+  });
+
   // ---- 图片 ----
 
   app.post<{ Params: { id: string } }>("/api/projects/:id/uploads", async (req) => {
@@ -199,8 +299,13 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
     if (!project) throw httpError(404, "项目不存在");
     const file = await req.file();
     if (!file) throw httpError(400, "没有收到文件");
-    if (!isAllowedMime(file.mimetype)) throw httpError(415, `不支持的图片格式：${file.mimetype}`);
-    return saveUpload(project.path, file.mimetype, file.file);
+    const result = await saveUpload(project.path, file.filename, file.mimetype, file.file);
+    // 达到大小上限时 busboy 截断而不报错，删掉写了一半的文件
+    if (file.file.truncated) {
+      await unlink(result.path).catch(() => {});
+      throw httpError(413, "文件超过 50MB");
+    }
+    return result;
   });
 
   /** 预览图片：只允许读取项目内的文件，用于聊天气泡中的缩略图。 */

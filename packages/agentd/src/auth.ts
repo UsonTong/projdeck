@@ -1,4 +1,5 @@
 import { createHash, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { configDir, readJson, writeJson } from "./config.ts";
@@ -6,6 +7,37 @@ import { configDir, readJson, writeJson } from "./config.ts";
 const scryptAsync = promisify(scrypt) as (pw: string, salt: Buffer, len: number) => Promise<Buffer>;
 
 export const SESSION_COOKIE = "projdeck_session";
+/** 公网入口（projdeck-edge nginx）设置的访问 key cookie，见 deploy/projdeck-edge.conf。 */
+export const ACCESS_KEY_COOKIE = "projdeck_key";
+
+/**
+ * 访问 key 校验：带有效 key 即视为已登录（公网入口只用 key，不再要密码）。
+ * key 从文件读取（默认 ~/.config/projdeck/edge-key），文件不存在时不启用。比较哈希，避免时序侧信道。
+ */
+export class AccessKey {
+  private readonly hash: Buffer | null;
+
+  constructor(file: string) {
+    let key = "";
+    try {
+      key = readFileSync(file, "utf8").trim();
+    } catch {
+      // 未配置公网入口
+    }
+    // 过短的 key 视为无效，防止误配置成弱口令
+    this.hash = key.length >= 16 ? createHash("sha256").update(key).digest() : null;
+  }
+
+  get enabled(): boolean {
+    return this.hash !== null;
+  }
+
+  valid(key: string | undefined): boolean {
+    if (!this.hash || !key) return false;
+    return timingSafeEqual(createHash("sha256").update(key).digest(), this.hash);
+  }
+}
+
 export const SESSION_TTL_MS = 30 * 86_400_000;
 
 export async function hashPassword(password: string): Promise<string> {

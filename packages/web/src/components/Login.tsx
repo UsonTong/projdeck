@@ -1,4 +1,9 @@
 import { useState, type FormEvent } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import { api } from "../api.ts";
 
 export function Login({ configured, onSuccess }: { configured: boolean; onSuccess: () => void }) {
@@ -21,26 +26,43 @@ export function Login({ configured, onSuccess }: { configured: boolean; onSucces
   };
 
   return (
-    <form className="login" onSubmit={submit}>
-      <h1>projdeck</h1>
-      {!configured && (
-        <p className="hint">
-          尚未设置密码。请在电脑上运行：
-          <code>pnpm --filter @projdeck/agentd cli set-password</code>
-        </p>
-      )}
-      <input
-        type="password"
-        autoComplete="current-password"
-        placeholder="密码"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        autoFocus
-      />
-      <button type="submit" className="primary" disabled={busy || !password}>
-        {busy ? "登录中…" : "登录"}
-      </button>
-      {error && <p className="error">{error}</p>}
-    </form>
+    <div className="flex min-h-full items-start justify-center px-4 pt-[18vh]">
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <CardTitle className="text-xl">projdeck</CardTitle>
+          <CardDescription>
+            {configured ? "登录以操控本地的 Claude Code / Codex 会话" : (
+              <>
+                尚未设置密码，请在电脑上运行
+                <code className="mt-1 block font-mono text-xs">pnpm --filter @projdeck/agentd cli set-password</code>
+              </>
+            )}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={submit}>
+            <FieldGroup>
+              <Field data-invalid={!!error}>
+                <FieldLabel htmlFor="password">密码</FieldLabel>
+                <Input
+                  id="password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  aria-invalid={!!error}
+                  autoFocus
+                />
+                {error && <FieldError>{error}</FieldError>}
+              </Field>
+              <Button type="submit" size="lg" disabled={busy || !password}>
+                {busy && <Spinner data-icon="inline-start" />}
+                登录
+              </Button>
+            </FieldGroup>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

@@ -217,6 +217,16 @@ export class HerdrClient extends EventEmitter<{ event: [HerdrEvent]; online: [bo
     connect();
   }
 
+  /** 不等退避，立即重连（刚启动 herdr 服务端后调用）。 */
+  reconnectNow(): void {
+    if (this.online || this.stopped) return;
+    clearTimeout(this.reconnectTimer);
+    const old = this.eventSocket;
+    this.eventSocket = undefined; // 先解绑，旧连接关闭时不再触发重连
+    old?.destroy();
+    this.subscribe();
+  }
+
   close(): void {
     this.stopped = true;
     clearTimeout(this.reconnectTimer);

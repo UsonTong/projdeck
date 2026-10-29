@@ -1,15 +1,20 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
-/** 内容更新时自动滚到底部；用户上滑查看历史时暂停跟随，滑回底部后恢复。 */
+/**
+ * 内容更新时自动滚到底部；用户上滑查看历史时暂停跟随，滑回底部后恢复。
+ * 返回 atBottom 供界面显示「回到底部」按钮。
+ */
 export function useStickToBottom<T extends HTMLElement>(dep: unknown) {
   const ref = useRef<T>(null);
   const stick = useRef(true);
+  const [atBottom, setAtBottom] = useState(true);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     const onScroll = () => {
       stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+      setAtBottom(stick.current);
     };
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
@@ -20,5 +25,12 @@ export function useStickToBottom<T extends HTMLElement>(dep: unknown) {
     if (el && stick.current) el.scrollTop = el.scrollHeight;
   }, [dep]);
 
-  return ref;
+  const scrollToBottom = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    stick.current = true;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, []);
+
+  return { ref, atBottom, scrollToBottom };
 }

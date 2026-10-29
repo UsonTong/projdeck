@@ -1,4 +1,9 @@
+import { KeyboardIcon, PaperclipIcon } from "lucide-react";
 import type { PointerEvent, ReactNode, RefObject } from "react";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import type { TerminalHandle } from "./GhosttyTerminal.tsx";
 
 type Key = { label: ReactNode; title: string; seq: (h: TerminalHandle) => string };
@@ -20,9 +25,14 @@ const KEYS: Key[] = [
   { label: "~", title: "~", seq: () => "~" },
 ];
 
+/** pointerdown + preventDefault：点按钮不会让终端失去焦点，软键盘保持弹出。 */
+const press = (fn: () => void) => (e: PointerEvent) => {
+  e.preventDefault();
+  fn();
+};
+
 /**
  * 终端下方的键盘辅助栏（类似 Termius / Blink 的 accessory bar）。
- * 用 pointerdown + preventDefault 触发：点按钮不会让终端失去焦点，软键盘保持弹出。
  */
 export function KeyBar(props: {
   term: RefObject<TerminalHandle | null>;
@@ -30,66 +40,64 @@ export function KeyBar(props: {
   ctrl: boolean;
   composerOpen: boolean;
   onToggleComposer: () => void;
-  onPickImage: () => void;
+  onPickFile: () => void;
 }) {
-  const press = (fn: () => void) => (e: PointerEvent) => {
-    e.preventDefault();
-    fn();
-  };
   const sendKey = (k: Key) => () => {
     const h = props.term.current;
     if (h) h.send(k.seq(h));
   };
 
   return (
-    <div className="keybar">
+    <div className="flex items-center gap-1.5 border-t bg-card px-1.5 pt-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))] select-none">
       {props.showKeys && (
-        <div className="keybar-keys">
-          <button
-            className={props.ctrl ? "on" : ""}
+        <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <Button
+            variant={props.ctrl ? "default" : "secondary"}
+            className="h-9 min-w-10 shrink-0 touch-manipulation px-2.5 font-mono text-[13px]"
+            aria-pressed={props.ctrl}
             title="Ctrl：下一个输入的字母按 Ctrl 组合发送"
             onPointerDown={press(() => props.term.current?.armCtrl(!props.ctrl))}
           >
             ctrl
-          </button>
+          </Button>
           {KEYS.map((k) => (
-            <button key={k.title} title={k.title} onPointerDown={press(sendKey(k))}>
+            <Button
+              key={k.title}
+              variant="secondary"
+              title={k.title}
+              className="h-9 min-w-10 shrink-0 touch-manipulation px-2.5 font-mono text-[13px]"
+              onPointerDown={press(sendKey(k))}
+            >
               {k.label}
-            </button>
+            </Button>
           ))}
         </div>
       )}
-      <div className="keybar-actions">
-        <button title="发送图片：上传后把路径粘贴到终端" onPointerDown={press(props.onPickImage)}>
-          <ImageIcon />
-        </button>
-        <button
-          className={props.composerOpen ? "on" : ""}
-          title="输入框：适合长文本和中文输入法"
-          onPointerDown={press(props.onToggleComposer)}
-        >
-          <KeyboardIcon />
-        </button>
+      {props.showKeys && <Separator orientation="vertical" className="h-6" />}
+      <div className={cn("flex shrink-0 gap-1", !props.showKeys && "ml-auto")}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon-lg" aria-label="上传文件" onPointerDown={press(props.onPickFile)}>
+              <PaperclipIcon />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>上传图片或文件，把路径粘贴到终端（也可以直接粘贴或拖进终端）</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={props.composerOpen ? "secondary" : "ghost"}
+              size="icon-lg"
+              aria-label="输入框"
+              aria-pressed={props.composerOpen}
+              onPointerDown={press(props.onToggleComposer)}
+            >
+              <KeyboardIcon />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>输入框：适合长文本、中文输入法和图片附件</TooltipContent>
+        </Tooltip>
       </div>
     </div>
-  );
-}
-
-export function ImageIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="4" width="18" height="16" rx="2.5" />
-      <circle cx="9" cy="10" r="1.8" />
-      <path d="m21 16-5-5-9 9" />
-    </svg>
-  );
-}
-
-function KeyboardIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-      <rect x="2.5" y="6" width="19" height="12" rx="2" />
-      <path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10" />
-    </svg>
   );
 }

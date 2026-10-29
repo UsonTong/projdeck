@@ -4,7 +4,7 @@
   "description": "以项目为中心的 AI 编程 agent 控制台",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#14161a",
-  "theme_color": "#14161a",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
   "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
 }

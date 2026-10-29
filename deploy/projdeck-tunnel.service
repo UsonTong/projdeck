@@ -1,6 +1,6 @@
-# 本机运行：把 agentd 的 7420 端口反向转发到服务器的 127.0.0.1:7420
+# 本机运行：把 agentd 的 7420 端口反向转发到服务器的 127.0.0.1:17420（再由 projdeck-edge nginx 对外提供 HTTPS）
 # 如果你已经有反向隧道，也可以直接在现有的 ssh 命令里加一条：
-#   -R 127.0.0.1:7420:127.0.0.1:7420
+#   -R 127.0.0.1:17420:127.0.0.1:7420
 # 安装前把下面的 user@your-server 改成你的服务器（建议在 ~/.ssh/config 里配好别名和密钥）。
 [Unit]
 Description=projdeck 反向隧道
@@ -10,7 +10,7 @@ After=network-online.target
 ExecStart=/usr/bin/ssh -N \
   -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
   -o ExitOnForwardFailure=yes \
-  -R 127.0.0.1:7420:127.0.0.1:7420 \
+  -R 127.0.0.1:17420:127.0.0.1:7420 \
   user@your-server
 Restart=always
 RestartSec=5

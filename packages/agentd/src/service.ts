@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdirSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, resolve } from "node:path";
@@ -10,6 +11,7 @@ import type {
   ProjectView,
   Session,
   SessionKind,
+  Settings,
   TranscriptPage,
 } from "@projdeck/shared";
 import type { Config } from "./config.ts";
@@ -84,6 +86,7 @@ export class ProjdeckService {
       projects: views,
       unassigned: [],
       archived: this.store.archive,
+      settings: this.store.settings,
     };
 
     let panes: HerdrPane[];
@@ -153,9 +156,32 @@ export class ProjdeckService {
     return entry;
   }
 
+  // ---- 设置 ----
+
+  updateSettings(patch: Partial<Settings>): Settings {
+    if (patch.timeZone !== undefined) {
+      if (patch.timeZone !== null) {
+        try {
+          new Intl.DateTimeFormat("en-US", { timeZone: patch.timeZone });
+        } catch {
+          throw httpError(400, `无效的时区：${patch.timeZone}`);
+        }
+      }
+      this.store.settings.timeZone = patch.timeZone;
+    }
+    this.store.saveSettings();
+    this.snapshot = undefined;
+    return this.store.settings;
+  }
+
   // ---- 项目 ----
 
-  createProject(name: string): Project {
+  /** 文件管理器使用的项目根目录。 */
+  projectPath(id: string): string {
+    return this.store.getProject(id).path;
+  }
+
+  createProject(name: string, git = true): Project {
     if (!/^[\w.\-\p{L}\p{N} ]+$/u.test(name) || name.startsWith(".")) throw httpError(400, "项目名只能包含字母、数字、中文、空格和 - _ .");
     const path = join(expandHome(this.config.projectsRoot), name);
     try {
@@ -165,6 +191,14 @@ export class ProjdeckService {
       if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
     }
     mkdirSync(path, { recursive: true });
+    if (git) {
+      // 失败（比如没装 git）不影响建项目
+      try {
+        execFileSync("git", ["init", "-q"], { cwd: path, timeout: 10_000, stdio: "ignore" });
+      } catch {
+        // 忽略
+      }
+    }
     return this.store.addProject(name, path);
   }
 
@@ -244,10 +278,10 @@ export class ProjdeckService {
     return this.herdr.readPane(paneId, lines);
   }
 
-  async prompt(paneId: string, text: string, images: string[] = []): Promise<void> {
+  async prompt(paneId: string, text: string, files: string[] = []): Promise<void> {
     const { session } = await this.lookup(paneId);
-    for (const img of images) if (!isAbsolute(img)) throw httpError(400, `图片路径无效：${img}`);
-    const full = [text.trim(), images.join(" ")].filter(Boolean).join("\n\n");
+    for (const f of files) if (!isAbsolute(f)) throw httpError(400, `文件路径无效：${f}`);
+    const full = [text.trim(), files.join(" ")].filter(Boolean).join("\n\n");
     if (!full) throw httpError(400, "消息为空");
     if (session.kind === "shell") await this.herdr.sendInput(paneId, full, ["enter"]);
     else await this.herdr.prompt(paneId, full);

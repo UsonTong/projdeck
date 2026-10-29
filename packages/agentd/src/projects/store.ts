@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { AgentKind, ArchivedSession, Project } from "@projdeck/shared";
+import type { AgentKind, ArchivedSession, Project, Settings } from "@projdeck/shared";
 import { configDir, readJson, writeJson } from "../config.ts";
 
 interface State {
@@ -22,15 +22,18 @@ const defaultArgs: Record<AgentKind, string[]> = {
 export class ProjectStore {
   private readonly projectsFile = join(configDir, "projects.json");
   private readonly archiveFile = join(configDir, "archive.json");
+  private readonly settingsFile = join(configDir, "settings.json");
   private readonly stateFile = join(configDir, "state.json");
 
   projects: Project[];
   archive: ArchivedSession[];
+  settings: Settings;
   state: State;
 
   constructor() {
     this.projects = readJson<Project[]>(this.projectsFile, []);
     this.archive = readJson<ArchivedSession[]>(this.archiveFile, []);
+    this.settings = { timeZone: null, ...readJson<Partial<Settings>>(this.settingsFile, {}) };
     this.state = {
       sticky: {},
       hiddenTerminals: [],
@@ -43,6 +46,9 @@ export class ProjectStore {
 
   saveProjects(): void {
     writeJson(this.projectsFile, this.projects);
+  }
+  saveSettings(): void {
+    writeJson(this.settingsFile, this.settings);
   }
   saveArchive(): void {
     writeJson(this.archiveFile, this.archive);

@@ -30,21 +30,35 @@ pnpm start                                    # 启动 agentd，默认 http://12
 ### 长期运行
 
 ```sh
-cp deploy/projdeck-agentd.service ~/.config/systemd/user/
+cp deploy/projdeck-agentd.service deploy/herdr-server.service ~/.config/systemd/user/
 systemctl --user daemon-reload
+systemctl --user enable herdr-server              # herdr 服务端开机自启（先改好文件里的图形环境变量）
 systemctl --user enable --now projdeck-agentd
 loginctl enable-linger $USER
 ```
 
+电脑重启后 herdr 服务端随开机启动，不用先打开终端；桌面上照常运行 `herdr` 会连到这个服务端。
+herdr 被关掉时，网页顶部会提示「herdr 未运行」，点「启动 herdr」即可。
+
 ## 部署到服务器（外网访问）
 
-agent 和代码都留在本机，服务器只做转发，**不需要部署任何代码**。
+agent 和代码都留在本机，服务器只做 HTTPS 和转发，**不需要部署任何代码**。
 
-1. **隧道**：在现有的反向 SSH 命令里加 `-R 127.0.0.1:7420:127.0.0.1:7420`，
-   或使用 `deploy/projdeck-tunnel.service`（改好服务器地址后按上面的方式安装）。
-2. **服务器**：安装 Caddy，使用 `deploy/Caddyfile`。
-   - 暂无域名：访问 `http://<服务器IP>:8080`。HTTP 下密码明文传输，只适合短期使用。
-   - 有域名：启用 Caddyfile 中的域名配置，自动 HTTPS。
+```
+公网 https://<IP>:18420 ── nginx（projdeck-edge 容器，TLS + 访问 key）
+        ──► 服务器 127.0.0.1:17420 ── SSH 反向隧道 ──► 本机 agentd 127.0.0.1:7420
+```
+
+1. **隧道**（本机）：`deploy/projdeck-tunnel.service` 改好服务器地址后放进 `~/.config/systemd/user/` 并启用。
+2. **入口**（服务器）：`deploy/projdeck-edge.conf` 里的 `__KEY__` 换成访问 key
+   （本机 `~/.config/projdeck/edge-key`），放到 `/root/projdeck-edge/conf.d/`，用 `nginx:1.25-alpine`
+   以 host 网络运行，挂载证书目录。可使用 Let's Encrypt 的 IP 证书（`preferred_profile = shortlived`），
+   证书续期后需要 `nginx -s reload`。
+3. **安全组**：放行 TCP 18420。
+4. **使用**：每个浏览器第一次打开 `https://<IP>:18420/k/<访问 key>`，之后直接打开 `https://<IP>:18420`，
+   再用 projdeck 密码登录。没有 key 的请求一律 404。
+
+暂时没有 IP 证书或域名时，也可以用 `deploy/Caddyfile` 先走 HTTP（密码明文传输，只适合短期使用）。
 
 ## 开发
 

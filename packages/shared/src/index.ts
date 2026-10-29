@@ -42,11 +42,19 @@ export interface ArchivedSession {
   archivedAt: string;
 }
 
+/** 全局偏好，保存在服务端，所有设备共享。 */
+export interface Settings {
+  /** IANA 时区名，如 Asia/Shanghai；null 表示跟随各设备自己的时区。 */
+  timeZone: string | null;
+}
+
 export interface Overview {
   herdr: { online: boolean; error?: string };
   projects: ProjectView[];
   unassigned: Session[];
   archived: ArchivedSession[];
+  /** 随总览推送，修改后所有设备实时生效。 */
+  settings: Settings;
 }
 
 export interface ProjectSuggestion {
@@ -74,7 +82,8 @@ export interface TranscriptPage {
 
 // ---- 请求体 ----
 
-export type CreateProjectBody = { name: string } | { path: string; name?: string };
+/** 新建时 git 默认为 true：初始化 git 仓库（claude-hud 等工具的 git 信息依赖它）。 */
+export type CreateProjectBody = { name: string; git?: boolean } | { path: string; name?: string };
 export interface UpdateProjectBody {
   name?: string;
   archived?: boolean;
@@ -85,7 +94,8 @@ export interface StartSessionBody {
 }
 export interface PromptBody {
   text: string;
-  images?: string[];
+  /** 已上传文件（图片或任意文件）的本地绝对路径，追加在消息末尾。 */
+  files?: string[];
 }
 export interface KeysBody {
   keys: string[];
@@ -93,6 +103,46 @@ export interface KeysBody {
 export interface UploadResult {
   path: string;
   name: string;
+  size: number;
+  /** 图片会在消息里显示缩略图，agent 也会当作图片附件处理。 */
+  image: boolean;
+}
+
+// ---- 文件管理器 ----
+
+export interface FileEntry {
+  name: string;
+  type: "dir" | "file";
+  size: number;
+  modifiedAt: string;
+  symlink: boolean;
+}
+
+export interface DirListing {
+  /** 相对项目根目录的路径，根目录为空字符串。 */
+  path: string;
+  entries: FileEntry[];
+}
+
+// ---- 网页终端外观（读取本机 Ghostty 配置） ----
+
+export interface TerminalTheme {
+  /** 来源：本机 Ghostty 配置，或 Ghostty 不可用时的内置默认值。 */
+  source: "ghostty" | "default";
+  /** Ghostty 配置的字体族；为空时使用 Ghostty 内置的 JetBrains Mono。 */
+  fontFamily: string[];
+  /** Ghostty 的字号单位是 pt，这里已换算为 CSS px（96 DPI）。 */
+  fontSizePx: number;
+  background: string;
+  foreground: string;
+  cursor: string;
+  cursorText: string;
+  selectionBackground: string;
+  selectionForeground: string;
+  /** 16 色调色板，索引 0–15。 */
+  palette: string[];
+  paddingX: number;
+  paddingY: number;
 }
 
 // ---- WebSocket ----

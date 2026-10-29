@@ -5,7 +5,9 @@
 #   loginctl enable-linger $USER   # 未登录桌面时也保持运行
 [Unit]
 Description=projdeck agentd（herdr 远程控制台本地服务）
-After=network-online.target
+# 一起启动 herdr 服务端（见 herdr-server.service）；herdr 停了 agentd 照常运行，网页上可以再启动
+Wants=herdr-server.service
+After=network-online.target herdr-server.service
 
 [Service]
 WorkingDirectory=%h/Repositories/projdeck/packages/agentd

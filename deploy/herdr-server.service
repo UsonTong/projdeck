@@ -1,0 +1,29 @@
+# herdr 服务端开机自启：电脑重启后不用先打开终端，projdeck 也能直接连上。
+# 桌面上照常运行 `herdr`，它会连接这个已经在运行的服务端。
+#
+# 安装：
+#   cp deploy/herdr-server.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable herdr-server
+#   loginctl enable-linger $USER   # 未登录桌面时也启动
+#
+# pane 里的 shell 继承这里的环境变量。开机时桌面还没登录，systemd 里没有图形环境变量，
+# 所以写死（按本机 `echo $WAYLAND_DISPLAY $DISPLAY $XDG_CURRENT_DESKTOP` 修改），
+# 登录桌面后 pane 里的剪贴板、xdg-open 等就能用。
+[Unit]
+Description=herdr server（终端工作区服务端，projdeck 依赖它）
+
+[Service]
+# 已经有服务端在运行（桌面上先开了 herdr）就跳过，不重复启动
+ExecCondition=/bin/sh -c '! %h/.local/bin/herdr status server 2>/dev/null | grep -q "status: running"'
+ExecStart=%h/.local/bin/herdr server
+WorkingDirectory=%h
+Environment=SHELL=%s
+Environment=WAYLAND_DISPLAY=wayland-1 DISPLAY=:0 XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=niri
+Environment=COLORTERM=truecolor
+Restart=on-failure
+RestartSec=3
+# 只停主进程：`herdr update --handoff` 时新服务端接手后旧进程退出，不能连带杀掉所有 pane
+KillMode=process
+
+[Install]
+WantedBy=default.target

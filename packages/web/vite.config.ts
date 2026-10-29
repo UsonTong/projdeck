@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
@@ -5,7 +7,8 @@ import { defineConfig } from "vite";
 const agentd = process.env.PROJDECK_AGENTD ?? "http://127.0.0.1:7420";
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
+  resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   // 终端引擎 ghostty-web 内嵌了 WASM，单独成块且已按需加载，体积在预期内
   build: { chunkSizeWarningLimit: 700 },
   server: {
