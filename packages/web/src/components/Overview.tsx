@@ -19,7 +19,7 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTi
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { KIND_LABEL, markFreshShell, STATUS_LABEL, statusRank } from "@/lib/session";
+import { KIND_LABEL, STATUS_LABEL, statusRank } from "@/lib/session";
 import { formatDateTime, useTimeZone } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { api } from "../api.ts";
@@ -197,7 +197,6 @@ function ProjectGroup(props: { project: ProjectView; sessions: Session[]; active
   const start = async (kind: SessionKind) => {
     try {
       const { paneId } = await api.startSession(project.id, kind);
-      if (kind === "shell") markFreshShell(paneId);
       openSession(paneId);
     } catch (err) {
       fail(err);

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { STATUS_LABEL, takeFreshShell } from "@/lib/session";
+import { STATUS_LABEL } from "@/lib/session";
 import { themeKey, useTerminalTheme } from "@/lib/terminalTheme";
 import { uploadFile } from "@/lib/upload";
 import { api } from "../api.ts";
@@ -66,7 +66,6 @@ export function SessionPage({ paneId }: { paneId: string }) {
   const [composerOpen, setComposerOpen] = useState(false);
   const [filesPath, setFilesPath] = useState<string | null>(null);
   // 「新终端」标记只用一次：清屏后关掉，改字号等重新挂载终端时不会再清
-  const [clearOnAttach, setClearOnAttach] = useState(() => takeFreshShell(paneId));
   const [ctrl, setCtrl] = useState(false);
   const term = useRef<TerminalHandle>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -186,8 +185,6 @@ export function SessionPage({ paneId }: { paneId: string }) {
               padding={padding}
               fontSize={fontSize}
               onFile={upload}
-              clearOnAttach={clearOnAttach}
-              onAttachCleared={() => setClearOnAttach(false)}
               onFontSize={changeFontSize}
               onPickFile={() => fileInput.current?.click()}
               onSwitchToChat={session.kind === "shell" ? undefined : () => setPreferredView("bubbles")}

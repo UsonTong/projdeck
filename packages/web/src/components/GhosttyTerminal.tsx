@@ -90,9 +90,6 @@ interface Props {
   onCtrlChange?: (armed: boolean) => void;
   /** 字号调整：+1 放大，-1 缩小，0 恢复默认（Ctrl+= / Ctrl+- / Ctrl+0）。 */
   onFontSize?: (delta: 1 | -1 | 0) => void;
-  /** 连上并且尺寸稳定后清一次屏（Ctrl+L），用于刚新开的临时终端，去掉 zsh 重画留下的重复提示符。 */
-  clearOnAttach?: boolean;
-  onAttachCleared?: () => void;
   /** 右键菜单「上传文件…」。 */
   onPickFile?: () => void;
   /** 右键菜单「切换到对话」；临时终端不提供。 */
@@ -293,19 +290,6 @@ export const GhosttyTerminal = forwardRef<TerminalHandle, Props>(function Ghostt
     // herdr 在 attach 时会完整重绘。旧画面先留着，等新连接的第一段输出到了再清，避免重连时闪一下空白
     let firstChunk = true;
 
-    // 新终端：等 attach 的重绘和尺寸变化引起的输出都停下来（400ms 无输出）再清屏，只做一次
-    let clearTimer: ReturnType<typeof setTimeout> | undefined;
-    let pendingClear = !!propsRef.current.clearOnAttach;
-    const scheduleClear = () => {
-      if (!pendingClear) return;
-      clearTimeout(clearTimer);
-      clearTimer = setTimeout(() => {
-        pendingClear = false;
-        send("\x0c");
-        propsRef.current.onAttachCleared?.();
-      }, 400);
-    };
-
     ws.onopen = () => setStatus("open");
     ws.onmessage = (ev) => {
       if (ev.data instanceof ArrayBuffer) {
@@ -314,7 +298,6 @@ export const GhosttyTerminal = forwardRef<TerminalHandle, Props>(function Ghostt
           term.reset();
         }
         term.write(new Uint8Array(ev.data));
-        scheduleClear();
         return;
       }
       const msg = JSON.parse(String(ev.data)) as { t: "error"; message: string } | { t: "exit" };
@@ -348,7 +331,6 @@ export const GhosttyTerminal = forwardRef<TerminalHandle, Props>(function Ghostt
     return () => {
       intentional = true;
       clearTimeout(hiddenTimer);
-      clearTimeout(clearTimer);
       document.removeEventListener("visibilitychange", onVisibility);
       ws.close();
     };

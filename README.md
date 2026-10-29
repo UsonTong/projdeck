@@ -60,6 +60,20 @@ agent 和代码都留在本机，服务器只做 HTTPS 和转发，**不需要�
 
 暂时没有 IP 证书或域名时，也可以用 `deploy/Caddyfile` 先走 HTTP（密码明文传输，只适合短期使用）。
 
+## 常见问题
+
+**网页终端打开后提示符重复、错位（Powerlevel10k）**：网页 attach / 断开时 pane 宽度会变，herdr 重排文字后，
+zsh 按旧的行数重画提示符就会错位。p10k 第一行右侧有内容（✔、耗时等）时第一行撑满整行，最容易触发。
+在 `~/.zshrc` 里 `source ~/.p10k.zsh` 之后加上，只在 herdr pane 里把右侧信息放到输入行：
+
+```zsh
+if [[ $HERDR_ENV == 1 ]]; then
+  typeset -g POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS=(newline ${POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS:#newline})
+fi
+```
+
+原理见 p10k README 的「Horrific mess when resizing terminal window」。
+
 ## 开发
 
 ```sh
