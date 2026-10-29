@@ -91,7 +91,9 @@ function Banner() {
 const runningEntry = document.querySelector<HTMLScriptElement>('script[type="module"][src*="/assets/"]')?.getAttribute("src");
 
 /**
- * 本机重新构建了前端后提示刷新。手机、平板上的页面常常开着很久不刷新，否则会一直停在旧版本。
+ * 本机重新构建了前端后更新页面。手机、平板上的页面常常开着很久不刷新，否则会一直停在旧版本
+ * （新旧前端与 agentd 的约定不一致时会出现奇怪的行为）。
+ * 没在操作这个页面（窗口没有焦点）时直接刷新；正在操作时只提示，不打断。未发送的草稿存在本地，刷新不会丢。
  * 在重新连上本机、切回前台时检查，平时每 5 分钟检查一次。
  */
 function useUpdateCheck() {
@@ -103,6 +105,7 @@ function useUpdateCheck() {
         const html = await (await fetch("/", { cache: "no-store" })).text();
         const latest = /<script type="module"[^>]* src="([^"]+)"/.exec(html)?.[1];
         if (latest && latest !== runningEntry) {
+          if (!document.hasFocus()) return location.reload();
           toast("projdeck 有新版本", {
             id: "update",
             duration: Infinity,
@@ -116,9 +119,11 @@ function useUpdateCheck() {
     void check();
     const onVisible = () => document.visibilityState === "visible" && void check();
     document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("blur", check);
     const timer = setInterval(check, 5 * 60_000);
     return () => {
       document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("blur", check);
       clearInterval(timer);
     };
   }, [connected]);
