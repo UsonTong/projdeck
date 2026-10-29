@@ -2,8 +2,6 @@ import type { AgentKind, ArchivedSession, Overview, ProjectView, Session, Sessio
 import {
   ArchiveIcon,
   ArchiveRestoreIcon,
-  EyeIcon,
-  EyeOffIcon,
   FolderInputIcon,
   FolderOpenIcon,
   InboxIcon,
@@ -12,6 +10,8 @@ import {
   SettingsIcon,
   Trash2Icon,
 } from "lucide-react";
+import { Eye, EyeOff } from "lucide";
+import { MorphIcon } from "morphicons/react";
 import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -66,7 +66,7 @@ export function OverviewPage({ activePane, activeFiles }: { activePane: string |
         <div className="flex items-center gap-1">
           {hiddenCount > 0 && (
             <IconAction label={showHidden ? "不显示隐藏的会话" : `显示隐藏的会话（${hiddenCount}）`} onClick={() => setShowHidden(!showHidden)}>
-              {showHidden ? <EyeIcon /> : <EyeOffIcon />}
+              <MorphIcon icon={showHidden ? Eye : EyeOff} />
             </IconAction>
           )}
           <IconAction label="设置" onClick={() => setSettings(true)}>
@@ -305,7 +305,7 @@ function SessionRow({ session: s, projectId, active }: { session: Session; proje
           </IconAction>
         )}
         <IconAction label={s.hidden ? "取消隐藏" : "隐藏"} onClick={() => void api.setHidden(s.paneId, !s.hidden).catch(fail)}>
-          {s.hidden ? <EyeIcon /> : <EyeOffIcon />}
+          <MorphIcon icon={s.hidden ? Eye : EyeOff} />
         </IconAction>
         {s.kind !== "shell" && projectId && (
           <IconAction label="归档（关闭 pane，保留对话）" onClick={() => void archive()}>

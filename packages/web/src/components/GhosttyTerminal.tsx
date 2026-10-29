@@ -452,7 +452,7 @@ export const GhosttyTerminal = forwardRef<TerminalHandle, Props>(function Ghostt
             onClick={() => termRef.current?.focus()}
           />
           {overlay && status !== "open" && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/80 p-6 text-center text-sm text-muted-foreground backdrop-blur-sm">
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/90 p-6 text-center text-sm text-muted-foreground">
               {status === "error" ? (
                 <>
                   <TriangleAlertIcon className="size-5 text-destructive" />

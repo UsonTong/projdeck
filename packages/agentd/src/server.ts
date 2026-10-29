@@ -338,7 +338,15 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
 
   if (existsSync(webDist)) {
     // wildcard 模式按请求查找文件，重新构建前端后无需重启 agentd
-    await app.register(fastifyStatic, { root: webDist });
+    await app.register(fastifyStatic, {
+      root: webDist,
+      // 构建时已生成 .br / .gz（packages/web/scripts/compress.mjs）
+      preCompressed: true,
+      // 文件名带内容哈希的资源永不变化，浏览器长期缓存，不必每次打开都向本机确认；index.html 仍每次确认，更新立即生效
+      setHeaders: (reply, path) => {
+        if (path.includes("/assets/")) reply.header("cache-control", "public, max-age=31536000, immutable");
+      },
+    });
     app.setNotFoundHandler((req, reply) => {
       if (req.url.startsWith("/api/")) return reply.status(404).send({ error: "接口不存在" });
       return reply.sendFile("index.html");

@@ -4,8 +4,6 @@ import {
   CopyIcon,
   CornerLeftUpIcon,
   DownloadIcon,
-  EyeIcon,
-  EyeOffIcon,
   FileArchiveIcon,
   FileCodeIcon,
   FileIcon,
@@ -19,6 +17,8 @@ import {
   Trash2Icon,
   UploadIcon,
 } from "lucide-react";
+import { Eye, EyeOff } from "lucide";
+import { MorphIcon } from "morphicons/react";
 import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -181,7 +181,7 @@ export function FileBrowser(props: {
           ))}
         </nav>
         <IconButton label={showHidden ? "不显示隐藏文件" : "显示隐藏文件"} active={showHidden} onClick={toggleHidden}>
-          {showHidden ? <EyeIcon /> : <EyeOffIcon />}
+          <MorphIcon icon={showHidden ? Eye : EyeOff} />
         </IconButton>
         <IconButton label="新建文件夹" onClick={() => setDialog({ kind: "mkdir" })}>
           <FolderPlusIcon />

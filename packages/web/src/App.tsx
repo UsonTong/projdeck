@@ -87,8 +87,46 @@ function Banner() {
   );
 }
 
+/** 正在运行的前端入口脚本（开发模式下没有带哈希的入口，不检查）。 */
+const runningEntry = document.querySelector<HTMLScriptElement>('script[type="module"][src*="/assets/"]')?.getAttribute("src");
+
+/**
+ * 本机重新构建了前端后提示刷新。手机、平板上的页面常常开着很久不刷新，否则会一直停在旧版本。
+ * 在重新连上本机、切回前台时检查，平时每 5 分钟检查一次。
+ */
+function useUpdateCheck() {
+  const { connected } = useLive();
+  useEffect(() => {
+    if (!runningEntry || !connected) return;
+    const check = async () => {
+      try {
+        const html = await (await fetch("/", { cache: "no-store" })).text();
+        const latest = /<script type="module"[^>]* src="([^"]+)"/.exec(html)?.[1];
+        if (latest && latest !== runningEntry) {
+          toast("projdeck 有新版本", {
+            id: "update",
+            duration: Infinity,
+            action: { label: "刷新", onClick: () => location.reload() },
+          });
+        }
+      } catch {
+        // 离线时下次再查
+      }
+    };
+    void check();
+    const onVisible = () => document.visibilityState === "visible" && void check();
+    document.addEventListener("visibilitychange", onVisible);
+    const timer = setInterval(check, 5 * 60_000);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      clearInterval(timer);
+    };
+  }, [connected]);
+}
+
 function Shell() {
   useTerminalTheme(); // 登录后同步 Ghostty 配色到整个界面
+  useUpdateCheck();
   const route = useRoute();
   const wide = useWide();
   const activePane = route.kind === "session" ? route.paneId : null;

@@ -8,6 +8,7 @@
  *    改为用字体自身的行高（fontBoundingBox），并把格子宽高对齐到设备像素。
  * 2. 方块 / 制表符 / Powerline：原实现直接画字体字形，拼接处有缝。
  *    Ghostty 用像素精确的几何图形绘制这些字符（sprite font），这里照做。
+ * 3. 按需绘制：原实现每一帧都完整走一遍绘制流程，见 renderOnDemand。
  */
 import { CellFlags, type Terminal } from "ghostty-web";
 
@@ -41,6 +42,10 @@ interface Renderer {
   remeasureFont(): void;
   renderCellText(cell: Cell, col: number, row: number): void;
   isInSelection(col: number, row: number): boolean;
+  render(buffer: unknown, force: boolean, viewportY: number, term: unknown, scrollbarOpacity?: number): void;
+  cursorVisible: boolean;
+  hoveredHyperlinkId: number;
+  hoveredLinkRange: unknown;
 }
 
 // ---------------------------------------------------------------------------
@@ -323,6 +328,41 @@ function measureFont(this: Renderer): Metrics {
 }
 
 /** 在 term.open() 之后调用。 */
+/**
+ * 只在画面可能变化时才绘制。
+ * ghostty-web 每一帧都调用 render：逐行向 WASM 询问是否有变化，开着光标闪烁时还每帧重画光标所在的整行。
+ * 终端什么都没变时也要占约 10% 的 CPU，侧栏、按钮动画等其他部分因此掉帧。
+ * 画面只会因这些而变：新输出 / 重置 / 改尺寸、选区、滚动（含滚动条淡出）、链接悬停、光标闪烁、字号。
+ */
+function renderOnDemand(term: Terminal, r: Renderer): void {
+  type Fn = (...args: unknown[]) => unknown;
+  const t = term as unknown as Record<"write" | "reset" | "resize" | "clear", Fn> & {
+    selectionManager?: { requestRender(): void; getDirtySelectionRows(): Set<number> };
+  };
+  let dirty = true;
+  for (const name of ["write", "reset", "resize", "clear"] as const) {
+    const fn = t[name];
+    t[name] = function (this: unknown, ...args: unknown[]) {
+      dirty = true;
+      return fn.apply(this, args);
+    };
+  }
+  const selection = t.selectionManager;
+  // 选区拖动时 ghostty-web 会调用这个空方法（原来靠每帧重画），这里用来标记需要重画
+  if (selection) selection.requestRender = () => void (dirty = true);
+
+  const render = r.render.bind(r);
+  let last: unknown[] = [];
+  r.render = (buffer, force, viewportY, terminal, scrollbarOpacity) => {
+    const state = [viewportY, scrollbarOpacity, r.cursorVisible, r.hoveredHyperlinkId, r.hoveredLinkRange, r.metrics.width, r.metrics.height];
+    const changed = state.some((v, i) => v !== last[i]);
+    if (!force && !dirty && !changed && !selection?.getDirtySelectionRows().size) return;
+    dirty = false;
+    last = state;
+    render(buffer, force, viewportY, terminal, scrollbarOpacity);
+  };
+}
+
 export function patchRenderer(term: Terminal): void {
   const r = (term as unknown as { renderer: Renderer }).renderer;
   r.measureFont = measureFont;
@@ -332,4 +372,5 @@ export function patchRenderer(term: Terminal): void {
   r.renderCellText = function (cell, col, row) {
     if (!drawSpecial(r, cell, col, row)) original(cell, col, row);
   };
+  renderOnDemand(term, r);
 }

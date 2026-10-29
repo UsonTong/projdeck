@@ -132,6 +132,9 @@
     }
   button:not(:disabled), [role="button"]:not(:disabled) {
     cursor: pointer;
+    /* 手机上点按不等双击缩放判定，也不出现系统的灰色点按高亮（按钮自己有按下反馈） */
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
     }
   html {
     @apply font-sans;
