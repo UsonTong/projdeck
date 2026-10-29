@@ -110,6 +110,11 @@ export class HerdrClient extends EventEmitter<{ event: [HerdrEvent]; online: [bo
     return r.read.text;
   }
 
+  /** 把工作区移到 beforeId 之前（null = 移到最后）。 */
+  async moveWorkspaces(ids: string[], beforeId: string | null): Promise<void> {
+    await this.request("workspace.move_block", { workspace_ids: ids, before_workspace_id: beforeId });
+  }
+
   /** pane 在桌面客户端布局里占的区域（字符格）。 */
   async paneRect(paneId: string): Promise<{ width: number; height: number } | null> {
     const r = await this.request<{ layout: { panes: { pane_id: string; rect: { width: number; height: number } }[] } }>(

@@ -221,6 +221,12 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
     return { ok: true };
   });
 
+  app.post<PaneParams & { Body: { beforePaneId?: string | null } }>("/api/sessions/:paneId/move-before", async (req) => {
+    await service.moveBefore(req.params.paneId, req.body?.beforePaneId ?? null);
+    live.scheduleOverview();
+    return { ok: true };
+  });
+
   app.post<PaneParams & { Body: { projectId: string } }>("/api/sessions/:paneId/project", async (req) => {
     await service.moveToProject(req.params.paneId, String(req.body?.projectId ?? ""));
     live.scheduleOverview();

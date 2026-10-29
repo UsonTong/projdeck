@@ -26,6 +26,10 @@ export interface Session {
   /** Claude session id / Codex thread id；未知时为 null。 */
   conversationId: string | null;
   hidden: boolean;
+  /** 在 herdr 侧栏里的位置（工作区顺序，同一工作区内按 pane 顺序），越小越靠前。 */
+  order: number;
+  /** 最后活动时间（对话记录最后修改的时间，毫秒）；临时终端或没有对话时为 null。 */
+  activeAt: number | null;
 }
 
 export interface ProjectView extends Project {

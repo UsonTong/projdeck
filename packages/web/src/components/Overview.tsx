@@ -12,7 +12,18 @@ import {
 } from "lucide-react";
 import { Eye, EyeOff, Plus, X } from "lucide";
 import { MorphIcon } from "morphicons/react";
-import { useState, type ReactNode } from "react";
+import {
+  closestCenter,
+  DndContext,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -28,6 +39,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { copyText } from "@/lib/clipboard";
+import { setDevicePref, useDevicePref } from "@/lib/devicePrefs";
 import { KIND_LABEL, markLaunching, STATUS_LABEL, statusRank } from "@/lib/session";
 import { formatDateTime, useTimeZone } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -66,7 +78,7 @@ export function OverviewPage({ activePane, activeFiles }: { activePane: string |
 
   const visible = (s: Session) => showHidden || !s.hidden;
   const hiddenCount = [...overview.projects.flatMap((p) => p.sessions), ...overview.unassigned].filter((s) => s.hidden).length;
-  const unassigned = overview.unassigned.filter(visible).sort((a, b) => statusRank(a) - statusRank(b));
+  const unassigned = overview.unassigned.filter(visible);
   const archivedCount = overview.archived.length + overview.projects.filter((p) => p.archived).length;
 
   return (
@@ -447,16 +459,104 @@ const copyPath = async (path: string) => {
 // 未归属
 // ---------------------------------------------------------------------------
 
+type UnassignedSort = "herdr" | "recent" | "status";
+
+const SORTS: { value: UnassignedSort; label: string; hint: string }[] = [
+  { value: "herdr", label: "herdr 顺序", hint: "与电脑上 herdr 侧栏一致，可拖动调整" },
+  { value: "recent", label: "最近活动", hint: "最近有新消息的排在前面" },
+  { value: "status", label: "状态", hint: "需处理 > 工作中 > 已完成 > 空闲" },
+];
+
+function sortSessions(list: Session[], mode: UnassignedSort): Session[] {
+  const byOrder = (a: Session, b: Session) => a.order - b.order;
+  if (mode === "recent") return [...list].sort((a, b) => (b.activeAt ?? 0) - (a.activeAt ?? 0) || byOrder(a, b));
+  if (mode === "status") return [...list].sort((a, b) => statusRank(a) - statusRank(b) || byOrder(a, b));
+  return [...list].sort(byOrder);
+}
+
+/** herdr 顺序下的一行：按住拖动（手机上长按），拖动的是会话所在的 herdr 工作区。 */
+function SortableRow(props: { session: Session; active: boolean; draggedRef: React.RefObject<boolean> }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.session.paneId });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
+      className={cn("touch-manipulation", isDragging && "relative z-10 rounded-lg bg-background shadow-lg ring-1 ring-border")}
+      // 拖动结束时浏览器还会补发一次 click，不能把它当成「打开会话」
+      onClickCapture={(e) => props.draggedRef.current && (e.stopPropagation(), e.preventDefault())}
+      {...attributes}
+      {...listeners}
+    >
+      <SessionRow session={props.session} project={null} active={props.active} />
+    </div>
+  );
+}
+
 function UnassignedTab({ sessions, activePane }: { sessions: Session[]; activePane: string | null }) {
+  const sort = useDevicePref<UnassignedSort>("unassignedSort", "herdr");
+  // 拖动后先按新顺序显示，等 herdr 的新顺序推送过来再以它为准
+  const [optimistic, setOptimistic] = useState<string[] | null>(null);
+  const draggedRef = useRef(false);
+  const sorted = sortSessions(sessions, sort);
+  const orderKey = sorted.map((s) => s.paneId).join(",");
+  useEffect(() => setOptimistic(null), [orderKey]);
+  const shown = optimistic ? optimistic.map((id) => sorted.find((s) => s.paneId === id)).filter((s): s is Session => !!s) : sorted;
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
+  );
+
+  const onDragEnd = ({ active, over }: DragEndEvent) => {
+    setTimeout(() => (draggedRef.current = false), 0);
+    if (!over || active.id === over.id) return;
+    const ids = shown.map((s) => s.paneId);
+    const next = arrayMove(ids, ids.indexOf(String(active.id)), ids.indexOf(String(over.id)));
+    setOptimistic(next);
+    const index = next.indexOf(String(active.id));
+    void api.moveBefore(String(active.id), next[index + 1] ?? null).catch((err) => {
+      setOptimistic(null);
+      fail(err);
+    });
+  };
+
   if (sessions.length === 0) {
     return <SectionEmpty icon={<InboxIcon />} title="没有未归属的会话" description="不在任何项目文件夹里启动的会话会出现在这里。" />;
   }
   return (
     <div className="flex flex-col gap-0.5">
-      <p className="px-2 pb-1 text-xs text-muted-foreground">不在任何项目文件夹里启动的会话</p>
-      {sessions.map((s) => (
-        <SessionRow key={s.paneId} session={s} project={null} active={s.paneId === activePane} />
-      ))}
+      <div className="flex items-center gap-2 px-2 pb-1.5">
+        <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">不在任何项目文件夹里启动的会话</p>
+        <div className="flex shrink-0 rounded-md bg-muted p-0.5">
+          {SORTS.map((o) => (
+            <Tooltip key={o.value}>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setDevicePref("unassignedSort", o.value)}
+                  className={cn(
+                    "rounded px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground",
+                    sort === o.value && "bg-background text-foreground shadow-xs",
+                  )}
+                >
+                  {o.label}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>{o.hint}</TooltipContent>
+            </Tooltip>
+          ))}
+        </div>
+      </div>
+      {sort === "herdr" ? (
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={() => (draggedRef.current = true)} onDragEnd={onDragEnd}>
+          <SortableContext items={shown.map((s) => s.paneId)} strategy={verticalListSortingStrategy}>
+            {shown.map((s) => (
+              <SortableRow key={s.paneId} session={s} active={s.paneId === activePane} draggedRef={draggedRef} />
+            ))}
+          </SortableContext>
+        </DndContext>
+      ) : (
+        shown.map((s) => <SessionRow key={s.paneId} session={s} project={null} active={s.paneId === activePane} />)
+      )}
     </div>
   );
 }

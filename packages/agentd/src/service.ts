@@ -51,6 +51,18 @@ interface Snapshot {
   sessions: Map<string, { session: Session; projectId: string | null; rollout?: CodexRollout }>;
 }
 
+/** 会话最后活动的时间：对话记录文件最后修改的时间（每条新消息都会写入）。 */
+function lastActivity(kind: SessionKind, conversationId: string | null, cwd: string, rollout?: CodexRollout): number | null {
+  if (kind === "codex") return rollout?.mtimeMs ?? null;
+  if (kind !== "claude" || !conversationId) return null;
+  const file = findClaudeTranscript(cwd, conversationId);
+  try {
+    return file ? statSync(file).mtimeMs : null;
+  } catch {
+    return null;
+  }
+}
+
 export class ProjdeckService {
   private readonly config: Config;
   private readonly herdr: HerdrClient;
@@ -99,8 +111,9 @@ export class ProjdeckService {
 
     let panes: HerdrPane[];
     let agents: HerdrAgent[];
+    let workspaces: { workspace_id: string; number: number }[];
     try {
-      [panes, agents] = await Promise.all([this.herdr.listPanes(), this.herdr.listAgents()]);
+      [panes, agents, workspaces] = await Promise.all([this.herdr.listPanes(), this.herdr.listAgents(), this.herdr.listWorkspaces()]);
     } catch (err) {
       overview.herdr = { online: false, error: (err as Error).message };
       this.snapshot = { at: Date.now(), overview, sessions };
@@ -124,6 +137,7 @@ export class ProjdeckService {
         )
       : new Map<string, CodexRollout>();
 
+    const workspaceNumber = new Map(workspaces.map((w) => [w.workspace_id, w.number]));
     for (const pane of panes) {
       const agent = agentByPane.get(pane.pane_id);
       const kind: SessionKind = agent?.agent === "claude" || agent?.agent === "codex" ? agent.agent : "shell";
@@ -145,6 +159,8 @@ export class ProjdeckService {
         cwd: pane.cwd,
         conversationId,
         hidden: this.store.isHidden(pane.terminal_id, conversationId),
+        order: (workspaceNumber.get(pane.workspace_id) ?? 999) * 1000 + panes.indexOf(pane),
+        activeAt: lastActivity(kind, conversationId, pane.cwd, rollout),
       };
       const projectId = assignments.get(pane.terminal_id) ?? null;
       sessions.set(pane.pane_id, { session, projectId, rollout });
@@ -382,6 +398,15 @@ export class ProjdeckService {
   async setHidden(paneId: string, hidden: boolean): Promise<void> {
     const { session } = await this.lookup(paneId);
     this.store.setHidden(session.terminalId, session.conversationId, hidden);
+    this.snapshot = undefined;
+  }
+
+  /** 把会话所在的 herdr 工作区移到另一个会话的工作区之前（null = 移到最后），用于拖动排序，herdr 侧栏同步变化。 */
+  async moveBefore(paneId: string, beforePaneId: string | null): Promise<void> {
+    const { session } = await this.lookup(paneId);
+    const before = beforePaneId ? (await this.lookup(beforePaneId)).session.workspaceId : null;
+    if (before === session.workspaceId) return;
+    await this.herdr.moveWorkspaces([session.workspaceId], before);
     this.snapshot = undefined;
   }
 
