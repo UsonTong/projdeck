@@ -48,6 +48,9 @@ function fontFamily(theme: TerminalTheme): string {
   ].join(", ");
 }
 
+type Renderer = { fontSize: number; metrics: { width: number; height: number }; remeasureFont(): void };
+const rendererOf = (term: Terminal | null) => (term as unknown as { renderer?: Renderer } | null)?.renderer;
+
 /** 把 Ghostty 配置转成 ghostty-web 的主题。 */
 function ghosttyWebTheme(t: TerminalTheme) {
   const p = t.palette;
@@ -84,8 +87,10 @@ interface Props {
   theme: TerminalTheme;
   /** 终端四周留白（px），对应 Ghostty 的 window-padding。 */
   padding: { x: number; y: number };
-  /** 字号（px）。变化时原地重新测量格子，不重新连接。 */
+  /** 字号（px）。变化时原地重新测量格子，不重新连接。跟随电脑尺寸时这是上限，放不下会再缩小。 */
   fontSize: number;
+  /** 尺寸策略：适配网页 / 跟随电脑 / 自动（见 agentd 的 TerminalSizing）。变化时重新连接。 */
+  sizing: "auto" | "fit" | "desktop";
   /** 粘贴或拖入文件（图片或任意文件）时调用，返回上传后的本地路径；返回 null 表示不处理。 */
   onFile?: (file: File) => Promise<string | null>;
   onCtrlChange?: (armed: boolean) => void;
@@ -109,6 +114,9 @@ export const GhosttyTerminal = forwardRef<TerminalHandle, Props>(function Ghostt
   const fitRef = useRef<FitAddon | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const ctrlArmed = useRef(false);
+  /** 服务端要求跟随电脑上的尺寸时的行列数；为空时按容器大小自适应。 */
+  const followRef = useRef<{ cols: number; rows: number } | null>(null);
+  const originalFit = useRef<(() => void) | null>(null);
   const propsRef = useRef(props);
   propsRef.current = props;
   const [status, setStatus] = useState<Status>("connecting");
@@ -197,6 +205,9 @@ export const GhosttyTerminal = forwardRef<TerminalHandle, Props>(function Ghostt
       });
       fit = new FitAddon();
       term.loadAddon(fit);
+      // 跟随电脑尺寸时不按容器自适应行列数，而是缩放字号（容器尺寸变化时同样走这里）
+      originalFit.current = fit.fit.bind(fit);
+      fit.fit = () => (followRef.current ? applyFollow() : originalFit.current?.());
       term.open(container.current);
       // 修正格子尺寸、自绘制表符 / 方块 / Powerline，接近原生 Ghostty 的观感
       patchRenderer(term);
@@ -248,10 +259,34 @@ export const GhosttyTerminal = forwardRef<TerminalHandle, Props>(function Ghostt
     };
   }, []);
 
+  /**
+   * 跟随电脑尺寸：行列数固定为电脑上的，字号缩小到整个终端能放进容器（不超过设定的字号）。
+   * 测量后的格子会对齐设备像素，按比例估算后再逐步微调。
+   */
+  function applyFollow() {
+    const term = termRef.current;
+    const follow = followRef.current;
+    const el = container.current;
+    const renderer = rendererOf(term);
+    if (!term || !follow || !el || !renderer) return;
+    const fits = () => follow.cols * renderer.metrics.width <= el.clientWidth && follow.rows * renderer.metrics.height <= el.clientHeight;
+    const setSize = (size: number) => {
+      if (renderer.fontSize === size) return;
+      renderer.fontSize = size;
+      renderer.remeasureFont();
+    };
+    setSize(propsRef.current.fontSize);
+    for (let i = 0; i < 40 && !fits() && renderer.fontSize > 6; i++) {
+      const ratio = Math.min(el.clientWidth / (follow.cols * renderer.metrics.width), el.clientHeight / (follow.rows * renderer.metrics.height));
+      setSize(Math.max(6, Math.min(renderer.fontSize - 0.5, Math.floor(renderer.fontSize * ratio * 2) / 2)));
+    }
+    if (term.cols !== follow.cols || term.rows !== follow.rows) term.resize(follow.cols, follow.rows);
+  }
+
   // 字号原地生效：重新测量格子并调整行列数，不重新挂载、不断开连接
   useEffect(() => {
     const term = termRef.current;
-    const renderer = (term as unknown as { renderer?: { fontSize: number; remeasureFont(): void } } | null)?.renderer;
+    const renderer = rendererOf(term);
     if (!term || !renderer || renderer.fontSize === props.fontSize) return;
     renderer.fontSize = props.fontSize;
     renderer.remeasureFont();
@@ -264,7 +299,7 @@ export const GhosttyTerminal = forwardRef<TerminalHandle, Props>(function Ghostt
     const term = termRef.current;
     if (!term || reconnectTick === 0) return;
     const proto = location.protocol === "https:" ? "wss" : "ws";
-    const params = new URLSearchParams({ pane: props.paneId, cols: String(term.cols), rows: String(term.rows) });
+    const params = new URLSearchParams({ pane: props.paneId, cols: String(term.cols), rows: String(term.rows), sizing: props.sizing });
     const ws = new WebSocket(`${proto}://${location.host}/ws/term?${params}`);
     ws.binaryType = "arraybuffer";
     wsRef.current = ws;
@@ -284,7 +319,28 @@ export const GhosttyTerminal = forwardRef<TerminalHandle, Props>(function Ghostt
         term.write(new Uint8Array(ev.data));
         return;
       }
-      const msg = JSON.parse(String(ev.data)) as { t: "error"; message: string } | { t: "exit" };
+      const msg = JSON.parse(String(ev.data)) as
+        | { t: "error"; message: string }
+        | { t: "exit" }
+        | { t: "size"; follow: { cols: number; rows: number } | null };
+      if (msg.t === "size") {
+        const was = followRef.current;
+        followRef.current = msg.follow;
+        if (msg.follow) applyFollow();
+        else if (was) {
+          // 不再跟随：恢复设定字号，按容器自适应并通知服务端
+          const renderer = rendererOf(term);
+          if (renderer) {
+            renderer.fontSize = propsRef.current.fontSize;
+            renderer.remeasureFont();
+          }
+          // FitAddon 记着跟随之前自己定的行列数，算出来相同就不动；跟随期间行列数被直接改过，先让它忘掉
+          const fitState = fitRef.current as unknown as { _lastCols?: number; _lastRows?: number } | null;
+          if (fitState) fitState._lastCols = fitState._lastRows = undefined;
+          originalFit.current?.();
+        }
+        return;
+      }
       if (msg.t === "error") {
         intentional = true;
         setError(msg.message);
@@ -318,7 +374,7 @@ export const GhosttyTerminal = forwardRef<TerminalHandle, Props>(function Ghostt
       document.removeEventListener("visibilitychange", onVisibility);
       ws.close();
     };
-  }, [props.paneId, reconnectTick]);
+  }, [props.paneId, props.sizing, reconnectTick]);
 
   // 意外断线 1.5 秒后自动重连
   useEffect(() => {

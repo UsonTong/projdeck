@@ -299,6 +299,15 @@ export class ProjdeckService {
     void acceptTrustPrompt(this.herdr, paneId).catch(() => {});
   }
 
+  /**
+   * pane 在桌面客户端里的终端尺寸。布局区域比终端多出右侧一列滚动条（herdr 默认 ui.pane_scrollbars）。
+   * 网页 attach 时用这个尺寸，pane 就不会被改成网页的尺寸，电脑上的显示不受影响。
+   */
+  async desktopSize(paneId: string): Promise<{ cols: number; rows: number } | null> {
+    const rect = await this.herdr.paneRect(paneId);
+    return rect && rect.width > 20 && rect.height > 5 ? { cols: rect.width - 1, rows: rect.height } : null;
+  }
+
   /** 网页终端 attach 的目标。 */
   async terminalIdOf(paneId: string): Promise<string> {
     return (await this.lookup(paneId)).session.terminalId;

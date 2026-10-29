@@ -110,6 +110,15 @@ export class HerdrClient extends EventEmitter<{ event: [HerdrEvent]; online: [bo
     return r.read.text;
   }
 
+  /** pane 在桌面客户端布局里占的区域（字符格）。 */
+  async paneRect(paneId: string): Promise<{ width: number; height: number } | null> {
+    const r = await this.request<{ layout: { panes: { pane_id: string; rect: { width: number; height: number } }[] } }>(
+      "pane.layout",
+      { pane_id: paneId },
+    );
+    return r.layout.panes.find((p) => p.pane_id === paneId)?.rect ?? null;
+  }
+
   /** 当前屏幕的纯文本（不含 ANSI），用于识别 TUI 状态。 */
   async readVisible(paneId: string): Promise<string> {
     const r = await this.request<{ read: { text: string } }>("pane.read", { pane_id: paneId, source: "visible" });

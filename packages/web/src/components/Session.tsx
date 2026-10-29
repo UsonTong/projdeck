@@ -10,6 +10,7 @@ import { doneLaunching, isLaunching, STATUS_LABEL } from "@/lib/session";
 import { themeKey, useTerminalTheme } from "@/lib/terminalTheme";
 import { uploadFile } from "@/lib/upload";
 import { api } from "../api.ts";
+import { useTerminalSizing } from "@/lib/devicePrefs";
 import { useLive, usePane, useWide } from "../live.ts";
 import { openSession } from "../router.ts";
 import { Bubbles } from "./Bubbles.tsx";
@@ -53,6 +54,9 @@ const Loading = ({ label }: { label?: string }) => (
 export function SessionPage({ paneId }: { paneId: string }) {
   const { overview } = useLive();
   const wide = useWide();
+  // 手机屏幕放不下电脑上的行列数，「自动」在手机上始终适配本设备
+  const sizingPref = useTerminalSizing();
+  const sizing = sizingPref === "auto" && !wide ? "fit" : sizingPref;
   const [preferredView, setPreferredView] = usePref<View>("view", "terminal");
   const theme = useTerminalTheme();
   // 0 表示未手动调整：电脑上跟随 Ghostty 的字号，手机上用 12px
@@ -192,6 +196,7 @@ export function SessionPage({ paneId }: { paneId: string }) {
               theme={theme}
               padding={padding}
               fontSize={fontSize}
+              sizing={sizing}
               onFile={upload}
               onFontSize={changeFontSize}
               onPickFile={() => fileInput.current?.click()}

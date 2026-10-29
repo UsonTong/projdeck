@@ -332,13 +332,14 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
 
   app.get("/ws", { websocket: true }, (socket) => live.add(socket));
 
-  app.get<{ Querystring: { pane?: string; cols?: string; rows?: string } }>(
+  app.get<{ Querystring: { pane?: string; cols?: string; rows?: string; sizing?: string } }>(
     "/ws/term",
     { websocket: true },
     (socket, req) => {
-      const { pane, cols, rows } = req.query;
+      const { pane, cols, rows, sizing } = req.query;
       if (!pane) return socket.close();
-      void terminals.open(socket, pane, Number(cols), Number(rows));
+      const mode = sizing === "desktop" || sizing === "auto" ? sizing : "fit";
+      void terminals.open(socket, pane, Number(cols), Number(rows), mode);
     },
   );
 

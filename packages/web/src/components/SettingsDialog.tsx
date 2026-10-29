@@ -4,6 +4,8 @@ import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { setDevicePref, useTerminalSizing } from "@/lib/devicePrefs";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { allTimeZones, COMMON_TIME_ZONES, deviceTimeZone, formatDateTime, utcOffset } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -17,11 +19,12 @@ interface Option {
   description: string;
 }
 
-/** 设置：自动信任文件夹、时区。时区用可搜索的列表直接选，不用下拉菜单。 */
+/** 设置：自动信任文件夹、终端尺寸（本设备）、时区。时区用可搜索的列表直接选，不用下拉菜单。 */
 export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { overview } = useLive();
   const current = overview?.settings.timeZone ?? null;
   const autoTrust = overview?.settings.autoTrust ?? true;
+  const sizing = useTerminalSizing();
   const [query, setQuery] = useState("");
   const [now, setNow] = useState(() => new Date());
 
@@ -82,6 +85,25 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
             </FieldDescription>
           </FieldContent>
         </Field>
+        <div className="flex min-w-0 flex-col gap-2">
+          <div className="text-sm font-medium">终端尺寸（这台设备）</div>
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            size="sm"
+            value={sizing}
+            onValueChange={(v) => v && setDevicePref("termSizing", v)}
+            className="w-full"
+          >
+            <ToggleGroupItem value="auto" className="flex-1">自动</ToggleGroupItem>
+            <ToggleGroupItem value="fit" className="flex-1">适配本设备</ToggleGroupItem>
+            <ToggleGroupItem value="desktop" className="flex-1">跟随电脑</ToggleGroupItem>
+          </ToggleGroup>
+          <p className="text-xs text-muted-foreground">
+            一个终端同时只能有一种尺寸。适配本设备时，电脑上的 herdr 会被裁切；跟随电脑时，这里按电脑上的行列数缩小显示。
+            自动：电脑上开着 herdr 时跟随电脑（手机上始终适配本设备）。
+          </p>
+        </div>
         <div className="flex min-w-0 flex-col gap-3">
           <div className="text-sm font-medium">时区</div>
           <InputGroup>

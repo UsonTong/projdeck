@@ -150,6 +150,8 @@ export function attachMouse(term: Terminal, el: HTMLElement, send: (data: string
     let n = lines || Math.trunc(wheelAcc / px);
     if (!step) wheelAcc -= n * px;
     const button = n < 0 ? 64 : 65;
+    // 滚动由 herdr 重画内容，本地选区留在原处会盖住别的行，清掉
+    if (n !== 0 && term.hasSelection()) term.clearSelection();
     for (n = Math.min(Math.abs(n), 10); n > 0; n--) send(encodeMouse(button + modifiers(e), cell.col, cell.row, false, sgr()));
   };
 
@@ -169,6 +171,7 @@ export function attachMouse(term: Terminal, el: HTMLElement, send: (data: string
     const cell = cellAt(t);
     if (!cell) return;
     e.preventDefault();
+    if (Math.abs(touchAcc) >= h && term.hasSelection()) term.clearSelection();
     while (Math.abs(touchAcc) >= h) {
       // 手指上移（acc > 0）= 内容向下滚 = 滚轮向下
       send(encodeMouse(touchAcc > 0 ? 65 : 64, cell.col, cell.row, false, sgr()));
