@@ -593,16 +593,24 @@ function cacheViewport(term: Terminal): void {
 }
 
 /**
+ * 新建的 WASM 终端会复用上一个终端（已释放）的内存而不清空：收到输出之前，屏幕上是上一个会话的内容，
+ * 还按新终端的列数错位显示（切换会话的一瞬间，远程访问延迟大时很明显）。新建后先清一次屏，把每个格子写成空白。
+ */
+const CLEAR_SCREEN = "\x1b[2J\x1b[3J\x1b[H";
+
+/**
  * ghostty-web 的 reset() 会新建 WASM 终端实例，但选区管理器仍拿着旧实例（已释放）：
- * 选区照常高亮，取文字却读到空内容（复制出来只有换行），双击选词也失效。reset 后把新实例交给它。
+ * 选区照常高亮，取文字却读到空内容（复制出来只有换行），双击选词也失效。reset 后把新实例交给它，并清屏（原因同上）。
  */
 function fixResetReferences(term: Terminal): void {
-  const t = term as unknown as { reset(): void; wasmTerm?: unknown; selectionManager?: { wasmTerm: unknown } };
+  const t = term as unknown as { reset(): void; write(data: string): void; wasmTerm?: unknown; selectionManager?: { wasmTerm: unknown } };
   const reset = t.reset;
   t.reset = function (this: typeof t) {
     reset.call(this);
     if (this.selectionManager) this.selectionManager.wasmTerm = this.wasmTerm;
+    this.write(CLEAR_SCREEN);
   };
+  t.write(CLEAR_SCREEN);
 }
 
 /** 在 term.open() 之后调用。 */
