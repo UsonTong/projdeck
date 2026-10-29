@@ -592,6 +592,19 @@ function cacheViewport(term: Terminal): void {
   };
 }
 
+/**
+ * ghostty-web 的 reset() 会新建 WASM 终端实例，但选区管理器仍拿着旧实例（已释放）：
+ * 选区照常高亮，取文字却读到空内容（复制出来只有换行），双击选词也失效。reset 后把新实例交给它。
+ */
+function fixResetReferences(term: Terminal): void {
+  const t = term as unknown as { reset(): void; wasmTerm?: unknown; selectionManager?: { wasmTerm: unknown } };
+  const reset = t.reset;
+  t.reset = function (this: typeof t) {
+    reset.call(this);
+    if (this.selectionManager) this.selectionManager.wasmTerm = this.wasmTerm;
+  };
+}
+
 /** 在 term.open() 之后调用。 */
 export function patchRenderer(term: Terminal): void {
   const r = (term as unknown as { renderer: Renderer }).renderer;
@@ -600,5 +613,6 @@ export function patchRenderer(term: Terminal): void {
   // 中文等宽字符与原生 Ghostty 一样按正常字号、从格子左侧画，不放大
   r.renderLine = (line, row, cols) => renderLine(r, line, row, cols);
   cacheViewport(term);
+  fixResetReferences(term);
   renderOnDemand(term, r);
 }

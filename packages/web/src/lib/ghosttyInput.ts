@@ -4,7 +4,7 @@
  * 1. 鼠标上报：ghostty-web 不会把点击 / 拖动 / 滚轮编码成终端鼠标协议发给程序。
  *    herdr 的 attach 客户端会开启鼠标追踪（1000/1002/1003 + SGR 1006），原生 Ghostty 把鼠标事件交给 herdr，
  *    再由 herdr 转给 Claude / Codex 或用来滚动历史。这里按当前开启的模式编码并发送。
- *    与 Ghostty 一致：按住 Shift 时不上报，交给本地选择文字；右键留给右键菜单。
+ *    左键拖动始终是本地选择文字（见 attachMouse），点击才上报；右键留给右键菜单。
  *
  * 2. 文字输入：ghostty-web 用整个 contenteditable 容器收输入，组字不稳定，拼音预览和候选框也不在光标处。
  *    这里换成放在终端光标处的隐藏 textarea，见 attachTextInput。
@@ -58,14 +58,29 @@ export function attachMouse(term: Terminal, el: HTMLElement, send: (data: string
   let pressed: number | null = null;
   let last = "";
 
+  /*
+   * 左键：拖动始终在本地选择文字，只有「点击」（按下、松开之间没离开格子）才发给 herdr / 程序。
+   * 原因：herdr 会按 pane 里的程序动态开关鼠标追踪，拖选时而是本地选区（主题色），时而是 herdr 的选区（蓝色），
+   * 而 herdr 的选区要绕网络一圈才画出来，远程时明显跟不上鼠标。本地选区即时、颜色一致，松开即复制。
+   * 双击同理在本地选词；第二下不再发给 herdr，否则 herdr 也会选一次词。
+   */
+  let left: { cell: { col: number; row: number }; mods: number; forward: boolean; moved: boolean } | null = null;
+  let lastClick = { at: 0, key: "" };
+
   const onDown = (e: MouseEvent) => {
-    if (!tracking() || e.shiftKey || e.button > 1) return; // Shift：本地选择；右键：右键菜单
+    if (e.button === 2) return; // 右键菜单
     const cell = cellAt(e);
     if (!cell) return;
+    if (e.button === 0) {
+      // 不拦截：ghostty-web 照常开始本地选择
+      left = { cell, mods: modifiers(e), forward: tracking() && !e.shiftKey, moved: false };
+      term.focus();
+      return;
+    }
+    // 中键照常直接上报
+    if (!tracking() || e.shiftKey) return;
     e.preventDefault();
-    e.stopPropagation(); // 阻止 ghostty-web 开始本地选择
-    // 选区由 herdr 负责（松开时 herdr 复制到剪贴板）；之前按住 Shift 留下的本地选区清掉，不出现两个选区
-    if (term.hasSelection()) term.clearSelection();
+    e.stopPropagation();
     term.focus();
     pressed = e.button;
     last = `${cell.col},${cell.row}`;
@@ -73,6 +88,11 @@ export function attachMouse(term: Terminal, el: HTMLElement, send: (data: string
   };
 
   const onMove = (e: MouseEvent) => {
+    if (left) {
+      const cell = cellAt(e);
+      if (cell && (cell.col !== left.cell.col || cell.row !== left.cell.row)) left.moved = true;
+      return;
+    }
     if (!tracking()) return;
     const dragging = pressed !== null && (mode(term, 1002) || mode(term, 1003));
     const hovering = pressed === null && mode(term, 1003) && el.contains(e.target as Node);
@@ -86,17 +106,32 @@ export function attachMouse(term: Terminal, el: HTMLElement, send: (data: string
   };
 
   const onUp = (e: MouseEvent) => {
+    if (left) {
+      const click = left;
+      left = null;
+      if (click.moved) return; // 拖选：本地选区保留，ghostty-web 松开时复制
+      const key = `${click.cell.col},${click.cell.row}`;
+      const double = Date.now() - lastClick.at < 400 && lastClick.key === key;
+      lastClick = { at: Date.now(), key };
+      if (double) return; // 双击：ghostty-web 接着在本地选词
+      // 单击：按下时 ghostty-web 起了一个单格选区，松开时会把这个字复制到剪贴板。
+      // 它的 clearSelection() 认为单格不算选区、什么也不做，只能直接清状态
+      const sm = (term as unknown as { selectionManager?: { selectionStart: unknown; selectionEnd: unknown; isSelecting: boolean } }).selectionManager;
+      if (sm) {
+        sm.selectionStart = sm.selectionEnd = null;
+        sm.isSelecting = false;
+      }
+      if (click.forward) {
+        const { col, row } = click.cell;
+        send(encodeMouse(click.mods, col, row, false, sgr()));
+        send(encodeMouse(click.mods, col, row, true, sgr()));
+      }
+      return;
+    }
     if (pressed === null) return;
     const cell = cellAt(e) ?? { col: 1, row: 1 };
     send(encodeMouse(pressed | modifiers(e), cell.col, cell.row, true, sgr()));
     pressed = null;
-  };
-
-  // 双击选词同样交给 herdr；ghostty-web 自己也会在双击时选词，拦下来
-  const onDblClick = (e: MouseEvent) => {
-    if (!tracking() || e.shiftKey) return;
-    e.preventDefault();
-    e.stopPropagation();
   };
 
   // 滚轮：触控板一次会产生很多小 delta，累积到一定距离再发一格
@@ -142,7 +177,6 @@ export function attachMouse(term: Terminal, el: HTMLElement, send: (data: string
   };
 
   el.addEventListener("mousedown", onDown, true);
-  el.addEventListener("dblclick", onDblClick, true);
   window.addEventListener("mousemove", onMove, true);
   window.addEventListener("mouseup", onUp, true);
   el.addEventListener("wheel", onWheel, { capture: true, passive: false });
@@ -150,7 +184,6 @@ export function attachMouse(term: Terminal, el: HTMLElement, send: (data: string
   el.addEventListener("touchmove", onTouchMove, { passive: false });
   return () => {
     el.removeEventListener("mousedown", onDown, true);
-    el.removeEventListener("dblclick", onDblClick, true);
     window.removeEventListener("mousemove", onMove, true);
     window.removeEventListener("mouseup", onUp, true);
     el.removeEventListener("wheel", onWheel, true);
