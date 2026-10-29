@@ -9,6 +9,8 @@
  * 2. 方块 / 制表符 / Powerline：原实现直接画字体字形，拼接处有缝。
  *    Ghostty 用像素精确的几何图形绘制这些字符（sprite font），这里照做。
  * 3. 按需绘制：原实现每一帧都完整走一遍绘制流程，见 renderOnDemand。
+ * 4. 逐行绘制提速：原实现每个格子都重设字体、拼颜色字符串、调用 fillText，见 renderLine。
+ * 5. 读取屏幕内容：原实现每读一行都把整屏从 WASM 复制解析一遍，见 cacheViewport。
  */
 import { CellFlags, type Terminal } from "ghostty-web";
 
@@ -20,6 +22,7 @@ interface Metrics {
 
 interface Cell {
   codepoint: number;
+  hyperlink_id: number;
   grapheme_len: number;
   width: number;
   flags: number;
@@ -31,21 +34,30 @@ interface Cell {
   bg_b: number;
 }
 
+interface LinkRange {
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+}
+
 interface Renderer {
   ctx: CanvasRenderingContext2D;
+  renderLine(line: Cell[], row: number, cols: number): void;
+  currentBuffer: { getGraphemeString?(row: number, col: number): string } | null;
+  currentSelectionCoords: unknown;
   fontSize: number;
   fontFamily: string;
   devicePixelRatio: number;
   metrics: Metrics;
-  theme: { selectionForeground: string };
+  theme: { background: string; selectionBackground: string; selectionForeground: string };
   measureFont(): Metrics;
   remeasureFont(): void;
-  renderCellText(cell: Cell, col: number, row: number): void;
   isInSelection(col: number, row: number): boolean;
   render(buffer: unknown, force: boolean, viewportY: number, term: unknown, scrollbarOpacity?: number): void;
   cursorVisible: boolean;
   hoveredHyperlinkId: number;
-  hoveredLinkRange: unknown;
+  hoveredLinkRange: LinkRange | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -327,7 +339,6 @@ function measureFont(this: Renderer): Metrics {
   return { width, height, baseline };
 }
 
-/** 在 term.open() 之后调用。 */
 /**
  * 只在画面可能变化时才绘制。
  * ghostty-web 每一帧都调用 render：逐行向 WASM 询问是否有变化，开着光标闪烁时还每帧重画光标所在的整行。
@@ -363,14 +374,231 @@ function renderOnDemand(term: Terminal, r: Renderer): void {
   };
 }
 
+// ---------------------------------------------------------------------------
+// 逐行绘制
+// ---------------------------------------------------------------------------
+
+const rgbCache = new Map<number, string>();
+const rgb = (key: number) => {
+  let css = rgbCache.get(key);
+  if (!css) rgbCache.set(key, (css = `rgb(${key >> 16}, ${(key >> 8) & 255}, ${key & 255})`));
+  return css;
+};
+const SELECTED = 1 << 24; // 颜色键里表示「选区颜色」
+
+/** 每种字体的字宽，用于把整段 ASCII 用 letterSpacing 对齐到格子上。 */
+const advances = new Map<string, number>();
+let measurer: CanvasRenderingContext2D | null = null;
+const advanceOf = (font: string) => {
+  let w = advances.get(font);
+  if (w === undefined) {
+    // 单独的画布：绘制用的画布上带着上一种字体的 letterSpacing，measureText 会把它算进去
+    measurer ??= document.createElement("canvas").getContext("2d")!;
+    measurer.font = font;
+    advances.set(font, (w = measurer.measureText("M").width));
+  }
+  return w;
+};
+const canSpace = typeof CanvasRenderingContext2D !== "undefined" && "letterSpacing" in CanvasRenderingContext2D.prototype;
+
+/**
+ * 替换 ghostty-web 的 renderLine，画面结果相同：
+ * - 背景：相邻同色格子合并成一次 fillRect；
+ * - 文字：空白格子跳过，连续 ASCII 合成一段绘制；制表符 / 方块 / Powerline 仍按几何图形绘制。
+ */
+function renderLine(r: Renderer, line: Cell[], row: number, cols: number): void {
+  const ctx = r.ctx;
+  const { width, height } = r.metrics;
+  const y = row * height;
+  const selection = r.currentSelectionCoords !== null;
+  const selected = (col: number) => selection && r.isInSelection(col, row);
+
+  ctx.fillStyle = r.theme.background;
+  ctx.fillRect(0, y, cols * width, height);
+
+  // 背景：-1 表示默认背景（不画）
+  let runStart = 0;
+  let runKey = -1;
+  const flush = (end: number) => {
+    if (runKey === -1 || end <= runStart) return;
+    ctx.fillStyle = runKey === SELECTED ? r.theme.selectionBackground : rgb(runKey);
+    ctx.fillRect(runStart * width, y, (end - runStart) * width, height);
+  };
+  for (let c = 0; c < line.length; c++) {
+    const cell = line[c]!;
+    if (cell.width === 0) continue; // 宽字符的第二格，背景随第一格
+    let key: number;
+    if (selected(c)) key = SELECTED;
+    else {
+      const inv = cell.flags & CellFlags.INVERSE;
+      const rr = inv ? cell.fg_r : cell.bg_r;
+      const gg = inv ? cell.fg_g : cell.bg_g;
+      const bb = inv ? cell.fg_b : cell.bg_b;
+      key = rr === 0 && gg === 0 && bb === 0 ? -1 : (rr << 16) | (gg << 8) | bb;
+    }
+    if (key !== runKey) {
+      flush(c);
+      runStart = c;
+      runKey = key;
+    }
+  }
+  flush(line.length);
+
+  // 文字。连续的同样式 ASCII 合成一段，一次 fillText 画完，letterSpacing 补齐字宽与格子宽的差，
+  // 每个字仍落在自己的格子上。逐格调用 fillText 时满屏一帧要几十毫秒，按段画不到 1 毫秒。
+  // 中文、图标、表情等可能来自其他字体，宽度不一定与主字体相同，逐个画在各自格子的起点。
+  const link = r.hoveredLinkRange;
+  let font = "";
+  let fill = "";
+  const setFont = (style: number) => {
+    const f = `${style & CellFlags.ITALIC ? "italic " : ""}${style & CellFlags.BOLD ? "bold " : ""}${r.fontSize}px ${r.fontFamily}`;
+    if (f !== font) {
+      ctx.font = font = f;
+      if (canSpace) ctx.letterSpacing = `${width - advanceOf(f)}px`;
+    }
+  };
+  const setFill = (color: string) => {
+    if (color !== fill) ctx.fillStyle = fill = color;
+  };
+  const baseline = y + r.metrics.baseline;
+  let run = "";
+  let runX = 0;
+  let textKey = "";
+  let runStyle = 0;
+  let runColor = "";
+  const flushRun = () => {
+    if (!run) return;
+    setFont(runStyle);
+    setFill(runColor);
+    if (runStyle & CellFlags.FAINT) ctx.globalAlpha = 0.5;
+    ctx.fillText(run.trimEnd(), runX, baseline);
+    if (runStyle & CellFlags.FAINT) ctx.globalAlpha = 1;
+    run = "";
+  };
+
+  for (let c = 0; c < line.length; c++) {
+    const cell = line[c]!;
+    if (cell.width === 0) continue;
+    const cp = cell.codepoint;
+    const blank = cell.grapheme_len === 0 && (cp === 0 || cp === 32);
+    const decorated = cell.flags & (CellFlags.UNDERLINE | CellFlags.STRIKETHROUGH) || (cell.hyperlink_id > 0 && cell.hyperlink_id === r.hoveredHyperlinkId) || link;
+    if (blank || cell.flags & CellFlags.INVISIBLE) {
+      // 空格不打断当前段（没有字形，颜色无所谓）
+      if (run) run += " ";
+      if (decorated && !(cell.flags & CellFlags.INVISIBLE)) drawDecorations(r, cell, c, row, fill || rgb((cell.fg_r << 16) | (cell.fg_g << 8) | cell.fg_b));
+      continue;
+    }
+    const sel = selected(c);
+    const inv = cell.flags & CellFlags.INVERSE;
+    const color = sel ? r.theme.selectionForeground : rgb(inv ? (cell.bg_r << 16) | (cell.bg_g << 8) | cell.bg_b : (cell.fg_r << 16) | (cell.fg_g << 8) | cell.fg_b);
+    const style = cell.flags & (CellFlags.BOLD | CellFlags.ITALIC | CellFlags.FAINT);
+
+    if (canSpace && cell.grapheme_len === 0 && cp > 32 && cp < 127 && cell.width === 1) {
+      const key = `${style}|${color}`;
+      if (run && key !== textKey) flushRun();
+      if (!run) {
+        runX = c * width;
+        textKey = key;
+        runStyle = style;
+        runColor = color;
+      }
+      run += String.fromCharCode(cp);
+    } else {
+      flushRun();
+      if (!drawSpecial(r, cell, c, row)) {
+        setFont(style);
+        setFill(color);
+        if (style & CellFlags.FAINT) ctx.globalAlpha = 0.5;
+        const text = cell.grapheme_len > 0 ? (r.currentBuffer?.getGraphemeString?.(row, c) ?? String.fromCodePoint(cp)) : String.fromCodePoint(cp);
+        ctx.fillText(text, c * width, baseline);
+        if (style & CellFlags.FAINT) ctx.globalAlpha = 1;
+        // drawSpecial 用 save/restore 改过画笔，下次重新设置
+      } else font = fill = "";
+    }
+    if (decorated) drawDecorations(r, cell, c, row, color);
+  }
+  flushRun();
+  // 其他绘制（光标、滚动条）不使用字距
+  if (canSpace) ctx.letterSpacing = "0px";
+}
+
+/** 下划线、删除线、链接悬停下划线（与 ghostty-web 原实现一致）。 */
+function drawDecorations(r: Renderer, cell: Cell, col: number, row: number, color: string): void {
+  const ctx = r.ctx;
+  const { width, height, baseline } = r.metrics;
+  const x = col * width;
+  const y = row * height;
+  const w = width * cell.width;
+  const line = (yy: number, style: string) => {
+    ctx.strokeStyle = style;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, yy);
+    ctx.lineTo(x + w, yy);
+    ctx.stroke();
+  };
+  if (cell.flags & CellFlags.UNDERLINE) line(y + baseline + 2, color);
+  if (cell.flags & CellFlags.STRIKETHROUGH) line(y + height / 2, color);
+  if (cell.hyperlink_id > 0 && cell.hyperlink_id === r.hoveredHyperlinkId) line(y + baseline + 2, "#4A90E2");
+  const m = r.hoveredLinkRange;
+  if (
+    m &&
+    ((row === m.startY && col >= m.startX && (row < m.endY || col <= m.endX)) ||
+      (row > m.startY && row < m.endY) ||
+      (row === m.endY && col <= m.endX && (row > m.startY || col >= m.startX)))
+  )
+    line(y + baseline + 2, "#4A90E2");
+}
+
+/**
+ * ghostty-web 的 getLine(row) 每次都把整屏格子从 WASM 复制并解析成对象，再取其中一行；
+ * 绘制一帧要读每一行，于是整屏被解析「行数」遍（2560×1440 全屏一帧约 150 万个格子）。
+ * 改为整屏读一次缓存起来，有新输出或改尺寸时作废。
+ * reset() 会新建 WASM 终端实例，所以补丁打在原型上。返回的格子是缓存里的对象，下次输出后会被复用，调用方不能长期持有
+ * （ghostty-web 内部只在当次使用：绘制、取选区文字；链接检测在每次输出时清缓存）。
+ */
+function cacheViewport(term: Terminal): void {
+  interface Wasm {
+    _rows: number;
+    _cols: number;
+    update(): unknown;
+    getViewport(): Cell[];
+    write(...args: unknown[]): unknown;
+    resize(...args: unknown[]): unknown;
+    getLine(row: number): Cell[] | null;
+    __viewport?: Cell[] | null;
+  }
+  const wasm = (term as unknown as { wasmTerm?: Wasm }).wasmTerm;
+  if (!wasm) return;
+  const proto = Object.getPrototypeOf(wasm) as Wasm & { __projdeckViewport?: boolean };
+  if (proto.__projdeckViewport) return;
+  proto.__projdeckViewport = true;
+  const { write, resize } = proto;
+  proto.write = function (this: Wasm, ...args: unknown[]) {
+    this.__viewport = null;
+    return write.apply(this, args);
+  };
+  proto.resize = function (this: Wasm, ...args: unknown[]) {
+    this.__viewport = null;
+    return resize.apply(this, args);
+  };
+  proto.getLine = function (this: Wasm, row: number) {
+    if (row < 0 || row >= this._rows) return null;
+    if (!this.__viewport) {
+      this.update();
+      this.__viewport = this.getViewport();
+    }
+    return this.__viewport.slice(row * this._cols, (row + 1) * this._cols);
+  };
+}
+
+/** 在 term.open() 之后调用。 */
 export function patchRenderer(term: Terminal): void {
   const r = (term as unknown as { renderer: Renderer }).renderer;
   r.measureFont = measureFont;
   r.remeasureFont();
-  const original = r.renderCellText.bind(r);
-  // 中文等宽字符保持原实现：与原生 Ghostty 一样按正常字号、从格子左侧画，不放大
-  r.renderCellText = function (cell, col, row) {
-    if (!drawSpecial(r, cell, col, row)) original(cell, col, row);
-  };
+  // 中文等宽字符与原生 Ghostty 一样按正常字号、从格子左侧画，不放大
+  r.renderLine = (line, row, cols) => renderLine(r, line, row, cols);
+  cacheViewport(term);
   renderOnDemand(term, r);
 }
