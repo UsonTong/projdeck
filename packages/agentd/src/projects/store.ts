@@ -127,6 +127,12 @@ export class ProjectStore {
     return true;
   }
 
+  /** 手动指定会话所属的项目（优先于按目录判断）。 */
+  setSticky(terminalId: string, projectId: string): void {
+    this.state.sticky[terminalId] = projectId;
+    this.saveState();
+  }
+
   isHidden(terminalId: string, conversationId: string | null): boolean {
     return (
       this.state.hiddenTerminals.includes(terminalId) ||

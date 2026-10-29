@@ -204,6 +204,12 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
     return { ok: true };
   });
 
+  app.post<PaneParams & { Body: { projectId: string } }>("/api/sessions/:paneId/project", async (req) => {
+    await service.moveToProject(req.params.paneId, String(req.body?.projectId ?? ""));
+    live.scheduleOverview();
+    return { ok: true };
+  });
+
   app.post<PaneParams>("/api/sessions/:paneId/archive", async (req) => {
     const item = await service.archive(req.params.paneId);
     live.scheduleOverview();

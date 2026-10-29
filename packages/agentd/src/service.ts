@@ -348,6 +348,17 @@ export class ProjdeckService {
     this.snapshot = undefined;
   }
 
+  /**
+   * 把会话移到指定项目。用于不在项目目录里启动的会话（例如在上级目录启动 Claude，再让它进入项目目录工作），
+   * 按目录无法自动归属。记为 sticky，之后一直留在这个项目。
+   */
+  async moveToProject(paneId: string, projectId: string): Promise<void> {
+    const { session } = await this.lookup(paneId);
+    this.store.getProject(projectId); // 不存在时抛出 404
+    this.store.setSticky(session.terminalId, projectId);
+    this.snapshot = undefined;
+  }
+
   async setCodexConversation(paneId: string, threadId: string | null): Promise<void> {
     const { session } = await this.lookup(paneId);
     if (session.kind !== "codex") throw httpError(400, "只有 Codex 会话需要手动选择对话");

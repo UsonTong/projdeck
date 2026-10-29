@@ -15,6 +15,7 @@ import { MorphIcon } from "morphicons/react";
 import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -308,6 +309,8 @@ function SessionRow({ session: s, project, active }: { session: Session; project
     if (ok) await api.close(s.paneId).catch(fail);
   };
 
+  const [moving, setMoving] = useState(false);
+
   // 会话目录在项目里时，可以直接在文件管理器里打开
   const inProject = project && (s.cwd === project.path || s.cwd.startsWith(project.path + "/"));
 
@@ -372,6 +375,7 @@ function SessionRow({ session: s, project, active }: { session: Session; project
         {inProject && (
           <ContextMenuItem onSelect={() => openFiles(project.id, s.cwd.slice(project.path.length + 1))}>在文件中查看</ContextMenuItem>
         )}
+        <ContextMenuItem onSelect={() => setMoving(true)}>{projectId ? "移到其他项目…" : "移到项目…"}</ContextMenuItem>
         {!projectId && <ContextMenuItem onSelect={() => void importFolder()}>把这个目录导入为项目</ContextMenuItem>}
         <ContextMenuSeparator />
         <ContextMenuItem onSelect={() => void api.setHidden(s.paneId, !s.hidden).catch(fail)}>{s.hidden ? "取消隐藏" : "隐藏"}</ContextMenuItem>
@@ -382,7 +386,55 @@ function SessionRow({ session: s, project, active }: { session: Session; project
           </ContextMenuItem>
         )}
       </ContextMenuContent>
+      <MoveToProjectDialog session={s} currentProjectId={projectId} open={moving} onOpenChange={setMoving} />
     </ContextMenu>
+  );
+}
+
+/**
+ * 把会话移到某个项目。在上级目录启动、再进入项目目录工作的会话，按目录无法自动归属，在这里手动指定。
+ * 用列表直接点选，不用下拉菜单。
+ */
+function MoveToProjectDialog(props: { session: Session; currentProjectId: string | null; open: boolean; onOpenChange: (open: boolean) => void }) {
+  const { overview } = useLive();
+  const projects = (overview?.projects ?? []).filter((p) => !p.archived && p.id !== props.currentProjectId);
+  const move = async (p: ProjectView) => {
+    try {
+      await api.moveToProject(props.session.paneId, p.id);
+      toast.success(`已移到 ${p.name}`);
+      props.onOpenChange(false);
+    } catch (err) {
+      fail(err);
+    }
+  };
+  return (
+    <Dialog open={props.open} onOpenChange={props.onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>移到项目</DialogTitle>
+          <DialogDescription>「{props.session.title}」会一直归在选中的项目下，文件、上传都用这个项目的目录。</DialogDescription>
+        </DialogHeader>
+        {projects.length === 0 ? (
+          <p className="py-4 text-center text-sm text-muted-foreground">还没有其他项目。先点右上角的 ＋ 导入项目文件夹。</p>
+        ) : (
+          <div className="-mx-1 flex max-h-80 flex-col gap-0.5 overflow-y-auto px-1">
+            {projects.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => void move(p)}
+                className="flex items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-accent"
+              >
+                <FolderOpenIcon className="size-4 shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm">{p.name}</div>
+                  <div className="truncate font-mono text-xs text-muted-foreground">{shortPath(p.path)}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
