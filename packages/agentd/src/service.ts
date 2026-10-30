@@ -289,14 +289,25 @@ export class ProjdeckService {
     return this.store.addProject(name?.trim() || basename(path), path);
   }
 
-  updateProject(id: string, patch: { name?: string; archived?: boolean; defaultAgent?: AgentKind; notify?: boolean }): Project {
+  updateProject(id: string, patch: { name?: string; archived?: boolean; defaultAgent?: AgentKind; notify?: boolean; note?: string }): Project {
     const p = this.store.getProject(id);
+    if (patch.note !== undefined) {
+      const note = String(patch.note).trim().slice(0, 100);
+      if (note) p.note = note;
+      else delete p.note;
+    }
     if (patch.notify !== undefined) p.notify = patch.notify === true;
     if (patch.name !== undefined) p.name = patch.name.trim() || p.name;
     if (patch.archived !== undefined) p.archived = patch.archived;
     if (patch.defaultAgent !== undefined) p.defaultAgent = patch.defaultAgent;
     this.store.saveProjects();
     return p;
+  }
+
+  /** 「自定义」排序：按给出的顺序排列这些项目（拖动排序）。 */
+  reorderProjects(ids: string[]): void {
+    ids.forEach((id, i) => (this.store.getProject(id).order = i));
+    this.store.saveProjects();
   }
 
   removeProject(id: string): void {

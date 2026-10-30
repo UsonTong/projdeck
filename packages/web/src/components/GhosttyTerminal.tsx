@@ -15,6 +15,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { attachMouse, attachTextInput } from "@/lib/ghosttyInput";
 import { copyText } from "@/lib/clipboard";
+import { cn } from "@/lib/utils";
 import { patchRenderer } from "@/lib/ghosttyRender";
 import { attachTouch, type SelectionGeometry } from "@/lib/ghosttyTouch";
 import { isTouchDevice } from "@/lib/swipe";
@@ -125,6 +126,8 @@ export const GhosttyTerminal = forwardRef<TerminalHandle, Props>(function Ghostt
   const [touchMenu, setTouchMenu] = useState<{ geometry: SelectionGeometry | null; at: { x: number; y: number } } | null>(null);
   const touchRef = useRef<ReturnType<typeof attachTouch> | null>(null);
   const [status, setStatus] = useState<Status>("connecting");
+  // 新打开的终端在收到第一段画面之前是空白的（只有光标），先不显示，画面到了再淡入
+  const [painted, setPainted] = useState(false);
   const [error, setError] = useState("");
   const [reconnectTick, setReconnectTick] = useState(0);
   // 未连接状态持续一会儿才显示覆盖层：改尺寸、切回前台等短暂重连不闪「已断开」
@@ -339,6 +342,8 @@ export const GhosttyTerminal = forwardRef<TerminalHandle, Props>(function Ghostt
         if (firstChunk) {
           firstChunk = false;
           term.reset();
+          // 等这一段画到画布上（下一帧）再显示
+          requestAnimationFrame(() => requestAnimationFrame(() => setPainted(true)));
         }
         term.write(new Uint8Array(ev.data));
         return;
@@ -531,7 +536,7 @@ export const GhosttyTerminal = forwardRef<TerminalHandle, Props>(function Ghostt
           {/* ghostty-web 会在这个容器里放 canvas；键盘焦点在 attachTextInput 放进来的 textarea 上 */}
           <div
             ref={container}
-            className="absolute touch-none overflow-hidden outline-none"
+            className={cn("absolute touch-none overflow-hidden outline-none transition-opacity duration-200 ease-out", !painted && "opacity-0")}
             style={{ inset: `${props.padding.y}px ${props.padding.x}px` }}
             onClick={() => termRef.current?.focus()}
           />

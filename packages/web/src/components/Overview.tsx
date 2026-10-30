@@ -15,7 +15,17 @@ import {
 } from "lucide-react";
 import { Eye, EyeOff, Plus, X } from "lucide";
 import { MorphIcon } from "morphicons/react";
-import { closestCenter, DndContext, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import {
+  closestCenter,
+  DndContext,
+  pointerWithin,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  type CollisionDetection,
+  type DragEndEvent,
+} from "@dnd-kit/core";
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -30,7 +40,16 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { copyText } from "@/lib/clipboard";
 import { setDevicePref } from "@/lib/devicePrefs";
 import { isTouchDevice, useSwipeReveal } from "@/lib/swipe";
-import { sortProjects, sortProjectSessions, sortUnassigned, UNASSIGNED_SORTS, useUnassignedSort } from "@/lib/sessionOrder";
+import {
+  PROJECT_SORTS,
+  sortProjects,
+  sortProjectSessions,
+  sortUnassigned,
+  UNASSIGNED_SORTS,
+  useProjectSort,
+  useUnassignedSort,
+  type ProjectSort,
+} from "@/lib/sessionOrder";
 import { KIND_LABEL, markLaunching, STATUS_LABEL, statusRank } from "@/lib/session";
 import { formatDateTime, useTimeZone } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -38,7 +57,7 @@ import { api } from "../api.ts";
 import { useLive } from "../live.ts";
 import { openCcSwitch, openFiles, openSession } from "../router.ts";
 import { AddProjectDialog } from "./AddProject.tsx";
-import { RenameInput } from "./RenameInput.tsx";
+import { InlineInput } from "./InlineInput.tsx";
 import { AgentIcon } from "./AgentIcon.tsx";
 import { confirmDialog } from "./Confirm.tsx";
 import { ProjectSettingsDialog } from "./ProjectSettings.tsx";
@@ -135,6 +154,32 @@ function Count({ n }: { n: number }) {
   return <span className="ml-1 rounded-full bg-muted px-1.5 text-[10px] leading-4 text-muted-foreground tabular-nums">{n}</span>;
 }
 
+/** 列表右上角的排序方式：直接点选，不用下拉菜单。 */
+function SortSwitch<T extends string>(props: { value: T; options: { value: T; label: string; hint: string }[]; onChange: (v: T) => void }) {
+  return (
+    <div className="flex items-center justify-end px-2 pb-1.5">
+      <div className="flex shrink-0 rounded-md bg-muted p-0.5">
+        {props.options.map((o) => (
+          <Tooltip key={o.value}>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => props.onChange(o.value)}
+                className={cn(
+                  "rounded px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground",
+                  props.value === o.value && "bg-background text-foreground shadow-xs",
+                )}
+              >
+                {o.label}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>{o.hint}</TooltipContent>
+          </Tooltip>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** 带提示的图标按钮。 */
 function IconAction(props: {
   label: string;
@@ -190,7 +235,31 @@ function ProjectsTab(props: {
   activeFiles: string | null;
   onAdd: () => void;
 }) {
-  const projects = sortProjects(props.overview.projects);
+  const sort = useProjectSort();
+  const [touch] = useState(isTouchDevice);
+  // 拖动后先按新顺序显示，等服务端的新顺序推送过来再以它为准
+  const [optimistic, setOptimistic] = useState<string[] | null>(null);
+  const draggedRef = useRef(false);
+  const projects = sortProjects(props.overview.projects, sort);
+  const orderKey = projects.map((p) => p.id).join(",");
+  useEffect(() => setOptimistic(null), [orderKey]);
+  const shown = optimistic ? optimistic.map((id) => projects.find((p) => p.id === id)).filter((p): p is ProjectView => !!p) : projects;
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { distance: 4 } }),
+  );
+  const onDragEnd = ({ active, over }: DragEndEvent) => {
+    setTimeout(() => (draggedRef.current = false), 0);
+    if (!over || active.id === over.id) return;
+    const ids = shown.map((p) => p.id);
+    const next = arrayMove(ids, ids.indexOf(String(active.id)), ids.indexOf(String(over.id)));
+    setOptimistic(next);
+    void api.reorderProjects(next).catch((err) => {
+      setOptimistic(null);
+      fail(err);
+    });
+  };
 
   if (projects.length === 0) {
     return (
@@ -202,24 +271,81 @@ function ProjectsTab(props: {
       </SectionEmpty>
     );
   }
+  const group = (p: ProjectView, drag?: DragHandle) => (
+    <ProjectGroup
+      key={p.id}
+      project={p}
+      sessions={p.sessions.filter(props.visible)}
+      sort={sort}
+      activePane={props.activePane}
+      filesOpen={props.activeFiles === p.id}
+      drag={drag}
+    />
+  );
   return (
-    <div className="flex flex-col gap-4">
-      {projects.map((p) => (
-        <ProjectGroup
-          key={p.id}
-          project={p}
-          sessions={p.sessions.filter(props.visible)}
-          activePane={props.activePane}
-          filesOpen={props.activeFiles === p.id}
-        />
-      ))}
+    <div className="flex flex-col">
+      <SortSwitch value={sort} options={PROJECT_SORTS} onChange={(v) => setDevicePref("projectSort", v)} />
+      {sort === "custom" ? (
+        // 项目高矮差别很大（会话多的很长），按指针落在哪个项目上判断，而不是比较中心点
+        <DndContext sensors={sensors} collisionDetection={pointerFirst} onDragStart={() => (draggedRef.current = true)} onDragEnd={onDragEnd}>
+          <SortableContext items={shown.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+            <div className="flex flex-col gap-4">
+              {shown.map((p) => (
+                <SortableProject key={p.id} id={p.id} touch={touch} draggedRef={draggedRef}>
+                  {(drag) => group(p, drag)}
+                </SortableProject>
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
+      ) : (
+        <div className="flex flex-col gap-4">{shown.map((p) => group(p))}</div>
+      )}
     </div>
   );
 }
 
-function ProjectGroup(props: { project: ProjectView; sessions: Session[]; activePane: string | null; filesOpen: boolean }) {
-  const { project, sessions, activePane } = props;
+const pointerFirst: CollisionDetection = (args) => {
+  const hits = pointerWithin(args);
+  return hits.length > 0 ? hits : closestCenter(args);
+};
+
+/** 拖动项目的把手：鼠标按住标题拖，触屏按住标题右侧的把手拖。 */
+type DragHandle = { listeners: Record<string, unknown> | undefined; touch: boolean };
+
+function SortableProject(props: {
+  id: string;
+  touch: boolean;
+  draggedRef: React.RefObject<boolean>;
+  children: (drag: DragHandle) => ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.id });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
+      className={cn(isDragging && "relative z-10 rounded-lg bg-background shadow-lg ring-1 ring-border")}
+      // 拖动结束时浏览器还会补发一次 click，不能把它当成点击
+      onClickCapture={(e) => props.draggedRef.current && (e.stopPropagation(), e.preventDefault())}
+      {...attributes}
+      tabIndex={-1}
+    >
+      {props.children({ listeners, touch: props.touch })}
+    </div>
+  );
+}
+
+function ProjectGroup(props: {
+  project: ProjectView;
+  sessions: Session[];
+  sort: ProjectSort;
+  activePane: string | null;
+  filesOpen: boolean;
+  drag?: DragHandle;
+}) {
+  const { project, sessions, activePane, drag } = props;
   const [settings, setSettings] = useState(false);
+  const [editingNote, setEditingNote] = useState(false);
 
   const start = async (kind: SessionKind) => {
     try {
@@ -231,18 +357,36 @@ function ProjectGroup(props: { project: ProjectView; sessions: Session[]; active
     }
   };
 
-  const sorted = sortProjectSessions(sessions);
+  const sorted = sortProjectSessions(sessions, props.sort);
   const starters: AgentKind[] = project.defaultAgent === "codex" ? ["codex", "claude"] : ["claude", "codex"];
 
   return (
     <section>
       <ContextMenu>
         <ContextMenuTrigger asChild>
-          <div className="flex items-center gap-1 rounded-md px-2 py-1">
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-semibold">{project.name}</div>
-              <div className="truncate font-mono text-[11px] text-muted-foreground" title={project.path}>
-                {shortPath(project.path)}
+          <div
+            className={cn("flex items-center gap-1 rounded-md px-2 py-1", drag && !drag.touch && "cursor-grab active:cursor-grabbing")}
+            {...(drag && !drag.touch ? drag.listeners : {})}
+          >
+            {/* 备注醒目地显示在最上面，文件夹名和路径退到下面一行；双击编辑备注 */}
+            <div className="min-w-0 flex-1" onDoubleClick={() => setEditingNote(true)}>
+              {editingNote ? (
+                <InlineInput
+                  label="项目备注"
+                  initial={project.note ?? ""}
+                  placeholder={`给「${project.name}」写个备注，留空清除`}
+                  onSave={(note) => api.updateProject(project.id, { note })}
+                  onDone={() => setEditingNote(false)}
+                  className="text-base font-semibold"
+                />
+              ) : project.note ? (
+                <div className="truncate text-base leading-6 font-semibold">{project.note}</div>
+              ) : (
+                <div className="truncate text-sm font-semibold">{project.name}</div>
+              )}
+              <div className="truncate text-[11px] text-muted-foreground" title={project.path}>
+                {project.note && <span className="font-medium text-foreground/70">{project.name} · </span>}
+                <span className="font-mono">{shortPath(project.path)}</span>
               </div>
             </div>
             {/* 新开会话：直接点图标，不用下拉菜单 */}
@@ -261,10 +405,17 @@ function ProjectGroup(props: { project: ProjectView; sessions: Session[]; active
               <IconAction label="项目设置" onClick={() => setSettings(true)}>
                 <Settings2Icon />
               </IconAction>
+              {drag?.touch && (
+                <span {...drag.listeners} className="-mr-1 flex touch-none items-center self-stretch px-1.5 text-muted-foreground" aria-label="拖动排序">
+                  <GripVerticalIcon className="size-4" />
+                </span>
+              )}
             </div>
           </div>
         </ContextMenuTrigger>
-        <ContextMenuContent className="w-52">
+        <ContextMenuContent className="w-52" onCloseAutoFocus={(e) => editingNote && e.preventDefault()}>
+          <ContextMenuItem onSelect={() => setEditingNote(true)}>{project.note ? "修改备注" : "添加备注"}</ContextMenuItem>
+          <ContextMenuSeparator />
           {starters.map((k) => (
             <ContextMenuItem key={k} onSelect={() => void start(k)}>
               新开 {KIND_LABEL[k]}
@@ -377,7 +528,14 @@ function SessionRow({
             <div className="min-w-0 flex-1">
               {/* after: 伪元素铺满整行，整行可点；操作按钮用 z-10 浮在上面 */}
               {renaming ? (
-                <RenameInput paneId={s.paneId} initial={s.title} onDone={() => setRenaming(false)} className="relative z-10 -my-0.5" />
+                <InlineInput
+                  label="会话名称"
+                  initial={s.title}
+                  placeholder="留空恢复自动标题"
+                  onSave={(v) => api.rename(s.paneId, v || null)}
+                  onDone={() => setRenaming(false)}
+                  className="relative z-10 -my-0.5"
+                />
               ) : (
                 <button className="block w-full truncate text-left text-sm after:absolute after:inset-0" onClick={() => openSession(s.paneId)}>
                   {s.title}
@@ -564,26 +722,7 @@ function UnassignedTab({ sessions, activePane }: { sessions: Session[]; activePa
   }
   return (
     <div className="flex flex-col gap-0.5">
-      <div className="flex items-center justify-end px-2 pb-1.5">
-        <div className="flex shrink-0 rounded-md bg-muted p-0.5">
-          {UNASSIGNED_SORTS.map((o) => (
-            <Tooltip key={o.value}>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => setDevicePref("unassignedSort", o.value)}
-                  className={cn(
-                    "rounded px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground",
-                    sort === o.value && "bg-background text-foreground shadow-xs",
-                  )}
-                >
-                  {o.label}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>{o.hint}</TooltipContent>
-            </Tooltip>
-          ))}
-        </div>
-      </div>
+      <SortSwitch value={sort} options={UNASSIGNED_SORTS} onChange={(v) => setDevicePref("unassignedSort", v)} />
       {sort === "herdr" ? (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={() => (draggedRef.current = true)} onDragEnd={onDragEnd}>
           <SortableContext items={shown.map((s) => s.paneId)} strategy={verticalListSortingStrategy}>

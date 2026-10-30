@@ -11,7 +11,7 @@ import { themeKey, useTerminalTheme } from "@/lib/terminalTheme";
 import { uploadFile } from "@/lib/upload";
 import { api } from "../api.ts";
 import { useTerminalSizing } from "@/lib/devicePrefs";
-import { navigationOrder, useUnassignedSort } from "@/lib/sessionOrder";
+import { navigationOrder, useProjectSort, useUnassignedSort } from "@/lib/sessionOrder";
 import { useSwipeNav } from "@/lib/swipe";
 import { useLive, usePane, useWide } from "../live.ts";
 import { openFiles, openSession } from "../router.ts";
@@ -21,7 +21,7 @@ import { FileBrowser } from "./FileBrowser.tsx";
 import type { TerminalHandle } from "./GhosttyTerminal.tsx";
 import { KeyBar } from "./KeyBar.tsx";
 import { AgentIcon } from "./AgentIcon.tsx";
-import { RenameInput } from "./RenameInput.tsx";
+import { InlineInput } from "./InlineInput.tsx";
 import { SessionActions } from "./SessionActions.tsx";
 
 // 终端引擎含 ~400KB 的 WASM，按需加载，总览页打开更快
@@ -95,12 +95,13 @@ export function SessionPage({ paneId }: { paneId: string }) {
   }, [overview, paneId]);
 
   // 手机上在标题栏左右滑，切到列表里的上一个 / 下一个会话
+  const projectSort = useProjectSort();
   const unassignedSort = useUnassignedSort();
   const neighbors = useMemo(() => {
-    const list = overview ? navigationOrder(overview, unassignedSort) : [];
+    const list = overview ? navigationOrder(overview, projectSort, unassignedSort) : [];
     const i = list.findIndex((s) => s.paneId === paneId);
     return { prev: i > 0 ? list[i - 1]!.paneId : null, next: i >= 0 && i < list.length - 1 ? list[i + 1]!.paneId : null };
-  }, [overview, unassignedSort, paneId]);
+  }, [overview, projectSort, unassignedSort, paneId]);
   const swipe = useSwipeNav(
     neighbors.prev ? () => openSession(neighbors.prev) : null,
     neighbors.next ? () => openSession(neighbors.next) : null,
@@ -158,7 +159,14 @@ export function SessionPage({ paneId }: { paneId: string }) {
           {...swipe.handlers}
         >
           {renaming ? (
-            <RenameInput paneId={paneId} initial={session.title} onDone={() => setRenaming(false)} className="font-medium" />
+            <InlineInput
+              label="会话名称"
+              initial={session.title}
+              placeholder="留空恢复自动标题"
+              onSave={(v) => api.rename(paneId, v || null)}
+              onDone={() => setRenaming(false)}
+              className="font-medium"
+            />
           ) : (
             // 双击标题重命名
             <div className="truncate text-sm font-medium" onDoubleClick={() => setRenaming(true)}>

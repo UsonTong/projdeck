@@ -213,6 +213,12 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
     return { ok: true };
   });
 
+  app.post<{ Body: { ids?: string[] } }>("/api/projects/order", async (req) => {
+    service.reorderProjects((req.body?.ids ?? []).map(String));
+    live.scheduleOverview();
+    return { ok: true };
+  });
+
   app.patch<{ Params: { id: string }; Body: UpdateProjectBody }>("/api/projects/:id", async (req) => {
     const project = service.updateProject(req.params.id, req.body);
     live.scheduleOverview();

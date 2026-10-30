@@ -14,6 +14,10 @@ export interface Project {
   agentArgs: Record<AgentKind, string[]>;
   /** 是否推送这个项目里会话的完成 / 需处理通知（未设置视为开启）。 */
   notify?: boolean;
+  /** 备注：只在项目列表里醒目地显示，方便认出项目，不影响别的地方。 */
+  note?: string;
+  /** 「自定义」排序下的位置（拖动调整），越小越靠前。 */
+  order?: number;
 }
 
 /** 一个 herdr pane，在 projdeck 中称为「会话」。 */
@@ -99,6 +103,8 @@ export interface TranscriptPage {
 export type CreateProjectBody = { name: string; git?: boolean } | { path: string; name?: string };
 export interface UpdateProjectBody {
   notify?: boolean;
+  /** 空字符串清除备注。 */
+  note?: string;
   name?: string;
   archived?: boolean;
   defaultAgent?: AgentKind;

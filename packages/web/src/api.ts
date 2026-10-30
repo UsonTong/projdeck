@@ -76,6 +76,7 @@ export const api = {
   ccswitchSwitch: (app: string, id: string) => request<CcSwitchStatus & { launched: boolean }>("POST", "/api/ccswitch/switch", { app, id }),
   ccswitchUsage: (range: CcUsageRange, app: string) =>
     request<CcUsage>("GET", `/api/ccswitch/usage?range=${range}${app ? `&app=${encodeURIComponent(app)}` : ""}`),
+  reorderProjects: (ids: string[]) => request("POST", "/api/projects/order", { ids }),
   rename: (paneId: string, label: string | null) => request("POST", `${pane(paneId)}/rename`, { label }),
   moveBefore: (paneId: string, beforePaneId: string | null) => request("POST", `${pane(paneId)}/move-before`, { beforePaneId }),
   moveToProject: (paneId: string, projectId: string) => request("POST", `${pane(paneId)}/project`, { projectId }),

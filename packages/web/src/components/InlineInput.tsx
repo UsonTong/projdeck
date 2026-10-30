@@ -1,13 +1,19 @@
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { api } from "../api.ts";
 
 /**
- * 原地重命名会话：回车或点别处保存，Esc 取消；清空后保存恢复为 Claude / Codex 自动生成的标题。
- * 名字存在 herdr 里，电脑上的 herdr 侧栏同步显示。
+ * 原地编辑一段文字（会话名称、项目备注）：回车或点别处保存，Esc 取消。没改动时不保存。
  */
-export function RenameInput(props: { paneId: string; initial: string; onDone: () => void; className?: string }) {
+export function InlineInput(props: {
+  label: string;
+  initial: string;
+  placeholder?: string;
+  /** 保存（去掉首尾空白后的值，可能为空）。 */
+  onSave: (value: string) => Promise<unknown>;
+  onDone: () => void;
+  className?: string;
+}) {
   const ref = useRef<HTMLInputElement>(null);
   const done = useRef(false);
 
@@ -23,15 +29,15 @@ export function RenameInput(props: { paneId: string; initial: string; onDone: ()
     props.onDone();
     const value = ref.current?.value.trim() ?? "";
     if (!save || value === props.initial) return;
-    api.rename(props.paneId, value || null).catch((err: Error) => toast.error(err.message));
+    props.onSave(value).catch((err: Error) => toast.error(err.message));
   };
 
   return (
     <input
       ref={ref}
       defaultValue={props.initial}
-      aria-label="会话名称"
-      placeholder="留空恢复自动标题"
+      aria-label={props.label}
+      placeholder={props.placeholder}
       className={cn("w-full min-w-0 rounded-md bg-background px-1.5 py-0.5 text-sm ring-1 ring-ring outline-none", props.className)}
       onKeyDown={(e) => {
         e.stopPropagation();
@@ -41,6 +47,7 @@ export function RenameInput(props: { paneId: string; initial: string; onDone: ()
       onBlur={() => finish(true)}
       onClick={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
     />
   );
 }

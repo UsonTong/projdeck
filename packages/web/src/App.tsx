@@ -138,7 +138,9 @@ function Shell() {
   const activePane = route.kind === "session" ? route.paneId : null;
   const activeFiles = route.kind === "files" ? route.projectId : null;
 
-  const page =
+  // 切换页面时新页面淡入，不生硬地跳过去
+  const pageKey = route.kind === "session" ? `s:${route.paneId}` : route.kind === "files" ? `f:${route.projectId}` : route.kind;
+  const content =
     route.kind === "session" ? (
       <SessionPage key={route.paneId} paneId={route.paneId} />
     ) : route.kind === "files" ? (
@@ -146,6 +148,11 @@ function Shell() {
     ) : route.kind === "ccswitch" ? (
       <CcSwitchPage section={route.section} />
     ) : null;
+  const page = content && (
+    <div key={pageKey} className="flex min-h-0 min-w-0 flex-1 flex-col animate-in duration-200 ease-out fade-in-0">
+      {content}
+    </div>
+  );
 
   if (wide) {
     return (
