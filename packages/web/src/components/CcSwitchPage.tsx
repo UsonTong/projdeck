@@ -1,6 +1,6 @@
 import type { CcSwitchApp, CcSwitchStatus, CcUsage, CcUsageRange, CcUsageRow } from "@projdeck/shared";
 import { ArrowLeftIcon, ArrowRightLeftIcon, CheckIcon, RotateCwIcon } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -46,8 +46,14 @@ const host = (url: string | null) => {
 
 /** 栏目切换按钮（侧栏里竖排，手机上横排）。 */
 function NavItem(props: { active: boolean; onClick: () => void; children: React.ReactNode; sub?: string | null }) {
+  // 手机上栏目横排，当前栏目可能在屏幕外，滚到看得见
+  const ref = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (props.active) ref.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [props.active]);
   return (
     <button
+      ref={ref}
       onClick={props.onClick}
       className={cn(
         "flex shrink-0 items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-accent/60",
@@ -116,6 +122,12 @@ function CcSwitchLite({ section, offer }: { section: string; offer: { enabling: 
           {a.label}
         </NavItem>
       ))}
+      {wide && <div className="px-2.5 pt-3 pb-1 text-xs text-muted-foreground">扩展</div>}
+      {EXTRA_SECTIONS.map((x) => (
+        <NavItem key={x.key} active={section === x.key} onClick={() => openCcSwitch(x.key)}>
+          {x.label}
+        </NavItem>
+      ))}
     </>
   );
 
@@ -161,9 +173,21 @@ function CcSwitchLite({ section, offer }: { section: string; offer: { enabling: 
           ) : (
             <nav className="flex shrink-0 gap-1 overflow-x-auto border-b px-2 py-1.5 [scrollbar-width:none]">{nav}</nav>
           )}
-          <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+          <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
             {section === "usage" ? (
               <UsageView onTodayCost={setTodayCost} />
+            ) : section === "mcp" ? (
+              <NeedsBridge>
+                <McpView />
+              </NeedsBridge>
+            ) : section === "prompts" ? (
+              <NeedsBridge>
+                <PromptsView apps={status.apps} />
+              </NeedsBridge>
+            ) : section === "skills" ? (
+              <NeedsBridge>
+                <SkillsView />
+              </NeedsBridge>
             ) : app ? (
               <ProvidersView app={app} onStatus={setStatus} />
             ) : (
@@ -549,3 +573,274 @@ function LogsTable({ logs }: { logs: CcUsage["logs"] }) {
     </table>
   );
 }
+
+// ---------------------------------------------------------------------------
+// MCP、Prompts、Skills：经调试端口在电脑上的 CC Switch 里操作
+// ---------------------------------------------------------------------------
+
+const EXTRA_SECTIONS = [
+  { key: "mcp", label: "MCP" },
+  { key: "prompts", label: "Prompts" },
+  { key: "skills", label: "Skills" },
+];
+
+/** MCP / Skills 可以分别启用到哪些应用（与 CC Switch 的列一致）。 */
+const TARGET_APPS: { app: string; label: string }[] = [
+  { app: "claude", label: "Claude" },
+  { app: "codex", label: "Codex" },
+  { app: "gemini", label: "Gemini" },
+  { app: "grokbuild", label: "Grok" },
+  { app: "opencode", label: "OpenCode" },
+  { app: "openclaw", label: "OpenClaw" },
+  { app: "hermes", label: "Hermes" },
+  { app: "pi", label: "Pi" },
+  { app: "mcode", label: "MiniMax" },
+  { app: "kimi", label: "Kimi" },
+  { app: "agy", label: "Antigravity" },
+];
+
+/** 这些栏目要经调试端口操作 CC Switch；没开启时提示开启（会重启一下电脑上的 CC Switch）。 */
+function NeedsBridge({ children }: { children: React.ReactNode }) {
+  const [state, setState] = useState<"checking" | "ok" | "off">("checking");
+  const [enabling, setEnabling] = useState(false);
+  useEffect(() => {
+    api.ccswitchBridge().then((b) => setState(b.available ? "ok" : "off"), () => setState("off"));
+  }, []);
+  if (state === "ok") return <>{children}</>;
+  if (state === "checking")
+    return (
+      <div className="flex h-40 items-center justify-center">
+        <Spinner className="size-5" />
+      </div>
+    );
+  return (
+    <div className="mx-auto flex max-w-md flex-col items-center gap-3 p-6 text-center text-sm text-muted-foreground">
+      <p>这一栏要直接操作电脑上的 CC Switch，需要它开一个只监听本机的调试端口（开启时它会重启一下）。</p>
+      <Button
+        size="sm"
+        disabled={enabling}
+        onClick={async () => {
+          setEnabling(true);
+          try {
+            await api.ccswitchEnableBridge();
+            setState("ok");
+          } catch (err) {
+            toast.error((err as Error).message);
+          } finally {
+            setEnabling(false);
+          }
+        }}
+      >
+        {enabling && <Spinner data-icon="inline-start" />}
+        开启
+      </Button>
+    </div>
+  );
+}
+
+/** 一排应用开关：点一下启用 / 停用。 */
+function AppChips(props: { apps: Record<string, boolean | undefined>; busy: string | null; onToggle: (app: string, enabled: boolean) => void }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {TARGET_APPS.map((a) => {
+        const on = !!props.apps[a.app];
+        return (
+          <button
+            key={a.app}
+            disabled={props.busy === a.app}
+            onClick={() => props.onToggle(a.app, !on)}
+            aria-pressed={on}
+            className={cn(
+              "flex items-center gap-1 rounded-full px-2.5 py-1 text-xs ring-1 transition-colors disabled:opacity-50",
+              on ? "bg-primary text-primary-foreground ring-primary" : "text-muted-foreground ring-border hover:bg-accent/60",
+            )}
+          >
+            {props.busy === a.app ? <Spinner className="size-3" /> : on && <CheckIcon className="size-3" />}
+            {a.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+type McpServer = {
+  id: string;
+  name: string;
+  description?: string;
+  server: { type?: string; command?: string; args?: string[]; url?: string };
+  apps: Record<string, boolean | undefined>;
+};
+
+function McpView() {
+  const [servers, setServers] = useState<McpServer[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const load = useCallback(
+    () =>
+      api.ccInvoke<Record<string, McpServer>>("get_mcp_servers").then(
+        (r) => setServers(Object.values(r)),
+        (err: Error) => toast.error(err.message),
+      ),
+    [],
+  );
+  useEffect(() => void load(), [load]);
+  const toggle = async (s: McpServer, app: string, enabled: boolean) => {
+    setBusy(`${s.id}|${app}`);
+    try {
+      await api.ccInvoke("set_mcp_enabled", { app, id: s.id, enabled });
+      await load();
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+  if (!servers) return <Loading />;
+  return (
+    <div className="mx-auto flex max-w-2xl flex-col gap-3 p-4">
+      <p className="text-xs text-muted-foreground">点应用名启用或停用这个 MCP 服务器，CC Switch 会同步写进对应应用的配置。新增、编辑请在电脑上的完整界面里操作。</p>
+      {servers.length === 0 && <Empty text="还没有 MCP 服务器" />}
+      {servers.map((s) => (
+        <div key={s.id} className="flex flex-col gap-2.5 rounded-xl px-4 py-3 ring-1 ring-border">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="truncate text-sm font-medium">{s.name}</span>
+              <span className="shrink-0 rounded bg-muted px-1.5 py-px font-mono text-[10px] text-muted-foreground">{s.server.type ?? "stdio"}</span>
+            </div>
+            <div className="truncate font-mono text-xs text-muted-foreground">{s.server.url ?? [s.server.command, ...(s.server.args ?? [])].join(" ")}</div>
+            {s.description && <div className="mt-1 text-xs text-muted-foreground">{s.description}</div>}
+          </div>
+          <AppChips
+            apps={s.apps}
+            busy={busy?.startsWith(`${s.id}|`) ? busy.slice(s.id.length + 1) : null}
+            onToggle={(app, on) => void toggle(s, app, on)}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+type Prompt = { id: string; name: string; content: string; description?: string; enabled: boolean };
+
+function PromptsView({ apps }: { apps: CcSwitchApp[] }) {
+  const [app, setApp] = useState(apps[0]?.app ?? "claude");
+  const [prompts, setPrompts] = useState<Prompt[] | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const options = [...new Map([...apps.map((a) => [a.app, a.label] as const), ["hermes", "Hermes"] as const]).entries()].map(([value, label]) => ({
+    value,
+    label,
+  }));
+  const load = useCallback(() => {
+    setPrompts(null);
+    api.ccInvoke<Record<string, Prompt>>("get_prompts", { app }).then(
+      (r) => setPrompts(Object.values(r)),
+      (err: Error) => toast.error(err.message),
+    );
+  }, [app]);
+  useEffect(load, [load]);
+  const enable = async (p: Prompt) => {
+    setBusy(p.id);
+    try {
+      await api.ccInvoke("enable_prompt", { app, id: p.id });
+      toast.success(`已启用「${p.name}」`);
+      load();
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <div className="mx-auto flex max-w-2xl flex-col gap-3 p-4">
+      {/* 应用多时这一行可以横向滑动，不撑宽整页 */}
+      <div className="-mx-4 overflow-x-auto px-4 [scrollbar-width:none]">
+        <Segmented value={app} options={options} onChange={setApp} className="w-max" />
+      </div>
+      <p className="text-xs text-muted-foreground">启用一个提示词，CC Switch 会把它写进这个应用的提示词文件（如 CLAUDE.md、AGENTS.md）。新增、编辑请在电脑上的完整界面里操作。</p>
+      {!prompts ? (
+        <Loading />
+      ) : prompts.length === 0 ? (
+        <Empty text="这个应用还没有提示词" />
+      ) : (
+        prompts.map((p) => (
+          <div key={p.id} className={cn("rounded-xl ring-1 ring-border", p.enabled && "bg-accent ring-foreground/30")}>
+            <div className="flex items-center gap-3 px-4 py-3">
+              <button className="min-w-0 flex-1 text-left" onClick={() => setOpen(open === p.id ? null : p.id)}>
+                <div className="truncate text-sm font-medium">{p.name}</div>
+                {p.description && <div className="truncate text-xs text-muted-foreground">{p.description}</div>}
+              </button>
+              {p.enabled ? (
+                <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+                  <CheckIcon className="size-4 text-foreground" />
+                  使用中
+                </span>
+              ) : (
+                <Button size="sm" variant="outline" disabled={busy === p.id} onClick={() => void enable(p)}>
+                  {busy === p.id && <Spinner data-icon="inline-start" />}
+                  启用
+                </Button>
+              )}
+            </div>
+            {open === p.id && (
+              <pre className="max-h-80 overflow-auto border-t px-4 py-3 text-xs whitespace-pre-wrap text-muted-foreground">{p.content}</pre>
+            )}
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+type Skill = { id: string; name: string; description?: string; repoOwner?: string; repoName?: string; apps: Record<string, boolean | undefined> };
+
+function SkillsView() {
+  const [skills, setSkills] = useState<Skill[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const load = useCallback(
+    () =>
+      api.ccInvoke<Skill[]>("get_installed_skills").then(
+        (r) => setSkills(r),
+        (err: Error) => toast.error(err.message),
+      ),
+    [],
+  );
+  useEffect(() => void load(), [load]);
+  const toggle = async (s: Skill, app: string, enabled: boolean) => {
+    setBusy(`${s.id}|${app}`);
+    try {
+      await api.ccInvoke("toggle_skill_app", { id: s.id, app, enabled });
+      await load();
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+  if (!skills) return <Loading />;
+  return (
+    <div className="mx-auto flex max-w-2xl flex-col gap-3 p-4">
+      <p className="text-xs text-muted-foreground">点应用名启用或停用这个 Skill。安装、更新、卸载请在电脑上的完整界面里操作。</p>
+      {skills.length === 0 && <Empty text="还没有通过 CC Switch 安装的 Skill" />}
+      {skills.map((s) => (
+        <div key={s.id} className="flex flex-col gap-2.5 rounded-xl px-4 py-3 ring-1 ring-border">
+          <div className="min-w-0">
+            <div className="truncate text-sm font-medium">{s.name}</div>
+            {s.repoOwner && <div className="truncate font-mono text-xs text-muted-foreground">{`${s.repoOwner}/${s.repoName ?? ""}`}</div>}
+            {s.description && <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">{s.description}</div>}
+          </div>
+          <AppChips apps={s.apps} busy={busy?.startsWith(`${s.id}|`) ? busy.slice(s.id.length + 1) : null} onToggle={(app, on) => void toggle(s, app, on)} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const Loading = () => (
+  <div className="flex h-40 items-center justify-center">
+    <Spinner className="size-5" />
+  </div>
+);
+
+const Empty = ({ text }: { text: string }) => <div className="p-6 text-center text-sm text-muted-foreground">{text}</div>;

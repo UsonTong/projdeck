@@ -76,6 +76,9 @@ export const api = {
   ccswitchSwitch: (app: string, id: string) => request<CcSwitchStatus & { launched: boolean }>("POST", "/api/ccswitch/switch", { app, id }),
   ccswitchBridge: () => request<{ available: boolean; ui: { version: string; exact: boolean } | null }>("GET", "/api/ccswitch/bridge"),
   ccswitchEnableBridge: () => request<{ available: boolean }>("POST", "/api/ccswitch/bridge/enable"),
+  /** 调用电脑上 CC Switch 的命令（经调试端口转发，等同于在它界面里操作）。 */
+  ccInvoke: <T,>(cmd: string, args: Record<string, unknown> = {}) =>
+    request<{ result: T }>("POST", "/api/ccswitch/invoke", { cmd, args }).then((r) => r.result),
   ccswitchUsage: (range: CcUsageRange, app: string) =>
     request<CcUsage>("GET", `/api/ccswitch/usage?range=${range}${app ? `&app=${encodeURIComponent(app)}` : ""}`),
   reorderProjects: (ids: string[]) => request("POST", "/api/projects/order", { ids }),
