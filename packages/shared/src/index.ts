@@ -180,3 +180,13 @@ export type ServerMessage =
   | { type: "transcript"; paneId: string; page: TranscriptPage }
   /** 本机 Ghostty 配色变了（例如 dankcolors 随壁纸重新生成），前端重新获取主题。 */
   | { type: "theme" };
+
+/** CC Switch（Claude 供应商切换工具）的状态。不含任何密钥。 */
+export interface CcSwitchStatus {
+  installed: boolean;
+  /** Claude 的供应商，按 CC Switch 里的顺序。 */
+  providers: { id: string; name: string; website: string | null }[];
+  current: string | null;
+  /** 现在不能在外部切换的原因（例如 CC Switch 正在用代理接管）；可以切换时为 null。 */
+  blocked: string | null;
+}

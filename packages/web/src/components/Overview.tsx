@@ -1,7 +1,8 @@
-import type { AgentKind, ArchivedSession, Overview, ProjectView, Session, SessionKind } from "@projdeck/shared";
+import type { AgentKind, ArchivedSession, CcSwitchStatus, Overview, ProjectView, Session, SessionKind } from "@projdeck/shared";
 import {
   ArchiveIcon,
   ArchiveRestoreIcon,
+  ArrowRightLeftIcon,
   FolderInputIcon,
   FolderOpenIcon,
   GripVerticalIcon,
@@ -37,6 +38,7 @@ import { api } from "../api.ts";
 import { useLive } from "../live.ts";
 import { openFiles, openSession } from "../router.ts";
 import { AddProjectDialog } from "./AddProject.tsx";
+import { CcSwitchDialog } from "./CcSwitchDialog.tsx";
 import { RenameInput } from "./RenameInput.tsx";
 import { AgentIcon } from "./AgentIcon.tsx";
 import { confirmDialog } from "./Confirm.tsx";
@@ -62,6 +64,10 @@ export function OverviewPage({ activePane, activeFiles }: { activePane: string |
   const [showHidden, setShowHidden] = useState(false);
   const [adding, setAdding] = useState(false);
   const [settings, setSettings] = useState(false);
+  // 装了 CC Switch 才显示切换 Claude 供应商的按钮
+  const [ccswitch, setCcswitch] = useState<CcSwitchStatus | null>(null);
+  const [ccswitchOpen, setCcswitchOpen] = useState(false);
+  useEffect(() => void api.ccswitch().then(setCcswitch, () => undefined), []);
 
   if (!overview) {
     return (
@@ -99,6 +105,14 @@ export function OverviewPage({ activePane, activeFiles }: { activePane: string |
               <MorphIcon icon={showHidden ? Eye : EyeOff} />
             </IconAction>
           )}
+          {ccswitch?.installed && (
+            <IconAction
+              label={`Claude 供应商：${ccswitch.providers.find((p) => p.id === ccswitch.current)?.name ?? "未知"}（CC Switch）`}
+              onClick={() => setCcswitchOpen(true)}
+            >
+              <ArrowRightLeftIcon />
+            </IconAction>
+          )}
           <IconAction label="设置" onClick={() => setSettings(true)}>
             <SettingsIcon />
           </IconAction>
@@ -118,6 +132,7 @@ export function OverviewPage({ activePane, activeFiles }: { activePane: string |
 
       <AddProjectDialog open={adding} onOpenChange={setAdding} />
       <SettingsDialog open={settings} onOpenChange={setSettings} />
+      {ccswitch?.installed && <CcSwitchDialog open={ccswitchOpen} onOpenChange={setCcswitchOpen} status={ccswitch} onStatus={setCcswitch} />}
     </div>
   );
 }

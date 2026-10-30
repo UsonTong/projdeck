@@ -1,5 +1,6 @@
 import type {
   ArchivedSession,
+  CcSwitchStatus,
   CreateProjectBody,
   DirListing,
   FolderListing,
@@ -69,6 +70,8 @@ export const api = {
   keys: (paneId: string, keys: string[]) => request("POST", `${pane(paneId)}/keys`, { keys }),
   setHidden: (paneId: string, hidden: boolean) => request("POST", `${pane(paneId)}/hidden`, { hidden }),
   /** 拖动排序：把会话所在的 herdr 工作区移到另一个会话之前（null = 移到最后）。 */
+  ccswitch: () => request<CcSwitchStatus>("GET", "/api/ccswitch"),
+  ccswitchClaude: (id: string) => request<CcSwitchStatus & { restarted: boolean }>("POST", "/api/ccswitch/claude", { id }),
   rename: (paneId: string, label: string | null) => request("POST", `${pane(paneId)}/rename`, { label }),
   moveBefore: (paneId: string, beforePaneId: string | null) => request("POST", `${pane(paneId)}/move-before`, { beforePaneId }),
   moveToProject: (paneId: string, projectId: string) => request("POST", `${pane(paneId)}/project`, { projectId }),
