@@ -41,6 +41,7 @@ import { TerminalBridge } from "./terminal.ts";
 import { httpError, type ProjdeckService } from "./service.ts";
 import { MAX_UPLOAD_BYTES, saveUpload, SHARED_UPLOAD_ROOT } from "./uploads.ts";
 import { CcSwitch } from "./ccswitch.ts";
+import { NotifyStream } from "./notifyStream.ts";
 import { CcSwitchBridge, type CcSwitchEvent } from "./ccswitchBridge.ts";
 import { readUsage } from "./ccswitchUsage.ts";
 
@@ -55,7 +56,7 @@ function originHost(origin: string): string | null {
 
 const webDist = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "web", "dist");
 
-export async function buildServer(config: Config, service: ProjdeckService, herdr: HerdrClient, push: PushService) {
+export async function buildServer(config: Config, service: ProjdeckService, herdr: HerdrClient, push: PushService, notifyStream = new NotifyStream()) {
   const app = Fastify({
     logger: { level: process.env.LOG_LEVEL ?? "info" },
     // 生产环境经服务器 Caddy → SSH 隧道 → 本机，真实 IP 在 X-Forwarded-For 中
@@ -275,6 +276,17 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
       String(req.body?.endpoint ?? ""),
     );
     if (!delivered) throw httpError(502, "推送服务没有接受这条通知，请重新开启通知");
+    return { ok: true };
+  });
+
+  // 安卓 App 的通知连接（见 notifyStream.ts）
+  app.get("/api/notify/stream", async (_req, reply) => {
+    reply.hijack();
+    notifyStream.add(reply.raw);
+  });
+  app.post("/api/notify/test", async () => {
+    const n = notifyStream.send({ title: "projdeck 测试通知", body: "能看到这条，说明 App 的通知可以正常收到", tag: "test", url: "/#/" });
+    if (!n) throw httpError(409, "App 的通知连接还没有建立");
     return { ok: true };
   });
 

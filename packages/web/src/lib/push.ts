@@ -6,6 +6,24 @@ import { api } from "../api.ts";
  */
 export type PushState = "unsupported" | "needs-install" | "denied" | "on" | "off";
 
+/**
+ * projdeck 安卓 App 提供的原生接口（WebView 不支持网页推送）。App 自己在后台保持通知连接，
+ * 开关和权限请求由它处理；结果通过 window.__projdeckNotifyResult 回调。
+ */
+interface AppBridge {
+  notificationsEnabled(): boolean;
+  setNotifications(on: boolean): void;
+}
+export const appBridge = (): AppBridge | undefined => (window as unknown as { ProjdeckApp?: AppBridge }).ProjdeckApp;
+
+function appSetNotifications(app: AppBridge, on: boolean): Promise<void> {
+  return new Promise((resolve, reject) => {
+    (window as unknown as { __projdeckNotifyResult?: (ok: boolean) => void }).__projdeckNotifyResult = (ok) =>
+      ok ? resolve() : reject(new Error("没有通知权限：请在系统设置里允许 projdeck 发通知"));
+    app.setNotifications(on);
+  });
+}
+
 const isIos = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 const standalone = () => matchMedia("(display-mode: standalone)").matches || (navigator as { standalone?: boolean }).standalone === true;
 
@@ -15,6 +33,8 @@ async function subscription(): Promise<PushSubscription | null> {
 }
 
 export async function pushState(): Promise<PushState> {
+  const app = appBridge();
+  if (app) return app.notificationsEnabled() ? "on" : "off";
   if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
     return isIos() && !standalone() ? "needs-install" : "unsupported";
   }
@@ -41,6 +61,8 @@ const base64ToBytes = (b64: string) => {
 
 /** 开启：请求通知权限并订阅（必须在点击按钮时调用，浏览器才会弹出权限请求）。 */
 export async function enablePush(): Promise<void> {
+  const app = appBridge();
+  if (app) return appSetNotifications(app, true);
   if ((await Notification.requestPermission()) !== "granted") throw new Error("没有通知权限：请在系统或浏览器设置里允许 projdeck 发通知");
   const reg = await navigator.serviceWorker.ready;
   const { publicKey } = await api.pushKey();
@@ -52,6 +74,8 @@ export async function enablePush(): Promise<void> {
 }
 
 export async function disablePush(): Promise<void> {
+  const app = appBridge();
+  if (app) return appSetNotifications(app, false);
   const sub = await subscription();
   if (!sub) return;
   await api.pushUnsubscribe(sub.endpoint);
@@ -59,6 +83,7 @@ export async function disablePush(): Promise<void> {
 }
 
 export async function testPush(): Promise<void> {
+  if (appBridge()) return api.notifyTest();
   const sub = await subscription();
   if (!sub) throw new Error("这台设备还没开启通知");
   await api.pushTest(sub.endpoint);

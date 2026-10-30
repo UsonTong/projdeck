@@ -1,6 +1,7 @@
 import type { Session } from "@projdeck/shared";
 import type { HerdrClient } from "./herdr/client.ts";
-import type { PushService } from "./push.ts";
+import type { NotifyStream } from "./notifyStream.ts";
+import type { PushPayload, PushService } from "./push.ts";
 import type { ProjdeckService } from "./service.ts";
 
 /** 「需处理」要持续这么久才通知：自动信任文件夹之类会被立刻处理掉的确认框不打扰。 */
@@ -24,11 +25,19 @@ export class Notifier {
   private readonly service: ProjdeckService;
   private readonly herdr: HerdrClient;
   private readonly push: PushService;
+  /** 安卓 App 的通知连接。 */
+  private readonly stream: NotifyStream | null;
 
-  constructor(service: ProjdeckService, herdr: HerdrClient, push: PushService) {
+  constructor(service: ProjdeckService, herdr: HerdrClient, push: PushService, stream: NotifyStream | null = null) {
     this.service = service;
     this.herdr = herdr;
     this.push = push;
+    this.stream = stream;
+  }
+
+  private send(payload: PushPayload): void {
+    this.stream?.send(payload);
+    void this.push.send(payload);
   }
 
   start(): void {
@@ -50,7 +59,7 @@ export class Notifier {
   };
 
   private async check(): Promise<void> {
-    if (this.checking || this.push.count === 0) return;
+    if (this.checking || this.push.count + (this.stream?.count ?? 0) === 0) return;
     this.checking = true;
     try {
       const { overview } = await this.service.refresh();
@@ -81,7 +90,7 @@ export class Notifier {
 
   private async notifyDone(s: Session, projectName: string | null): Promise<void> {
     const reply = await this.service.lastReply(s.paneId).catch(() => null);
-    await this.push.send({
+    this.send({
       title: `${KIND[s.kind as keyof typeof KIND]} 完成了 · ${s.title}`,
       body: [projectName, reply].filter(Boolean).join("\n") || "点开查看结果",
       tag: s.paneId,
@@ -96,7 +105,7 @@ export class Notifier {
       setTimeout(() => {
         this.blockedTimers.delete(s.terminalId);
         if (this.prev.get(s.terminalId) !== "blocked" || this.service.isViewed(s.terminalId)) return;
-        void this.push.send({
+        this.send({
           title: `${KIND[s.kind as keyof typeof KIND]} 需要你处理 · ${s.title}`,
           body: [projectName, "在等你确认权限或选择选项"].filter(Boolean).join("\n"),
           tag: s.paneId,

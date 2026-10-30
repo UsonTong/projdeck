@@ -8,13 +8,15 @@ import { Notifier } from "./notifier.ts";
 import { PushService } from "./push.ts";
 import { startAutoTrust } from "./trust.ts";
 import { pruneUploads, SHARED_UPLOAD_ROOT } from "./uploads.ts";
+import { NotifyStream } from "./notifyStream.ts";
 
 const config = loadConfig();
 const herdr = new HerdrClient(config.herdrSocket);
 const store = new ProjectStore();
 const service = new ProjdeckService(config, herdr, store);
 const push = new PushService();
-const app = await buildServer(config, service, herdr, push);
+const notifyStream = new NotifyStream();
+const app = await buildServer(config, service, herdr, push, notifyStream);
 
 if (!config.passwordHash) {
   app.log.warn("尚未设置登录密码，所有登录都会被拒绝。请运行：pnpm --filter @projdeck/agentd cli set-password");
@@ -33,7 +35,7 @@ herdr
   .catch((err: Error) => app.log.warn(`暂时无法连接 herdr：${err.message}`));
 herdr.subscribe();
 // 会话完成 / 需处理时推送到手机
-const notifier = new Notifier(service, herdr, push);
+const notifier = new Notifier(service, herdr, push, notifyStream);
 notifier.start();
 const stopAutoTrust = startAutoTrust(herdr, () => store.settings.autoTrust, (paneId) =>
   app.log.info(`已自动信任 ${paneId} 的工作目录`),
