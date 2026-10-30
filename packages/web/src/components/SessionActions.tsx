@@ -1,5 +1,5 @@
 import type { Session } from "@projdeck/shared";
-import { AArrowDownIcon, AArrowUpIcon, ArchiveIcon, CheckIcon, EllipsisIcon, EyeIcon, EyeOffIcon, HistoryIcon, type LucideIcon } from "lucide-react";
+import { AArrowDownIcon, AArrowUpIcon, ArchiveIcon, CheckIcon, EllipsisIcon, EyeIcon, EyeOffIcon, HistoryIcon, PencilIcon, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,7 @@ export function SessionActions(props: {
   wide: boolean;
   fontSize: number | null;
   onFontSize: (delta: 1 | -1) => void;
+  onRename: () => void;
 }) {
   const { session } = props;
   const [sheet, setSheet] = useState(false);
@@ -63,6 +64,7 @@ export function SessionActions(props: {
       { key: "font+", label: `放大字号（${props.fontSize}）`, icon: AArrowUpIcon, run: () => props.onFontSize(1), keepOpen: true },
     );
   }
+  actions.push({ key: "rename", label: "重命名", icon: PencilIcon, run: props.onRename });
   actions.push({
     key: "hide",
     label: session.hidden ? "取消隐藏" : "隐藏",

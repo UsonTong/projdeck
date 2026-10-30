@@ -37,6 +37,7 @@ import { api } from "../api.ts";
 import { useLive } from "../live.ts";
 import { openFiles, openSession } from "../router.ts";
 import { AddProjectDialog } from "./AddProject.tsx";
+import { RenameInput } from "./RenameInput.tsx";
 import { AgentIcon } from "./AgentIcon.tsx";
 import { confirmDialog } from "./Confirm.tsx";
 import { ProjectSettingsDialog } from "./ProjectSettings.tsx";
@@ -324,6 +325,7 @@ function SessionRow({
   };
 
   const [moving, setMoving] = useState(false);
+  const [renaming, setRenaming] = useState(false);
 
   // 会话目录在项目里时，可以直接在文件管理器里打开
   const inProject = project && (s.cwd === project.path || s.cwd.startsWith(project.path + "/"));
@@ -365,9 +367,13 @@ function SessionRow({
             <AgentIcon kind={s.kind} status={s.status} />
             <div className="min-w-0 flex-1">
               {/* after: 伪元素铺满整行，整行可点；操作按钮用 z-10 浮在上面 */}
-              <button className="block w-full truncate text-left text-sm after:absolute after:inset-0" onClick={() => openSession(s.paneId)}>
-                {s.title}
-              </button>
+              {renaming ? (
+                <RenameInput paneId={s.paneId} initial={s.title} onDone={() => setRenaming(false)} className="relative z-10 -my-0.5" />
+              ) : (
+                <button className="block w-full truncate text-left text-sm after:absolute after:inset-0" onClick={() => openSession(s.paneId)}>
+                  {s.title}
+                </button>
+              )}
               <div className="truncate text-xs text-muted-foreground">
                 {s.restoreError ? (
                   <span className="text-destructive">目录已不存在</span>
@@ -406,12 +412,14 @@ function SessionRow({
           </div>
         </div>
       </ContextMenuTrigger>
-      <ContextMenuContent className="w-52">
+      <ContextMenuContent className="w-52" onCloseAutoFocus={(e) => renaming && e.preventDefault()}>
         <ContextMenuItem onSelect={() => openSession(s.paneId)}>打开</ContextMenuItem>
         <ContextMenuItem onSelect={() => window.open(`${location.pathname}#/s/${encodeURIComponent(s.paneId)}`, "_blank")}>
           在新标签页打开
         </ContextMenuItem>
         <ContextMenuSeparator />
+        <ContextMenuItem onSelect={() => setRenaming(true)}>重命名</ContextMenuItem>
+        {s.renamed && <ContextMenuItem onSelect={() => void api.rename(s.paneId, null).catch(fail)}>恢复自动标题</ContextMenuItem>}
         <ContextMenuItem onSelect={() => void copyPath(s.cwd)}>复制目录路径</ContextMenuItem>
         {inProject && <ContextMenuItem onSelect={() => openFiles(project.id, s.cwd.slice(project.path.length + 1))}>在文件中查看</ContextMenuItem>}
         <ContextMenuItem onSelect={() => setMoving(true)}>{projectId ? "移到其他项目…" : "移到项目…"}</ContextMenuItem>

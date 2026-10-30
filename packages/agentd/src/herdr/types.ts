@@ -28,6 +28,8 @@ export interface HerdrPane {
   terminal_title?: string;
   terminal_title_stripped?: string;
   agent_status: HerdrAgentStatus;
+  /** 用户起的名字（herdr 的 pane rename），优先于程序设置的终端标题。 */
+  label?: string | null;
   /** herdr 重启后没能恢复这个 pane（例如启动目录已不存在），终端没有启动。 */
   restore_error?: string;
   revision: number;

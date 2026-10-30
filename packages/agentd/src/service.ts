@@ -155,12 +155,13 @@ export class ProjdeckService {
         workspaceId: pane.workspace_id,
         kind,
         status: kind === "shell" ? "unknown" : this.seenStatus(pane.terminal_id, agent?.agent_status ?? pane.agent_status),
-        title: cleanTitle(agent?.terminal_title_stripped ?? pane.terminal_title_stripped) || basename(pane.cwd),
+        title: pane.label || cleanTitle(agent?.terminal_title_stripped ?? pane.terminal_title_stripped) || basename(pane.cwd),
         cwd: pane.cwd,
         conversationId,
         hidden: this.store.isHidden(pane.terminal_id, conversationId),
         order: (workspaceNumber.get(pane.workspace_id) ?? 999) * 1000 + panes.indexOf(pane),
         activeAt: lastActivity(kind, conversationId, pane.cwd, rollout),
+        ...(pane.label ? { renamed: true } : {}),
         ...(pane.restore_error ? { restoreError: pane.restore_error } : {}),
       };
       const projectId = assignments.get(pane.terminal_id) ?? null;
@@ -414,6 +415,14 @@ export class ProjdeckService {
   async setHidden(paneId: string, hidden: boolean): Promise<void> {
     const { session } = await this.lookup(paneId);
     this.store.setHidden(session.terminalId, session.conversationId, hidden);
+    this.snapshot = undefined;
+  }
+
+  /** 重命名会话（herdr 的 pane 名字，电脑上同步显示）；空名字恢复自动标题。 */
+  async rename(paneId: string, label: string | null): Promise<void> {
+    await this.lookup(paneId);
+    const name = label?.trim().slice(0, 200) || null;
+    await this.herdr.renamePane(paneId, name);
     this.snapshot = undefined;
   }
 

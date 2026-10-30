@@ -21,6 +21,7 @@ import { FileBrowser } from "./FileBrowser.tsx";
 import type { TerminalHandle } from "./GhosttyTerminal.tsx";
 import { KeyBar } from "./KeyBar.tsx";
 import { AgentIcon } from "./AgentIcon.tsx";
+import { RenameInput } from "./RenameInput.tsx";
 import { SessionActions } from "./SessionActions.tsx";
 
 // 终端引擎含 ~400KB 的 WASM，按需加载，总览页打开更快
@@ -77,6 +78,7 @@ export function SessionPage({ paneId }: { paneId: string }) {
     setPreferredView(v);
   };
   const [composerOpen, setComposerOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
   const [filesPath, setFilesPath] = useState<string | null>(null);
   const [ctrl, setCtrl] = useState(false);
   const term = useRef<TerminalHandle>(null);
@@ -155,7 +157,14 @@ export function SessionPage({ paneId }: { paneId: string }) {
           style={swipe.dx ? { transform: `translateX(${swipe.dx}px)`, opacity: 1 - Math.min(0.6, Math.abs(swipe.dx) / 200) } : undefined}
           {...swipe.handlers}
         >
-          <div className="truncate text-sm font-medium">{session.title}</div>
+          {renaming ? (
+            <RenameInput paneId={paneId} initial={session.title} onDone={() => setRenaming(false)} className="font-medium" />
+          ) : (
+            // 双击标题重命名
+            <div className="truncate text-sm font-medium" onDoubleClick={() => setRenaming(true)}>
+              {session.title}
+            </div>
+          )}
           <div className="truncate text-xs text-muted-foreground">
             {project?.name ?? "未归属"}
             {STATUS_LABEL[session.status] && session.status !== "idle" && ` · ${STATUS_LABEL[session.status]}`}
@@ -193,6 +202,7 @@ export function SessionPage({ paneId }: { paneId: string }) {
           wide={wide}
           fontSize={view === "terminal" ? fontSize : null}
           onFontSize={changeFontSize}
+          onRename={() => setRenaming(true)}
         />
       </header>
 

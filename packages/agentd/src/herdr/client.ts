@@ -180,6 +180,11 @@ export class HerdrClient extends EventEmitter<{ event: [HerdrEvent]; online: [bo
     }
   }
 
+  /** 给 pane 起名字（电脑上 herdr 侧栏同步显示）；null 恢复为程序设置的标题。 */
+  async renamePane(paneId: string, label: string | null): Promise<void> {
+    await this.request("pane.rename", { pane_id: paneId, label });
+  }
+
   async closePane(paneId: string): Promise<void> {
     await this.request("pane.close", { pane_id: paneId });
   }
