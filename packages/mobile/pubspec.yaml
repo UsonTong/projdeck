@@ -1,0 +1,25 @@
+name: projdeck
+description: projdeck 的安卓 App：远程查看和操作电脑上的 Claude Code / Codex 会话。
+publish_to: 'none'
+version: 2.0.0+2
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_markdown_plus: ^1.0.12
+  flutter_slidable: ^4.0.3
+  http: ^1.6.0
+  shared_preferences: ^2.5.6
+  web_socket_channel: ^3.0.3
+  xterm: ^4.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
