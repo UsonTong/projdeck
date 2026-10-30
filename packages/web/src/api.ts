@@ -74,6 +74,8 @@ export const api = {
   /** 拖动排序：把会话所在的 herdr 工作区移到另一个会话之前（null = 移到最后）。 */
   ccswitch: () => request<CcSwitchStatus>("GET", "/api/ccswitch"),
   ccswitchSwitch: (app: string, id: string) => request<CcSwitchStatus & { launched: boolean }>("POST", "/api/ccswitch/switch", { app, id }),
+  ccswitchBridge: () => request<{ available: boolean; ui: { version: string; exact: boolean } | null }>("GET", "/api/ccswitch/bridge"),
+  ccswitchEnableBridge: () => request<{ available: boolean }>("POST", "/api/ccswitch/bridge/enable"),
   ccswitchUsage: (range: CcUsageRange, app: string) =>
     request<CcUsage>("GET", `/api/ccswitch/usage?range=${range}${app ? `&app=${encodeURIComponent(app)}` : ""}`),
   reorderProjects: (ids: string[]) => request("POST", "/api/projects/order", { ids }),

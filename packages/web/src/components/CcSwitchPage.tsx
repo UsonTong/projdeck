@@ -60,7 +60,42 @@ function NavItem(props: { active: boolean; onClick: () => void; children: React.
   );
 }
 
+/**
+ * 电脑上显示 CC Switch 原版的完整界面（编译好的前端，操作经 projdeck 转给电脑上的 CC Switch 执行）；
+ * 还没开启转发或没编译界面时，以及在手机上，显示 projdeck 自己的界面。
+ */
 export function CcSwitchPage({ section }: { section: string }) {
+  const wide = useWide();
+  const [bridge, setBridge] = useState<{ available: boolean; ui: { version: string; exact: boolean } | null } | null>(null);
+  const [enabling, setEnabling] = useState(false);
+  useEffect(() => {
+    if (wide) api.ccswitchBridge().then(setBridge, () => setBridge({ available: false, ui: null }));
+  }, [wide]);
+  const enable = async () => {
+    setEnabling(true);
+    try {
+      await api.ccswitchEnableBridge();
+      setBridge(await api.ccswitchBridge());
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setEnabling(false);
+    }
+  };
+  if (wide && bridge?.available && bridge.ui) {
+    return <iframe src="/ccswitch-ui/" title="CC Switch" className="min-h-0 flex-1 border-0 bg-background" />;
+  }
+  if (wide && !bridge) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <Spinner className="size-5" />
+      </div>
+    );
+  }
+  return <CcSwitchLite section={section} offer={wide && bridge?.ui && !bridge.available ? { enabling, enable } : null} />;
+}
+
+function CcSwitchLite({ section, offer }: { section: string; offer: { enabling: boolean; enable: () => void } | null }) {
   const wide = useWide();
   const [status, setStatus] = useState<CcSwitchStatus | null>(null);
   const [todayCost, setTodayCost] = useState<number | null>(null);
@@ -102,6 +137,17 @@ export function CcSwitchPage({ section }: { section: string }) {
           </div>
         </div>
       </header>
+      {offer && (
+        <div className="flex items-center gap-3 border-b bg-muted/40 px-4 py-2.5 text-sm">
+          <span className="min-w-0 flex-1 text-muted-foreground">
+            可以在这里显示 CC Switch 的完整界面（供应商增删改、MCP、Skills、Prompts、会话、设置……），需要让电脑上的 CC Switch 开一个只监听本机的调试端口，开启时它会重启一下。
+          </span>
+          <Button size="sm" disabled={offer.enabling} onClick={offer.enable}>
+            {offer.enabling && <Spinner data-icon="inline-start" />}
+            开启完整界面
+          </Button>
+        </div>
+      )}
       {!status ? (
         <div className="flex flex-1 items-center justify-center">
           <Spinner className="size-5" />

@@ -1,6 +1,7 @@
-import { execFile } from "node:child_process";
-import { existsSync, realpathSync } from "node:fs";
+import { execFile, execFileSync } from "node:child_process";
+import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { unlink } from "node:fs/promises";
+import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -40,6 +41,7 @@ import { TerminalBridge } from "./terminal.ts";
 import { httpError, type ProjdeckService } from "./service.ts";
 import { MAX_UPLOAD_BYTES, saveUpload, SHARED_UPLOAD_ROOT } from "./uploads.ts";
 import { CcSwitch } from "./ccswitch.ts";
+import { CcSwitchBridge, type CcSwitchEvent } from "./ccswitchBridge.ts";
 import { readUsage } from "./ccswitchUsage.ts";
 
 /** 解析 Origin 头的 host；格式异常（如 "null"）时返回 null，按跨站处理。 */
@@ -143,7 +145,70 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
   app.get("/api/terminal-theme", async () => loadGhosttyTheme());
 
   // CC Switch：检测到安装了就可以在网页上看用量、切换各应用的供应商（全局，之后新开的会话生效）
-  const ccswitch = new CcSwitch();
+  const ccswitch = new CcSwitch(undefined, config.ccswitchInspector);
+  const bridge = new CcSwitchBridge(config.ccswitchInspector);
+  // 网页上的 CC Switch 原版界面：编译好的前端（deploy/ccswitch-ui/build.sh），加载前注入 ccswitchShim.js
+  const uiRoot = join(homedir(), ".cache", "projdeck", "cc-switch-ui");
+  const uiDir = () => {
+    const installed = (() => {
+      try {
+        return execFileSync("rpm", ["-q", "--qf", "%{VERSION}", "cc-switch"], { encoding: "utf8" }).trim();
+      } catch {
+        return null;
+      }
+    })();
+    if (installed && existsSync(join(uiRoot, installed, "index.html"))) return { dir: join(uiRoot, installed), version: installed, exact: true };
+    const any = existsSync(uiRoot) ? readdirSync(uiRoot).filter((v) => existsSync(join(uiRoot, v, "index.html"))).sort().pop() : undefined;
+    return any ? { dir: join(uiRoot, any), version: any, exact: false } : null;
+  };
+  app.get("/api/ccswitch/bridge", async () => {
+    const ui = uiDir();
+    return { available: await bridge.available(), ui: ui ? { version: ui.version, exact: ui.exact } : null };
+  });
+  app.post("/api/ccswitch/bridge/enable", async () => {
+    await ccswitch.enableBridge();
+    for (let i = 0; i < 40; i++) {
+      if (await bridge.available()) return { available: true };
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    throw httpError(504, "CC Switch 重启后调试端口没有出现");
+  });
+  // 会在电脑屏幕上弹出窗口、或者控制它的窗口和进程的命令，网页不能转发（界面里的替身已经拦下，这里再挡一次）
+  const desktopOnly = /^(plugin:(window|webview|process|dialog|opener|updater)\||open_file_dialog$|open_zip_file_dialog$|save_file_dialog$|pick_directory$|open_app_config_folder$|open_config_folder$|open_cc_switch_skills_dir$|open_workspace_directory$|reveal_|launch_session_terminal$|open_provider_terminal$|launch_hermes_dashboard$|open_hermes_web_ui$|restart_app$|install_update_and_restart$|open_portable_update_download$|set_window_theme$|tray_panel_)/;
+  app.post<{ Body: { cmd?: string; args?: unknown } }>("/api/ccswitch/invoke", { bodyLimit: 20 * 1024 * 1024 }, async (req) => {
+    const cmd = String(req.body?.cmd ?? "");
+    if (!/^[\w:|-]+$/.test(cmd)) throw httpError(400, "命令无效");
+    if (desktopOnly.test(cmd)) throw httpError(403, "这个操作要在电脑上的 CC Switch 里做");
+    return { result: (await bridge.invoke(cmd, req.body?.args ?? {})) ?? null };
+  });
+  // CC Switch 推给界面的事件（Server-Sent Events）
+  app.get<{ Querystring: { e?: string } }>("/api/ccswitch/events", async (req, reply) => {
+    const names = new Set((req.query.e ?? "").split(",").filter(Boolean));
+    await Promise.all([...names].map((n) => bridge.listen(n).catch(() => undefined)));
+    reply.hijack();
+    reply.raw.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", "x-accel-buffering": "no", connection: "keep-alive" });
+    const onEvent = (e: CcSwitchEvent) => names.has(e.event) && reply.raw.write(`data: ${JSON.stringify(e)}\n\n`);
+    bridge.on("event", onEvent);
+    const ping = setInterval(() => reply.raw.write(": ping\n\n"), 25_000);
+    req.raw.on("close", () => {
+      bridge.off("event", onEvent);
+      clearInterval(ping);
+    });
+  });
+  const shim = readFileSync(new URL("./ccswitchShim.js", import.meta.url), "utf8");
+  app.get("/ccswitch-ui/projdeck-shim.js", async (_req, reply) => reply.type("text/javascript").header("cache-control", "no-cache").send(shim));
+  app.get("/ccswitch-ui/", async (_req, reply) => {
+    const ui = uiDir();
+    if (!ui) throw httpError(404, "还没有编译 CC Switch 的界面，请运行 deploy/ccswitch-ui/build.sh");
+    const html = readFileSync(join(ui.dir, "index.html"), "utf8").replace("<head>", '<head>\n    <script src="./projdeck-shim.js"></script>');
+    return reply.type("text/html").header("cache-control", "no-cache").send(html);
+  });
+  app.get<{ Params: { "*": string } }>("/ccswitch-ui/assets/*", async (req, reply) => {
+    const ui = uiDir();
+    const name = req.params["*"];
+    if (!ui || name.includes("..")) throw httpError(404, "文件不存在");
+    return reply.sendFile(name, join(ui.dir, "assets"), { maxAge: 31_536_000_000, immutable: true });
+  });
   app.get("/api/ccswitch", async () => ccswitch.status());
   app.get<{ Querystring: { range?: string; app?: string } }>("/api/ccswitch/usage", async (req) => {
     if (!ccswitch.installed()) throw httpError(404, "没有检测到 CC Switch");

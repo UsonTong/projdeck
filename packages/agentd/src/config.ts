@@ -21,6 +21,8 @@ export interface Config {
   /** scrypt 哈希，格式 salt:hash（hex）。未设置时拒绝所有登录。 */
   passwordHash: string | null;
   uploadRetentionDays: number;
+  /** CC Switch 的 WebKit 调试端口（只监听本机），网页上的 CC Switch 界面经它操作电脑上的 CC Switch。 */
+  ccswitchInspector: string;
 }
 
 const defaults: Config = {
@@ -33,6 +35,7 @@ const defaults: Config = {
   accessKeyFile: join(home, ".config", "projdeck", "edge-key"),
   passwordHash: null,
   uploadRetentionDays: 30,
+  ccswitchInspector: "127.0.0.1:47930",
 };
 
 export function readJson<T>(file: string, fallback: T): T {
@@ -58,6 +61,7 @@ export function loadConfig(): Config {
   const config = { ...defaults, ...readJson<Partial<Config>>(configFile, {}) };
   // 环境变量优先，便于开发时指向 herdr 测试会话
   if (process.env.PROJDECK_HERDR_SOCKET) config.herdrSocket = process.env.PROJDECK_HERDR_SOCKET;
+  if (process.env.PROJDECK_CCSWITCH_INSPECTOR) config.ccswitchInspector = process.env.PROJDECK_CCSWITCH_INSPECTOR;
   if (process.env.PROJDECK_HERDR_UNIT) config.herdrUnit = process.env.PROJDECK_HERDR_UNIT;
   if (process.env.PROJDECK_PORT) config.port = Number(process.env.PROJDECK_PORT);
   if (process.env.PROJDECK_HOST) config.host = process.env.PROJDECK_HOST;

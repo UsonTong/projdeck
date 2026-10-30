@@ -208,12 +208,51 @@ const alive = (pid: number) => {
   }
 };
 
+/** XDG 自启动（~/.config/autostart/CC Switch.desktop）生成的 systemd 服务。 */
+const AUTOSTART_UNIT = "app-CC\\x20Switch@autostart.service";
+
 export class CcSwitch {
   private readonly paths: CcSwitchPaths;
+  private readonly inspector: string;
   private busy: Promise<unknown> = Promise.resolve();
 
-  constructor(paths: CcSwitchPaths = defaultCcSwitchPaths()) {
+  constructor(paths: CcSwitchPaths = defaultCcSwitchPaths(), inspector = "127.0.0.1:47930") {
     this.paths = paths;
+    this.inspector = inspector;
+  }
+
+  /** 后台启动 CC Switch（作为独立的临时服务，不随 projdeck 一起被停掉），带上调试端口。 */
+  private launch(): Promise<unknown> {
+    return run(
+      "systemd-run",
+      ["--user", "--collect", "--quiet", `--setenv=WEBKIT_INSPECTOR_HTTP_SERVER=${this.inspector}`, "--", realpathSync(this.paths.bin)],
+      { timeout: 15_000 },
+    );
+  }
+
+  /**
+   * 让 CC Switch 以带调试端口的方式运行（网页上的完整界面靠它）：给它的自启动服务加上环境变量，
+   * 以后开机自启也带着；然后重启它。没有自启动服务时直接以带端口的方式重新启动。
+   */
+  async enableBridge(): Promise<void> {
+    if (!existsSync(this.paths.bin)) throw httpError(404, "没有检测到 CC Switch");
+    const running = findRunning(this.paths.bin);
+    const unit = running.unit ?? (existsSync(join(home, ".config", "autostart", "CC Switch.desktop")) ? AUTOSTART_UNIT : null);
+    if (unit && unit.startsWith("app-")) {
+      const dir = join(home, ".config", "systemd", "user", `${unit}.d`);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, "projdeck-inspector.conf"),
+        "# projdeck：CC Switch 开一个只监听本机的 WebKit 调试端口，网页上的 CC Switch 界面经它操作这个 CC Switch。\n" +
+          "# 不需要时删掉这个文件，再执行 systemctl --user daemon-reload。\n" +
+          `[Service]\nEnvironment=WEBKIT_INSPECTOR_HTTP_SERVER=${this.inspector}\n`,
+      );
+      await run("systemctl", ["--user", "daemon-reload"], { timeout: 15_000 });
+      await run("systemctl", ["--user", "restart", unit], { timeout: 20_000 });
+    } else {
+      await this.stopGui(running);
+      await this.launch();
+    }
   }
 
   get dbFile(): string {
@@ -331,7 +370,7 @@ export class CcSwitch {
     let running = findRunning(this.paths.bin);
     let launched = false;
     if (running.pids.length === 0 && existsSync(this.paths.bin)) {
-      await run("systemd-run", ["--user", "--collect", "--quiet", "--", realpathSync(this.paths.bin)], { timeout: 15_000 });
+      await this.launch();
       launched = true;
     }
     // 刚启动的要等托盘出现
@@ -446,6 +485,6 @@ export class CcSwitch {
   private async startGui(running: { pids: number[]; unit: string | null }): Promise<void> {
     if (running.pids.length === 0) return;
     if (running.unit) await run("systemctl", ["--user", "start", running.unit], { timeout: 15_000 });
-    else await run("systemd-run", ["--user", "--collect", "--quiet", "--", realpathSync(this.paths.bin)], { timeout: 15_000 });
+    else await this.launch();
   }
 }
