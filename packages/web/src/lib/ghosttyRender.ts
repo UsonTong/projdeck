@@ -613,6 +613,56 @@ function fixResetReferences(term: Terminal): void {
   t.write(CLEAR_SCREEN);
 }
 
+/**
+ * 复制的文字里中文之间多出空格：宽字符占两格，第二格是空的占位格，ghostty-web 取选区文字时把它当成空格。
+ * 这里照原逻辑重写，跳过宽字符后面的占位格（行尾空白照旧去掉）。
+ */
+function fixWideCharSelection(term: Terminal): void {
+  type Cell = { codepoint: number; width: number; grapheme_len: number };
+  type Pos = { col: number; absoluteRow: number };
+  const sm = (term as unknown as { selectionManager?: Record<string, unknown> }).selectionManager as
+    | {
+        selectionStart: Pos | null;
+        selectionEnd: Pos | null;
+        wasmTerm: {
+          getScrollbackLength(): number;
+          getScrollbackLine(row: number): Cell[] | null;
+          getLine(row: number): Cell[] | null;
+          getScrollbackGraphemeString(row: number, col: number): string;
+          getGraphemeString(row: number, col: number): string;
+        };
+        getSelection(): string;
+      }
+    | undefined;
+  if (!sm) return;
+  sm.getSelection = function (this: NonNullable<typeof sm>) {
+    if (!this.selectionStart || !this.selectionEnd) return "";
+    let { col: c0, absoluteRow: r0 } = this.selectionStart;
+    let { col: c1, absoluteRow: r1 } = this.selectionEnd;
+    if (r0 > r1 || (r0 === r1 && c0 > c1)) [c0, c1, r0, r1] = [c1, c0, r1, r0];
+    const w = this.wasmTerm;
+    const scrollback = w.getScrollbackLength();
+    const out: string[] = [];
+    for (let row = r0; row <= r1; row++) {
+      const inScrollback = row < scrollback;
+      const line = inScrollback ? w.getScrollbackLine(row) : w.getLine(row - scrollback);
+      if (!line) continue;
+      let text = "";
+      for (let col = row === r0 ? c0 : 0, end = row === r1 ? c1 : line.length - 1; col <= end; col++) {
+        const cell = line[col];
+        if (!cell || cell.codepoint === 0) {
+          if (col > 0 && line[col - 1]?.width === 2) continue; // 宽字符的占位格
+          text += " ";
+        } else if (cell.grapheme_len > 0) {
+          text += inScrollback ? w.getScrollbackGraphemeString(row, col) : w.getGraphemeString(row - scrollback, col);
+        } else text += String.fromCodePoint(cell.codepoint);
+      }
+      out.push(text.trimEnd());
+    }
+    return out.join("\n");
+  };
+}
+
 /** 在 term.open() 之后调用。 */
 export function patchRenderer(term: Terminal): void {
   const r = (term as unknown as { renderer: Renderer }).renderer;
@@ -622,5 +672,6 @@ export function patchRenderer(term: Terminal): void {
   r.renderLine = (line, row, cols) => renderLine(r, line, row, cols);
   cacheViewport(term);
   fixResetReferences(term);
+  fixWideCharSelection(term);
   renderOnDemand(term, r);
 }

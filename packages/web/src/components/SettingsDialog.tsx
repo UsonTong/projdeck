@@ -9,6 +9,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Spinner } from "@/components/ui/spinner";
 import { setDevicePref, useTerminalSizing } from "@/lib/devicePrefs";
+import { BAR_KEYS, DEFAULT_BAR_KEYS, setBarKeys, useBarKeys } from "@/lib/keybar";
 import { disablePush, enablePush, pushState, testPush, type PushState } from "@/lib/push";
 import { allTimeZones, COMMON_TIME_ZONES, deviceTimeZone, formatDateTime, utcOffset } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -22,12 +23,13 @@ interface Option {
   description: string;
 }
 
-/** 设置：通知（本设备）、自动信任文件夹、终端尺寸（本设备）、时区。时区用可搜索的列表直接选，不用下拉菜单。 */
+/** 设置：通知（本设备）、自动信任文件夹、终端尺寸（本设备）、快捷键条（本设备）、时区。时区用可搜索的列表直接选，不用下拉菜单。 */
 export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { overview } = useLive();
   const current = overview?.settings.timeZone ?? null;
   const autoTrust = overview?.settings.autoTrust ?? true;
   const sizing = useTerminalSizing();
+  const barKeys = useBarKeys();
   const [push, setPush] = useState<PushState | null>(null);
   const [pushBusy, setPushBusy] = useState(false);
   useEffect(() => {
@@ -156,6 +158,32 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
             一个终端同一时刻只能有一种尺寸。自动：谁最近在操作谁优先，在网页上点击、打字时用网页的尺寸，在电脑上切到
             Ghostty 时恢复电脑的尺寸（这时网页按电脑的行列数缩小显示）。网页只是失去焦点不会让出尺寸。手机上始终适配本设备。
           </p>
+        </div>
+        <div className="flex min-w-0 flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-medium">快捷键条（这台设备）</div>
+            {barKeys.map((k) => k.id).join(" ") !== DEFAULT_BAR_KEYS.join(" ") && (
+              <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => setBarKeys(null)}>
+                恢复默认
+              </Button>
+            )}
+          </div>
+          <ToggleGroup
+            type="multiple"
+            variant="outline"
+            size="sm"
+            spacing={1}
+            value={barKeys.map((k) => k.id)}
+            onValueChange={setBarKeys}
+            className="flex-wrap justify-start"
+          >
+            {BAR_KEYS.map((k) => (
+              <ToggleGroupItem key={k.id} value={k.id} title={k.title} className="min-w-9 font-mono text-xs aria-pressed:bg-primary aria-pressed:text-primary-foreground data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">
+                {k.label}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+          <p className="text-xs text-muted-foreground">终端下方那一排按键，点选要显示的键。方向键和翻页键按住会连发。</p>
         </div>
         <div className="flex min-w-0 flex-col gap-3">
           <div className="text-sm font-medium">时区</div>

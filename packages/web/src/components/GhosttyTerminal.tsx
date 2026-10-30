@@ -16,6 +16,8 @@ import { Spinner } from "@/components/ui/spinner";
 import { attachMouse, attachTextInput } from "@/lib/ghosttyInput";
 import { copyText } from "@/lib/clipboard";
 import { patchRenderer } from "@/lib/ghosttyRender";
+import { attachTouch, type SelectionGeometry } from "@/lib/ghosttyTouch";
+import { isTouchDevice } from "@/lib/swipe";
 
 /**
  * WASM 只需初始化一次。同时等待字体加载完成：终端画在 canvas 上，字体晚到不会触发重绘，
@@ -102,7 +104,6 @@ interface Props {
   onSwitchToChat?: () => void;
 }
 
-
 /**
  * 交互式网页终端：Ghostty 的 VT 引擎（WASM）渲染，通过 /ws/term 连接 `herdr agent attach`。
  * 与电脑上的 herdr 看到的是同一个终端，键盘、鼠标、粘贴都直接进入 pane。
@@ -119,6 +120,10 @@ export const GhosttyTerminal = forwardRef<TerminalHandle, Props>(function Ghostt
   const originalFit = useRef<(() => void) | null>(null);
   const propsRef = useRef(props);
   propsRef.current = props;
+  // 手机：长按选中文字后的把手和工具条（复制 / 粘贴 / 全选）。geometry 为空表示长按在空白处
+  const [touch] = useState(isTouchDevice);
+  const [touchMenu, setTouchMenu] = useState<{ geometry: SelectionGeometry | null; at: { x: number; y: number } } | null>(null);
+  const touchRef = useRef<ReturnType<typeof attachTouch> | null>(null);
   const [status, setStatus] = useState<Status>("connecting");
   const [error, setError] = useState("");
   const [reconnectTick, setReconnectTick] = useState(0);
@@ -218,6 +223,16 @@ export const GhosttyTerminal = forwardRef<TerminalHandle, Props>(function Ghostt
 
       // 补齐鼠标上报（点击 / 拖动 / 滚轮交给 herdr 和程序）与输入法定位
       cleanups.push(attachMouse(term, wrap.current!, send));
+      const touchCtl = attachTouch(term, container.current, send, {
+        onSelect: (geometry, at) => setTouchMenu({ geometry, at }),
+        onDismiss: () => setTouchMenu(null),
+        onFontSize: (d) => propsRef.current.onFontSize?.(d),
+      });
+      touchRef.current = touchCtl;
+      cleanups.push(touchCtl.dispose);
+      // 选区被清掉（滚动、程序重绘）时把手和工具条跟着消失
+      const sub = term.onSelectionChange(() => !term.hasSelection() && setTouchMenu((m) => (m?.geometry ? null : m)));
+      cleanups.push(() => sub.dispose());
       cleanups.push(
         attachTextInput(term, container.current, {
           fontFamily: fontFamily(theme),
@@ -329,9 +344,7 @@ export const GhosttyTerminal = forwardRef<TerminalHandle, Props>(function Ghostt
         return;
       }
       const msg = JSON.parse(String(ev.data)) as
-        | { t: "error"; message: string }
-        | { t: "exit" }
-        | { t: "size"; follow: { cols: number; rows: number } | null };
+        { t: "error"; message: string } | { t: "exit" } | { t: "size"; follow: { cols: number; rows: number } | null };
       if (msg.t === "size") {
         const was = followRef.current;
         followRef.current = msg.follow;
@@ -505,19 +518,48 @@ export const GhosttyTerminal = forwardRef<TerminalHandle, Props>(function Ghostt
 
   const [hasSelection, setHasSelection] = useState(false);
 
+  const closeTouchMenu = () => {
+    setTouchMenu(null);
+    termRef.current?.clearSelection();
+  };
+
   return (
+    // 手机上长按是选文字（见 attachTouch），不弹右键菜单
     <ContextMenu onOpenChange={(open) => (open ? setHasSelection(!!termRef.current?.hasSelection()) : termRef.current?.focus())}>
-      <ContextMenuTrigger asChild>
+      <ContextMenuTrigger asChild disabled={touch}>
         <div ref={wrap} className="relative min-h-0 flex-1" style={{ background: props.theme.background }}>
           {/* ghostty-web 会在这个容器里放 canvas；键盘焦点在 attachTextInput 放进来的 textarea 上 */}
           <div
             ref={container}
-            className="absolute overflow-hidden outline-none"
+            className="absolute touch-none overflow-hidden outline-none"
             style={{ inset: `${props.padding.y}px ${props.padding.x}px` }}
             onClick={() => termRef.current?.focus()}
           />
+          {touchMenu && (
+            <TouchSelectionMenu
+              menu={touchMenu}
+              width={wrap.current?.clientWidth ?? 0}
+              onCopy={async () => {
+                const text = termRef.current?.getSelection() ?? "";
+                closeTouchMenu();
+                if (await copyText(text)) toast.success("已复制");
+                else toast.error("复制失败");
+              }}
+              onPaste={() => {
+                closeTouchMenu();
+                void pasteFromClipboard();
+              }}
+              onSelectAll={() => {
+                termRef.current?.selectAll();
+                setTouchMenu((m) => m && { ...m, geometry: touchRef.current?.geometry() ?? null });
+              }}
+            />
+          )}
           {overlay && status !== "open" && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/90 p-6 text-center text-sm text-muted-foreground">
+            <div
+              data-term-overlay
+              className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/90 p-6 text-center text-sm text-muted-foreground"
+            >
               {status === "error" ? (
                 <>
                   <TriangleAlertIcon className="size-5 text-destructive" />
@@ -557,3 +599,45 @@ export const GhosttyTerminal = forwardRef<TerminalHandle, Props>(function Ghostt
     </ContextMenu>
   );
 });
+
+/** 手机上长按选中文字后：两端的把手（按住拖动调整，见 attachTouch）和上方的工具条。 */
+function TouchSelectionMenu(props: {
+  menu: { geometry: SelectionGeometry | null; at: { x: number; y: number } };
+  width: number;
+  onCopy: () => void;
+  onPaste: () => void;
+  onSelectAll: () => void;
+}) {
+  const { geometry: g, at } = props.menu;
+  const BAR_W = g ? 180 : 124;
+  const BAR_H = 40;
+  // 工具条放在选区上方，放不下就放下方；横向对准选区中间，不超出屏幕
+  const anchorX = g ? (g.start.y === g.end.y ? (g.start.x + g.end.x) / 2 : props.width / 2) : at.x;
+  const x = Math.max(4, Math.min(props.width - BAR_W - 4, anchorX - BAR_W / 2));
+  const top = g ? g.top : at.y;
+  const y = top > BAR_H + 12 ? top - BAR_H - 8 : (g ? g.bottom : at.y) + 28;
+  const handle = "pointer-events-none absolute size-3.5 rounded-full bg-primary ring-2 ring-background";
+  return (
+    <>
+      {g && (
+        <>
+          <span className={handle} style={{ left: g.start.x - 7, top: g.start.y - 2 }} />
+          <span className={handle} style={{ left: g.end.x - 7, top: g.end.y - 2 }} />
+        </>
+      )}
+      <div
+        data-term-overlay
+        className="absolute z-10 flex overflow-hidden rounded-lg bg-popover text-sm text-popover-foreground shadow-lg ring-1 ring-foreground/10 animate-in fade-in-0 zoom-in-95"
+        style={{ left: x, top: y, height: BAR_H, width: BAR_W }}
+      >
+        {[g && { label: "复制", run: props.onCopy }, { label: "粘贴", run: props.onPaste }, { label: "全选", run: props.onSelectAll }]
+          .filter((b): b is { label: string; run: () => void } => !!b)
+          .map((b) => (
+            <button key={b.label} className="flex-1 touch-manipulation active:bg-accent" onClick={b.run}>
+              {b.label}
+            </button>
+          ))}
+      </div>
+    </>
+  );
+}

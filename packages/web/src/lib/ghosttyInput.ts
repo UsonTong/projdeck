@@ -16,14 +16,14 @@ interface Metrics {
   height: number;
 }
 
-const metricsOf = (term: Terminal): Metrics | undefined =>
+export const metricsOf = (term: Terminal): Metrics | undefined =>
   (term as unknown as { renderer?: { getMetrics(): Metrics } }).renderer?.getMetrics();
 
-const canvasOf = (term: Terminal): HTMLCanvasElement | undefined =>
+export const canvasOf = (term: Terminal): HTMLCanvasElement | undefined =>
   (term as unknown as { renderer?: { getCanvas(): HTMLCanvasElement } }).renderer?.getCanvas();
 
 /** DEC 私有模式。 */
-const mode = (term: Terminal, n: number) => {
+export const mode = (term: Terminal, n: number) => {
   try {
     return term.getMode(n, false);
   } catch {
@@ -69,6 +69,7 @@ export function attachMouse(term: Terminal, el: HTMLElement, send: (data: string
 
   const onDown = (e: MouseEvent) => {
     if (e.button === 2) return; // 右键菜单
+    if ((e.target as Element).closest?.("[data-term-overlay]")) return; // 终端上面的按钮（选区工具条等）
     const cell = cellAt(e);
     if (!cell) return;
     if (e.button === 0) {
@@ -155,43 +156,15 @@ export function attachMouse(term: Terminal, el: HTMLElement, send: (data: string
     for (n = Math.min(Math.abs(n), 10); n > 0; n--) send(encodeMouse(button + modifiers(e), cell.col, cell.row, false, sgr()));
   };
 
-  // 手机：手指上下滑动转成滚轮事件（herdr 据此滚动历史或转给程序）
-  let touchY: number | null = null;
-  let touchAcc = 0;
-  const onTouchStart = (e: TouchEvent) => {
-    touchY = e.touches.length === 1 ? e.touches[0]!.clientY : null;
-    touchAcc = 0;
-  };
-  const onTouchMove = (e: TouchEvent) => {
-    if (touchY === null || !tracking() || e.touches.length !== 1) return;
-    const t = e.touches[0]!;
-    touchAcc += touchY - t.clientY;
-    touchY = t.clientY;
-    const h = metricsOf(term)?.height ?? 20;
-    const cell = cellAt(t);
-    if (!cell) return;
-    e.preventDefault();
-    if (Math.abs(touchAcc) >= h && term.hasSelection()) term.clearSelection();
-    while (Math.abs(touchAcc) >= h) {
-      // 手指上移（acc > 0）= 内容向下滚 = 滚轮向下
-      send(encodeMouse(touchAcc > 0 ? 65 : 64, cell.col, cell.row, false, sgr()));
-      touchAcc -= Math.sign(touchAcc) * h;
-    }
-  };
-
   el.addEventListener("mousedown", onDown, true);
   window.addEventListener("mousemove", onMove, true);
   window.addEventListener("mouseup", onUp, true);
   el.addEventListener("wheel", onWheel, { capture: true, passive: false });
-  el.addEventListener("touchstart", onTouchStart, { passive: true });
-  el.addEventListener("touchmove", onTouchMove, { passive: false });
   return () => {
     el.removeEventListener("mousedown", onDown, true);
     window.removeEventListener("mousemove", onMove, true);
     window.removeEventListener("mouseup", onUp, true);
     el.removeEventListener("wheel", onWheel, true);
-    el.removeEventListener("touchstart", onTouchStart);
-    el.removeEventListener("touchmove", onTouchMove);
   };
 }
 
