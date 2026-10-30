@@ -5,17 +5,21 @@ import { useEffect, useState } from "react";
  *   #/                     总览
  *   #/s/<paneId>           会话页
  *   #/f/<projectId>/<路径>  项目文件管理器（路径为项目内相对路径，可为空）
+ *   #/ccs/<栏目>            CC Switch（栏目为 usage 或应用，如 claude、codex）
  */
 export type Route =
   | { kind: "overview" }
   | { kind: "session"; paneId: string }
-  | { kind: "files"; projectId: string; path: string };
+  | { kind: "files"; projectId: string; path: string }
+  | { kind: "ccswitch"; section: string };
 
 function parse(): Route {
   const s = /^#\/s\/(.+)$/.exec(location.hash);
   if (s) return { kind: "session", paneId: decodeURIComponent(s[1]!) };
   const f = /^#\/f\/([^/]+)\/?(.*)$/.exec(location.hash);
   if (f) return { kind: "files", projectId: decodeURIComponent(f[1]!), path: f[2] ? decodeURIComponent(f[2]) : "" };
+  const c = /^#\/ccs\/?(.*)$/.exec(location.hash);
+  if (c) return { kind: "ccswitch", section: decodeURIComponent(c[1] || "usage") };
   return { kind: "overview" };
 }
 
@@ -35,4 +39,8 @@ export function openSession(paneId: string | null): void {
 
 export function openFiles(projectId: string, path = ""): void {
   location.hash = `#/f/${encodeURIComponent(projectId)}/${encodeURIComponent(path)}`;
+}
+
+export function openCcSwitch(section = "usage"): void {
+  location.hash = `#/ccs/${encodeURIComponent(section)}`;
 }

@@ -62,7 +62,7 @@ function sandbox(live: object | null) {
   const dir = mkdtempSync(join(tmpdir(), "pd-ccs-"));
   const db = new DatabaseSync(join(dir, "cc-switch.db"));
   db.exec(`CREATE TABLE providers (id TEXT NOT NULL, app_type TEXT NOT NULL, name TEXT NOT NULL, settings_config TEXT NOT NULL,
-    website_url TEXT, created_at INTEGER, sort_index INTEGER, is_current BOOLEAN NOT NULL DEFAULT 0, PRIMARY KEY (id, app_type))`);
+    website_url TEXT, category TEXT, created_at INTEGER, sort_index INTEGER, is_current BOOLEAN NOT NULL DEFAULT 0, PRIMARY KEY (id, app_type))`);
   const add = db.prepare("INSERT INTO providers (id, app_type, name, settings_config, created_at, sort_index, is_current) VALUES (?, ?, ?, ?, ?, ?, ?)");
   add.run("claude-official", "claude", "Claude Official", JSON.stringify(official), 1, 0, 0);
   add.run("ds", "claude", "DeepSeek", JSON.stringify(deepseek), 2, null, 0);
@@ -77,21 +77,25 @@ function sandbox(live: object | null) {
   return { dir, claudeSettings, ccs };
 }
 
-test("列出 Claude 供应商（不含配置和密钥），按 CC Switch 的顺序", () => {
+test("按应用列出供应商（不含配置和密钥），按 CC Switch 的顺序；没有托盘时当前供应商取它设置里的指针", async () => {
   const { ccs } = sandbox(null);
-  const s = ccs.status();
+  const s = await ccs.status();
+  assert.equal(s.running, false);
   assert.deepEqual(
-    s.providers.map((p) => p.name),
-    ["Claude Official", "DeepSeek", "Relay"],
+    s.apps.map((a) => a.label),
+    ["Claude Code", "Codex"],
   );
-  assert.equal(s.current, "relay");
-  assert.equal(s.blocked, null);
+  const claude = s.apps[0]!;
+  assert.deepEqual(
+    claude.providers.map((p) => `${p.name}${p.current ? "*" : ""}`),
+    ["Claude Official", "DeepSeek", "Relay*"],
+  );
   assert.ok(!JSON.stringify(s).includes("sk-"));
 });
 
 test("切换：改 Claude 配置、数据库的 is_current、CC Switch 设置里的指针，其余不动", async () => {
   const { dir, claudeSettings, ccs } = sandbox({ env: { ...relay.env, MY_VAR: "x" }, permissions: { allow: [] } });
-  await ccs.switchClaude("ds");
+  assert.deepEqual(await ccs.switchProvider("claude", "ds"), { via: "files", launched: false });
   const live = JSON.parse(readFileSync(claudeSettings, "utf8"));
   assert.equal(live.env.ANTHROPIC_BASE_URL, "https://api.deepseek.com/anthropic");
   assert.equal(live.env.MY_VAR, "x");
@@ -107,14 +111,14 @@ test("切换：改 Claude 配置、数据库的 is_current、CC Switch 设置里
 
   const settings = JSON.parse(readFileSync(join(dir, "settings.json"), "utf8"));
   assert.deepEqual(settings, { currentProviderClaude: "ds", currentProviderCodex: "codex-official", language: "zh" });
-  assert.equal(ccs.status().current, "ds");
+  assert.equal((await ccs.status()).apps[0]!.providers.find((p) => p.current)?.id, "ds");
 });
 
-test("CC Switch 用代理接管或有没做完的操作时拒绝切换", async () => {
+test("没有托盘时：CC Switch 用代理接管或有没做完的操作时拒绝改文件；其他应用不支持", async () => {
   const { dir, ccs } = sandbox({});
   writeFileSync(join(dir, "live-state.json"), JSON.stringify({ apps: { claude: { mode: "proxy" } } }));
-  assert.match(ccs.status().blocked ?? "", /代理/);
-  await assert.rejects(ccs.switchClaude("ds"), /代理/);
+  await assert.rejects(ccs.switchProvider("claude", "ds"), /代理/);
   writeFileSync(join(dir, "live-state.json"), JSON.stringify({ apps: { codex: { mode: "direct", pending: { target: "x" } } } }));
-  await assert.rejects(ccs.switchClaude("ds"), /没做完/);
+  await assert.rejects(ccs.switchProvider("claude", "ds"), /没做完/);
+  await assert.rejects(ccs.switchProvider("codex", "codex-official"), /托盘/);
 });

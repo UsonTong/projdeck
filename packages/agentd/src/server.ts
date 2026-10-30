@@ -40,6 +40,7 @@ import { TerminalBridge } from "./terminal.ts";
 import { httpError, type ProjdeckService } from "./service.ts";
 import { MAX_UPLOAD_BYTES, saveUpload, SHARED_UPLOAD_ROOT } from "./uploads.ts";
 import { CcSwitch } from "./ccswitch.ts";
+import { readUsage } from "./ccswitchUsage.ts";
 
 /** 解析 Origin 头的 host；格式异常（如 "null"）时返回 null，按跨站处理。 */
 function originHost(origin: string): string | null {
@@ -141,12 +142,17 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
   app.get("/api/overview", async () => service.overview());
   app.get("/api/terminal-theme", async () => loadGhosttyTheme());
 
-  // CC Switch：检测到安装了就可以在网页上切换 Claude 的供应商（全局，之后新开的 Claude 会话生效）
+  // CC Switch：检测到安装了就可以在网页上看用量、切换各应用的供应商（全局，之后新开的会话生效）
   const ccswitch = new CcSwitch();
   app.get("/api/ccswitch", async () => ccswitch.status());
-  app.post<{ Body: { id: string } }>("/api/ccswitch/claude", async (req) => {
-    const r = await ccswitch.switchClaude(String(req.body?.id ?? ""));
-    return { ...ccswitch.status(), restarted: r.restarted };
+  app.get<{ Querystring: { range?: string; app?: string } }>("/api/ccswitch/usage", async (req) => {
+    if (!ccswitch.installed()) throw httpError(404, "没有检测到 CC Switch");
+    const range = (["today", "7d", "30d", "all"] as const).find((r) => r === req.query.range) ?? "7d";
+    return readUsage(ccswitch.dbFile, range, req.query.app || null);
+  });
+  app.post<{ Body: { app: string; id: string } }>("/api/ccswitch/switch", async (req) => {
+    const r = await ccswitch.switchProvider(String(req.body?.app ?? ""), String(req.body?.id ?? ""));
+    return { ...(await ccswitch.status()), launched: r.launched };
   });
 
   // herdr 没在运行（电脑重启后还没开、或被关掉了）时从网页启动。服务端由 systemd 托管，见 deploy/herdr-server.service

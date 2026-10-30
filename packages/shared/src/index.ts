@@ -181,12 +181,65 @@ export type ServerMessage =
   /** 本机 Ghostty 配色变了（例如 dankcolors 随壁纸重新生成），前端重新获取主题。 */
   | { type: "theme" };
 
-/** CC Switch（Claude 供应商切换工具）的状态。不含任何密钥。 */
+/** CC Switch 里一个应用（Claude Code、Codex……）的供应商。不含任何配置和密钥。 */
+export interface CcSwitchApp {
+  /** CC Switch 的 app_type，例如 claude、codex。 */
+  app: string;
+  label: string;
+  providers: { id: string; name: string; website: string | null; category: string | null; current: boolean }[];
+}
+
+/** CC Switch（AI 编程工具的供应商管理器）的状态。 */
 export interface CcSwitchStatus {
   installed: boolean;
-  /** Claude 的供应商，按 CC Switch 里的顺序。 */
-  providers: { id: string; name: string; website: string | null }[];
-  current: string | null;
-  /** 现在不能在外部切换的原因（例如 CC Switch 正在用代理接管）；可以切换时为 null。 */
-  blocked: string | null;
+  /** 桌面上的 CC Switch 正在运行（切换经由它的托盘菜单完成）。 */
+  running: boolean;
+  apps: CcSwitchApp[];
+}
+
+export type CcUsageRange = "today" | "7d" | "30d" | "all";
+
+/** 按模型或供应商汇总的一行用量。 */
+export interface CcUsageRow {
+  name: string;
+  app: string;
+  requests: number;
+  cost: number;
+  tokens: number;
+  successRate: number;
+  /** 输出速度（token/秒）；没有可用数据时为 null。 */
+  speed: number | null;
+  /** 速度是由会话日志估算的（含首字等待），不是经代理精确计时的。 */
+  speedEstimated: boolean;
+  /** 首字时间中位数（毫秒）。 */
+  firstTokenMs: number | null;
+  firstTokenEstimated: boolean;
+}
+
+/** CC Switch 的用量统计（只读，与它的「用量」页同口径）。 */
+export interface CcUsage {
+  range: CcUsageRange;
+  /** 只看某个应用；null 表示全部。 */
+  app: string | null;
+  /** 有记录的应用（筛选用）。 */
+  apps: { app: string; label: string }[];
+  summary: { cost: number; requests: number; tokens: number; cacheHitRate: number; todayCost: number };
+  /** 趋势：今天按小时，其他按天。 */
+  series: { label: string; requests: number; cost: number; tokens: number }[];
+  models: CcUsageRow[];
+  providers: CcUsageRow[];
+  /** 最近的请求（最多 100 条）。 */
+  logs: {
+    at: number;
+    app: string;
+    provider: string;
+    model: string;
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheCreation: number;
+    cost: number;
+    status: number;
+    latencyMs: number;
+  }[];
 }

@@ -11,6 +11,7 @@ import { api, authEvents } from "./api.ts";
 import { ConfirmHost } from "./components/Confirm.tsx";
 import { Login } from "./components/Login.tsx";
 import { OverviewPage } from "./components/Overview.tsx";
+import { CcSwitchPage } from "./components/CcSwitchPage.tsx";
 import { FilesPage } from "./components/FilesPage.tsx";
 import { SessionPage } from "./components/Session.tsx";
 import { live, useLive, useWide } from "./live.ts";
@@ -142,6 +143,8 @@ function Shell() {
       <SessionPage key={route.paneId} paneId={route.paneId} />
     ) : route.kind === "files" ? (
       <FilesPage key={route.projectId} projectId={route.projectId} path={route.path} />
+    ) : route.kind === "ccswitch" ? (
+      <CcSwitchPage section={route.section} />
     ) : null;
 
   if (wide) {

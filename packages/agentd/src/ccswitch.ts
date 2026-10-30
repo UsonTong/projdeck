@@ -4,7 +4,8 @@ import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { promisify } from "node:util";
-import type { CcSwitchStatus } from "@projdeck/shared";
+import type { CcSwitchApp, CcSwitchStatus } from "@projdeck/shared";
+import { CcSwitchTray, type TraySection } from "./ccswitchTray.ts";
 import { configDir } from "./config.ts";
 import { httpError } from "./service.ts";
 
@@ -166,6 +167,38 @@ function findRunning(bin: string): { pids: number[]; unit: string | null } {
   return { pids, unit };
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+interface ProviderRow {
+  id: string;
+  app: string;
+  name: string;
+  config: unknown;
+  isCurrent: boolean;
+  website: string | null;
+  category: string | null;
+}
+
+/** CC Switch 侧栏里应用的名字和顺序。 */
+const APP_LABELS: Record<string, string> = {
+  claude: "Claude Code",
+  "claude-desktop": "Claude Desktop",
+  codex: "Codex",
+  gemini: "Gemini CLI",
+  grokbuild: "Grok Build",
+  opencode: "OpenCode",
+  openclaw: "OpenClaw",
+  hermes: "Hermes",
+  pi: "Pi",
+  mcode: "MiniMax Code",
+  kimi: "Kimi Code",
+  agy: "Antigravity",
+};
+const appRank = (app: string) => {
+  const i = Object.keys(APP_LABELS).indexOf(app);
+  return i === -1 ? 99 : i;
+};
+
 const alive = (pid: number) => {
   try {
     process.kill(pid, 0);
@@ -183,8 +216,12 @@ export class CcSwitch {
     this.paths = paths;
   }
 
-  private get db() {
+  get dbFile(): string {
     return join(this.paths.dir, "cc-switch.db");
+  }
+
+  private get db() {
+    return this.dbFile;
   }
 
   installed(): boolean {
@@ -201,15 +238,24 @@ export class CcSwitch {
     return null;
   }
 
-  private providers(): { id: string; name: string; config: unknown; isCurrent: boolean; website: string | null }[] {
+  private providers(app?: string): ProviderRow[] {
     const db = new DatabaseSync(this.db, { readOnly: true });
     try {
       db.exec("PRAGMA busy_timeout = 5000");
       const rows = db
         .prepare(
-          "SELECT id, name, settings_config, is_current, website_url FROM providers WHERE app_type = 'claude' ORDER BY COALESCE(sort_index, 999999), created_at ASC, id ASC",
+          `SELECT id, app_type, name, settings_config, is_current, website_url, category FROM providers ${app ? "WHERE app_type = ?" : ""}
+           ORDER BY COALESCE(sort_index, 999999), created_at ASC, id ASC`,
         )
-        .all() as { id: string; name: string; settings_config: string; is_current: number; website_url: string | null }[];
+        .all(...(app ? [app] : [])) as {
+        id: string;
+        app_type: string;
+        name: string;
+        settings_config: string;
+        is_current: number;
+        website_url: string | null;
+        category: string | null;
+      }[];
       return rows.map((r) => {
         let config: unknown = {};
         try {
@@ -217,44 +263,116 @@ export class CcSwitch {
         } catch {
           // 配置损坏的行照样列出，切换时会报错
         }
-        return { id: r.id, name: r.name, config, isCurrent: !!r.is_current, website: r.website_url };
+        return { id: r.id, app: r.app_type, name: r.name, config, isCurrent: !!r.is_current, website: r.website_url, category: r.category };
       });
     } finally {
       db.close();
     }
   }
 
-  /** 当前供应商：以 CC Switch 设置里的指针为准，没有时用数据库的 is_current（与它自己的判断一致）。 */
-  private currentId(providers: { id: string; isCurrent: boolean }[]): string | null {
-    const settings = JSON.parse(readText(join(this.paths.dir, "settings.json")) ?? "{}") as { currentProviderClaude?: string };
-    const pointer = settings.currentProviderClaude;
-    if (pointer && providers.some((p) => p.id === pointer)) return pointer;
+  /** 托盘不可用时的当前供应商：CC Switch 设置里的指针，没有时用数据库的 is_current（与它自己的判断一致）。 */
+  private currentId(providers: { id: string; isCurrent: boolean }[], app = "claude"): string | null {
+    const settings = JSON.parse(readText(join(this.paths.dir, "settings.json")) ?? "{}") as Record<string, unknown>;
+    const pointer = settings[`currentProvider${app.charAt(0).toUpperCase()}${app.slice(1)}`];
+    if (typeof pointer === "string" && providers.some((p) => p.id === pointer)) return pointer;
     return providers.find((p) => p.isCurrent)?.id ?? null;
   }
 
-  status(): CcSwitchStatus {
-    if (!this.installed()) return { installed: false, providers: [], current: null, blocked: null };
-    const providers = this.providers();
-    return {
-      installed: true,
-      providers: providers.map((p) => ({ id: p.id, name: p.name, website: p.website })),
-      current: this.currentId(providers),
-      blocked: this.blocked(),
-    };
+  /** 托盘里对应某个应用的子菜单：按供应商名字匹配（不依赖界面语言）。 */
+  private static sectionFor(sections: TraySection[], names: string[]): TraySection | null {
+    let best: TraySection | null = null;
+    let bestScore = 0;
+    for (const s of sections) {
+      const score = s.items.filter((i) => names.includes(i.label)).length;
+      if (score > bestScore && s.items.every((i) => names.includes(i.label))) [best, bestScore] = [s, score];
+    }
+    return best;
   }
 
-  /** 切换 Claude 的供应商。同一时间只做一次。 */
-  switchClaude(id: string): Promise<{ restarted: boolean }> {
-    const next = this.busy.then(() => this.doSwitch(id));
+  async status(): Promise<CcSwitchStatus> {
+    if (!this.installed()) return { installed: false, running: false, apps: [] };
+    const rows = this.providers();
+    const running = findRunning(this.paths.bin);
+    const tray = await CcSwitchTray.find(running.pids);
+    const sections = tray ? await tray.sections().catch(() => []) : [];
+    const apps: CcSwitchApp[] = [];
+    for (const app of [...new Set(rows.map((r) => r.app))].sort((a, b) => appRank(a) - appRank(b))) {
+      const list = rows.filter((r) => r.app === app);
+      const section = CcSwitch.sectionFor(sections, list.map((p) => p.name));
+      const checked = section?.items.find((i) => i.checked)?.label;
+      const current = section ? (list.find((p) => p.name === checked)?.id ?? null) : this.currentId(list, app);
+      apps.push({
+        app,
+        label: APP_LABELS[app] ?? app,
+        providers: list.map((p) => ({ id: p.id, name: p.name, website: p.website, category: p.category, current: p.id === current })),
+      });
+    }
+    return { installed: true, running: running.pids.length > 0, apps };
+  }
+
+  /** 切换某个应用的供应商。同一时间只做一次。 */
+  switchProvider(app: string, id: string): Promise<{ via: "tray" | "files"; launched: boolean }> {
+    const next = this.busy.then(() => this.doSwitchProvider(app, id));
     this.busy = next.catch(() => undefined);
     return next;
+  }
+
+  /**
+   * 优先点 CC Switch 托盘菜单里的这一项，让它自己切换（任何应用都可以）。
+   * 它没在运行时先在后台启动它。没有托盘可用时，Claude 退回到直接改配置文件（见 switchClaudeByFiles），其他应用不支持。
+   */
+  private async doSwitchProvider(app: string, id: string): Promise<{ via: "tray" | "files"; launched: boolean }> {
+    if (!this.installed()) throw httpError(404, "没有检测到 CC Switch");
+    const list = this.providers(app);
+    const target = list.find((p) => p.id === id);
+    if (!target) throw httpError(404, "CC Switch 里没有这个供应商");
+    if (list.filter((p) => p.name === target.name).length > 1) throw httpError(409, `有多个叫「${target.name}」的供应商，请在 CC Switch 里切换`);
+
+    let running = findRunning(this.paths.bin);
+    let launched = false;
+    if (running.pids.length === 0 && existsSync(this.paths.bin)) {
+      await run("systemd-run", ["--user", "--collect", "--quiet", "--", realpathSync(this.paths.bin)], { timeout: 15_000 });
+      launched = true;
+    }
+    // 刚启动的要等托盘出现
+    let tray: CcSwitchTray | null = null;
+    for (const deadline = Date.now() + (launched ? 20_000 : 0); ; ) {
+      running = findRunning(this.paths.bin);
+      tray = await CcSwitchTray.find(running.pids);
+      if (tray || Date.now() >= deadline) break;
+      await sleep(500);
+    }
+
+    if (tray) {
+      const find = async () => {
+        const section = CcSwitch.sectionFor(await tray.sections(), list.map((p) => p.name));
+        return section?.items.find((i) => i.label === target.name) ?? null;
+      };
+      const item = await find();
+      if (!item) throw httpError(409, "CC Switch 的托盘菜单里没有这个供应商，请在 CC Switch 里切换");
+      if (item.checked) return { via: "tray", launched };
+      await tray.click(item.id);
+      for (const deadline = Date.now() + 10_000; Date.now() < deadline; ) {
+        await sleep(250);
+        if ((await find())?.checked) return { via: "tray", launched };
+      }
+      throw httpError(504, "CC Switch 没有完成切换，请在 CC Switch 里看看");
+    }
+    if (app !== "claude") throw httpError(409, "CC Switch 的托盘菜单不可用（没在运行或关闭了托盘图标），请在 CC Switch 里切换");
+    await this.switchClaudeByFiles(id);
+    return { via: "files", launched };
+  }
+
+  /** 没有托盘时切换 Claude：按 CC Switch 的规则直接改配置文件（它在运行就先停下、改完再启动）。 */
+  private switchClaudeByFiles(id: string): Promise<{ restarted: boolean }> {
+    return this.doSwitch(id);
   }
 
   private async doSwitch(id: string): Promise<{ restarted: boolean }> {
     if (!this.installed()) throw httpError(404, "没有检测到 CC Switch");
     const reason = this.blocked();
     if (reason) throw httpError(409, reason);
-    const before = this.providers();
+    const before = this.providers("claude");
     if (!before.some((p) => p.id === id)) throw httpError(404, "CC Switch 里没有这个供应商");
     if (this.currentId(before) === id) return { restarted: false };
 
@@ -262,7 +380,7 @@ export class CcSwitch {
     await this.stopGui(running);
     try {
       // 停下之后再读：它退出前可能刚写过
-      const providers = this.providers();
+      const providers = this.providers("claude");
       const target = providers.find((p) => p.id === id)!;
       const prevId = this.currentId(providers);
       if (prevId === id) return { restarted: running.pids.length > 0 };
