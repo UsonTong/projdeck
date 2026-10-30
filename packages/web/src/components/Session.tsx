@@ -197,7 +197,22 @@ export function SessionPage({ paneId }: { paneId: string }) {
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col">
-        {view === "terminal" ? (
+        {view === "terminal" && session.restoreError ? (
+          <Empty className="flex-1">
+            <EmptyHeader>
+              <EmptyTitle>这个会话没能恢复</EmptyTitle>
+              <EmptyDescription>
+                启动目录 <span className="font-mono">{session.cwd}</span> 已经不存在（被删除或被清理了），herdr 重启时只保留了位置，终端没有运行。
+                把目录放回去后在电脑上的 herdr 里重启这个会话，或者直接关闭它。
+              </EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button variant="outline" onClick={() => void api.close(paneId).then(() => openSession(null), fail)}>
+                关闭这个会话
+              </Button>
+            </EmptyContent>
+          </Empty>
+        ) : view === "terminal" ? (
           !theme ? (
             <Loading label="加载终端…" />
           ) : (
@@ -249,7 +264,7 @@ export function SessionPage({ paneId }: { paneId: string }) {
         </button>
       )}
 
-      {view === "terminal" && (
+      {view === "terminal" && !session.restoreError && (
         <KeyBar
           term={term}
           showKeys={!wide}

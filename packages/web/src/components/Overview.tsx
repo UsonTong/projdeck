@@ -369,7 +369,9 @@ function SessionRow({
                 {s.title}
               </button>
               <div className="truncate text-xs text-muted-foreground">
-                {status && s.status !== "idle" ? (
+                {s.restoreError ? (
+                  <span className="text-destructive">目录已不存在</span>
+                ) : status && s.status !== "idle" ? (
                   <span
                     className={cn(
                       s.status === "working" && "text-status-working",

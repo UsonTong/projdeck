@@ -161,6 +161,7 @@ export class ProjdeckService {
         hidden: this.store.isHidden(pane.terminal_id, conversationId),
         order: (workspaceNumber.get(pane.workspace_id) ?? 999) * 1000 + panes.indexOf(pane),
         activeAt: lastActivity(kind, conversationId, pane.cwd, rollout),
+        ...(pane.restore_error ? { restoreError: pane.restore_error } : {}),
       };
       const projectId = assignments.get(pane.terminal_id) ?? null;
       sessions.set(pane.pane_id, { session, projectId, rollout });

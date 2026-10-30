@@ -32,6 +32,8 @@ export interface Session {
   order: number;
   /** 最后活动时间（对话记录最后修改的时间，毫秒）；临时终端或没有对话时为 null。 */
   activeAt: number | null;
+  /** herdr 重启后没能恢复（启动目录已不存在等），终端没有运行。 */
+  restoreError?: string;
 }
 
 export interface ProjectView extends Project {

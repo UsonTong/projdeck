@@ -28,6 +28,8 @@ export interface HerdrPane {
   terminal_title?: string;
   terminal_title_stripped?: string;
   agent_status: HerdrAgentStatus;
+  /** herdr 重启后没能恢复这个 pane（例如启动目录已不存在），终端没有启动。 */
+  restore_error?: string;
   revision: number;
 }
 
