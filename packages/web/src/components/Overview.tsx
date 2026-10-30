@@ -4,42 +4,32 @@ import {
   ArchiveRestoreIcon,
   FolderInputIcon,
   FolderOpenIcon,
+  GripVerticalIcon,
   InboxIcon,
   PlusIcon,
   Settings2Icon,
   SettingsIcon,
   Trash2Icon,
+  XCircleIcon,
 } from "lucide-react";
 import { Eye, EyeOff, Plus, X } from "lucide";
 import { MorphIcon } from "morphicons/react";
-import {
-  closestCenter,
-  DndContext,
-  PointerSensor,
-  TouchSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
+import { closestCenter, DndContext, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { copyText } from "@/lib/clipboard";
-import { setDevicePref, useDevicePref } from "@/lib/devicePrefs";
+import { setDevicePref } from "@/lib/devicePrefs";
+import { isTouchDevice, useSwipeReveal } from "@/lib/swipe";
+import { sortProjects, sortProjectSessions, sortUnassigned, UNASSIGNED_SORTS, useUnassignedSort } from "@/lib/sessionOrder";
 import { KIND_LABEL, markLaunching, STATUS_LABEL, statusRank } from "@/lib/session";
 import { formatDateTime, useTimeZone } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -56,6 +46,10 @@ const fail = (err: unknown) => toast.error((err as Error).message);
 
 /** 鼠标悬停才出现的操作；触屏设备没有悬停，始终显示。 */
 const HOVER_REVEAL = "opacity-0 transition-opacity group-hover/row:opacity-100 group-focus-within/row:opacity-100 [@media(hover:none)]:opacity-100";
+/** 会话行的操作按钮：鼠标悬停时出现；触屏上不显示，改为左滑露出（见 useSwipeReveal）、长按出菜单。 */
+const ROW_ACTIONS = "opacity-0 transition-opacity group-hover/row:opacity-100 group-focus-within/row:opacity-100 [@media(hover:none)]:hidden";
+/** 左滑露出的按钮宽度。 */
+const SWIPE_BUTTON = 72;
 
 const shortPath = (p: string) => p.replace(/^\/home\/[^/]+/, "~");
 
@@ -179,8 +173,6 @@ function SectionEmpty({ icon, title, description, children }: { icon: ReactNode;
 // 项目
 // ---------------------------------------------------------------------------
 
-const projectRank = (p: ProjectView) => Math.min(5, ...p.sessions.filter((s) => !s.hidden).map(statusRank));
-
 function ProjectsTab(props: {
   overview: Overview;
   visible: (s: Session) => boolean;
@@ -188,9 +180,7 @@ function ProjectsTab(props: {
   activeFiles: string | null;
   onAdd: () => void;
 }) {
-  const projects = props.overview.projects
-    .filter((p) => !p.archived)
-    .sort((a, b) => projectRank(a) - projectRank(b) || a.name.localeCompare(b.name));
+  const projects = sortProjects(props.overview.projects);
 
   if (projects.length === 0) {
     return (
@@ -231,7 +221,7 @@ function ProjectGroup(props: { project: ProjectView; sessions: Session[]; active
     }
   };
 
-  const sorted = [...sessions].sort((a, b) => statusRank(a) - statusRank(b));
+  const sorted = sortProjectSessions(sessions);
   const starters: AgentKind[] = project.defaultAgent === "codex" ? ["codex", "claude"] : ["claude", "codex"];
 
   return (
@@ -292,8 +282,20 @@ function ProjectGroup(props: { project: ProjectView; sessions: Session[]; active
   );
 }
 
-function SessionRow({ session: s, project, active }: { session: Session; project: ProjectView | null; active: boolean }) {
+function SessionRow({
+  session: s,
+  project,
+  active,
+  handle,
+}: {
+  session: Session;
+  project: ProjectView | null;
+  active: boolean;
+  /** 触屏上拖动排序的把手（herdr 顺序下）。 */
+  handle?: ReactNode;
+}) {
   const projectId = project?.id ?? null;
+  const swipe = useSwipeReveal(SWIPE_BUTTON * 2);
   const archive = async () => {
     if (s.status === "working") {
       const ok = await confirmDialog({
@@ -330,50 +332,75 @@ function SessionRow({ session: s, project, active }: { session: Session; project
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
-        <div
-          className={cn(
-            "group/row relative flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-accent/60",
-            active && "bg-accent hover:bg-accent",
-            s.hidden && "opacity-50",
-          )}
-        >
-          <AgentIcon kind={s.kind} status={s.status} />
-          <div className="min-w-0 flex-1">
-            {/* after: 伪元素铺满整行，整行可点；操作按钮用 z-10 浮在上面 */}
-            <button className="block w-full truncate text-left text-sm after:absolute after:inset-0" onClick={() => openSession(s.paneId)}>
-              {s.title}
-            </button>
-            <div className="truncate text-xs text-muted-foreground">
-              {status && s.status !== "idle" ? (
-                <span
-                  className={cn(
-                    s.status === "working" && "text-status-working",
-                    s.status === "blocked" && "text-status-blocked",
-                    s.status === "done" && "text-status-done",
-                  )}
-                >
-                  {status}
-                </span>
-              ) : (
-                KIND_LABEL[s.kind]
-              )}
-              {!projectId && <span className="font-mono"> · {shortPath(s.cwd)}</span>}
+        <div className="relative overflow-hidden rounded-lg">
+          {/* 左滑露出的操作，在行的下面 */}
+          {swipe.offset < 0 && (
+            <div className="absolute inset-y-0 right-0 flex text-xs font-medium" style={{ width: SWIPE_BUTTON * 2 }}>
+              <button
+                className="flex flex-1 flex-col items-center justify-center gap-1 bg-secondary text-secondary-foreground"
+                onClick={() => (swipe.close(), void api.setHidden(s.paneId, !s.hidden).catch(fail))}
+              >
+                <MorphIcon icon={s.hidden ? Eye : EyeOff} size={18} />
+                {s.hidden ? "取消隐藏" : "隐藏"}
+              </button>
+              <button
+                className="flex flex-1 flex-col items-center justify-center gap-1 bg-destructive/85 text-white"
+                onClick={() => (swipe.close(), void (s.kind === "shell" ? close() : archive()))}
+              >
+                {s.kind === "shell" ? <XCircleIcon className="size-[18px]" /> : <ArchiveIcon className="size-[18px]" />}
+                {s.kind === "shell" ? "关闭" : "归档"}
+              </button>
             </div>
-          </div>
-          <div className={cn("relative z-10 flex shrink-0 items-center", HOVER_REVEAL)}>
-            {!projectId && s.kind !== "shell" && (
-              <IconAction label={`把会话启动时的目录 ${shortPath(s.cwd)} 导入为项目`} onClick={() => void importFolder()}>
-                <FolderInputIcon />
-              </IconAction>
+          )}
+          <div
+            {...swipe.handlers}
+            style={{ transform: swipe.offset ? `translateX(${swipe.offset}px)` : undefined }}
+            className={cn(
+              "group/row relative flex touch-pan-y items-center gap-2.5 rounded-lg bg-background px-2 py-1.5 transition-colors hover:bg-accent/60",
+              !swipe.dragging && "transition-[background-color,transform]",
+              active && "bg-accent hover:bg-accent",
+              s.hidden && "opacity-50",
             )}
-            <IconAction label={s.hidden ? "取消隐藏" : "隐藏"} onClick={() => void api.setHidden(s.paneId, !s.hidden).catch(fail)}>
-              <MorphIcon icon={s.hidden ? Eye : EyeOff} />
-            </IconAction>
-            {s.kind !== "shell" && (
-              <IconAction label="归档（关闭 pane，保留对话）" onClick={() => void archive()}>
-                <ArchiveIcon />
+          >
+            <AgentIcon kind={s.kind} status={s.status} />
+            <div className="min-w-0 flex-1">
+              {/* after: 伪元素铺满整行，整行可点；操作按钮用 z-10 浮在上面 */}
+              <button className="block w-full truncate text-left text-sm after:absolute after:inset-0" onClick={() => openSession(s.paneId)}>
+                {s.title}
+              </button>
+              <div className="truncate text-xs text-muted-foreground">
+                {status && s.status !== "idle" ? (
+                  <span
+                    className={cn(
+                      s.status === "working" && "text-status-working",
+                      s.status === "blocked" && "text-status-blocked",
+                      s.status === "done" && "text-status-done",
+                    )}
+                  >
+                    {status}
+                  </span>
+                ) : (
+                  KIND_LABEL[s.kind]
+                )}
+                {!projectId && <span className="font-mono"> · {shortPath(s.cwd)}</span>}
+              </div>
+            </div>
+            <div className={cn("relative z-10 flex shrink-0 items-center", ROW_ACTIONS)}>
+              {!projectId && s.kind !== "shell" && (
+                <IconAction label={`把会话启动时的目录 ${shortPath(s.cwd)} 导入为项目`} onClick={() => void importFolder()}>
+                  <FolderInputIcon />
+                </IconAction>
+              )}
+              <IconAction label={s.hidden ? "取消隐藏" : "隐藏"} onClick={() => void api.setHidden(s.paneId, !s.hidden).catch(fail)}>
+                <MorphIcon icon={s.hidden ? Eye : EyeOff} />
               </IconAction>
-            )}
+              {s.kind !== "shell" && (
+                <IconAction label="归档（关闭 pane，保留对话）" onClick={() => void archive()}>
+                  <ArchiveIcon />
+                </IconAction>
+              )}
+            </div>
+            {handle}
           </div>
         </div>
       </ContextMenuTrigger>
@@ -384,9 +411,7 @@ function SessionRow({ session: s, project, active }: { session: Session; project
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem onSelect={() => void copyPath(s.cwd)}>复制目录路径</ContextMenuItem>
-        {inProject && (
-          <ContextMenuItem onSelect={() => openFiles(project.id, s.cwd.slice(project.path.length + 1))}>在文件中查看</ContextMenuItem>
-        )}
+        {inProject && <ContextMenuItem onSelect={() => openFiles(project.id, s.cwd.slice(project.path.length + 1))}>在文件中查看</ContextMenuItem>}
         <ContextMenuItem onSelect={() => setMoving(true)}>{projectId ? "移到其他项目…" : "移到项目…"}</ContextMenuItem>
         {!projectId && <ContextMenuItem onSelect={() => void importFolder()}>导入 {shortPath(s.cwd)} 为项目</ContextMenuItem>}
         <ContextMenuSeparator />
@@ -459,52 +484,47 @@ const copyPath = async (path: string) => {
 // 未归属
 // ---------------------------------------------------------------------------
 
-type UnassignedSort = "herdr" | "recent" | "status";
-
-const SORTS: { value: UnassignedSort; label: string; hint: string }[] = [
-  { value: "herdr", label: "herdr 顺序", hint: "与电脑上 herdr 侧栏一致，可拖动调整" },
-  { value: "recent", label: "最近活动", hint: "最近有新消息的排在前面" },
-  { value: "status", label: "状态", hint: "需处理 > 工作中 > 已完成 > 空闲" },
-];
-
-function sortSessions(list: Session[], mode: UnassignedSort): Session[] {
-  const byOrder = (a: Session, b: Session) => a.order - b.order;
-  if (mode === "recent") return [...list].sort((a, b) => (b.activeAt ?? 0) - (a.activeAt ?? 0) || byOrder(a, b));
-  if (mode === "status") return [...list].sort((a, b) => statusRank(a) - statusRank(b) || byOrder(a, b));
-  return [...list].sort(byOrder);
-}
-
-/** herdr 顺序下的一行：按住拖动（手机上长按），拖动的是会话所在的 herdr 工作区。 */
-function SortableRow(props: { session: Session; active: boolean; draggedRef: React.RefObject<boolean> }) {
+/**
+ * herdr 顺序下的一行，拖动的是会话所在的 herdr 工作区。
+ * 鼠标：整行按住拖动。触屏：只能按住右侧的把手拖（长按整行是菜单，左滑是操作按钮）。
+ */
+function SortableRow(props: { session: Session; active: boolean; draggedRef: React.RefObject<boolean>; touch: boolean }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.session.paneId });
+  const handle = props.touch ? (
+    <span {...listeners} className="relative z-10 -mr-1 flex shrink-0 touch-none items-center self-stretch px-2 text-muted-foreground" aria-label="拖动排序">
+      <GripVerticalIcon className="size-4" />
+    </span>
+  ) : undefined;
   return (
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform), transition }}
-      className={cn("touch-manipulation", isDragging && "relative z-10 rounded-lg bg-background shadow-lg ring-1 ring-border")}
+      className={cn(isDragging && "relative z-10 rounded-lg bg-background shadow-lg ring-1 ring-border")}
       // 拖动结束时浏览器还会补发一次 click，不能把它当成「打开会话」
       onClickCapture={(e) => props.draggedRef.current && (e.stopPropagation(), e.preventDefault())}
       {...attributes}
-      {...listeners}
+      {...(props.touch ? {} : listeners)}
     >
-      <SessionRow session={props.session} project={null} active={props.active} />
+      <SessionRow session={props.session} project={null} active={props.active} handle={handle} />
     </div>
   );
 }
 
 function UnassignedTab({ sessions, activePane }: { sessions: Session[]; activePane: string | null }) {
-  const sort = useDevicePref<UnassignedSort>("unassignedSort", "herdr");
+  const sort = useUnassignedSort();
+  const [touch] = useState(isTouchDevice);
   // 拖动后先按新顺序显示，等 herdr 的新顺序推送过来再以它为准
   const [optimistic, setOptimistic] = useState<string[] | null>(null);
   const draggedRef = useRef(false);
-  const sorted = sortSessions(sessions, sort);
+  const sorted = sortUnassigned(sessions, sort);
   const orderKey = sorted.map((s) => s.paneId).join(",");
   useEffect(() => setOptimistic(null), [orderKey]);
   const shown = optimistic ? optimistic.map((id) => sorted.find((s) => s.paneId === id)).filter((s): s is Session => !!s) : sorted;
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
+    // 触屏上只从把手开始拖，按下即可拖动
+    useSensor(TouchSensor, { activationConstraint: { distance: 4 } }),
   );
 
   const onDragEnd = ({ active, over }: DragEndEvent) => {
@@ -527,7 +547,7 @@ function UnassignedTab({ sessions, activePane }: { sessions: Session[]; activePa
     <div className="flex flex-col gap-0.5">
       <div className="flex items-center justify-end px-2 pb-1.5">
         <div className="flex shrink-0 rounded-md bg-muted p-0.5">
-          {SORTS.map((o) => (
+          {UNASSIGNED_SORTS.map((o) => (
             <Tooltip key={o.value}>
               <TooltipTrigger asChild>
                 <button
@@ -549,7 +569,7 @@ function UnassignedTab({ sessions, activePane }: { sessions: Session[]; activePa
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={() => (draggedRef.current = true)} onDragEnd={onDragEnd}>
           <SortableContext items={shown.map((s) => s.paneId)} strategy={verticalListSortingStrategy}>
             {shown.map((s) => (
-              <SortableRow key={s.paneId} session={s} active={s.paneId === activePane} draggedRef={draggedRef} />
+              <SortableRow key={s.paneId} session={s} active={s.paneId === activePane} draggedRef={draggedRef} touch={touch} />
             ))}
           </SortableContext>
         </DndContext>

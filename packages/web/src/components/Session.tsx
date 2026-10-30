@@ -11,6 +11,8 @@ import { themeKey, useTerminalTheme } from "@/lib/terminalTheme";
 import { uploadFile } from "@/lib/upload";
 import { api } from "../api.ts";
 import { useTerminalSizing } from "@/lib/devicePrefs";
+import { navigationOrder, useUnassignedSort } from "@/lib/sessionOrder";
+import { useSwipeNav } from "@/lib/swipe";
 import { useLive, usePane, useWide } from "../live.ts";
 import { openFiles, openSession } from "../router.ts";
 import { Bubbles } from "./Bubbles.tsx";
@@ -90,6 +92,18 @@ export function SessionPage({ paneId }: { paneId: string }) {
     return s ? { session: s, project: null } : null;
   }, [overview, paneId]);
 
+  // 手机上在标题栏左右滑，切到列表里的上一个 / 下一个会话
+  const unassignedSort = useUnassignedSort();
+  const neighbors = useMemo(() => {
+    const list = overview ? navigationOrder(overview, unassignedSort) : [];
+    const i = list.findIndex((s) => s.paneId === paneId);
+    return { prev: i > 0 ? list[i - 1]!.paneId : null, next: i >= 0 && i < list.length - 1 ? list[i + 1]!.paneId : null };
+  }, [overview, unassignedSort, paneId]);
+  const swipe = useSwipeNav(
+    neighbors.prev ? () => openSession(neighbors.prev) : null,
+    neighbors.next ? () => openSession(neighbors.next) : null,
+  );
+
   if (!overview) return <Loading />;
   if (!found) {
     return (
@@ -136,7 +150,11 @@ export function SessionPage({ paneId }: { paneId: string }) {
           </Button>
         )}
         <AgentIcon kind={session.kind} status={session.status} className={wide ? "ml-1" : undefined} />
-        <div className="min-w-0 flex-1 pl-1">
+        <div
+          className="min-w-0 flex-1 touch-pan-y pl-1"
+          style={swipe.dx ? { transform: `translateX(${swipe.dx}px)`, opacity: 1 - Math.min(0.6, Math.abs(swipe.dx) / 200) } : undefined}
+          {...swipe.handlers}
+        >
           <div className="truncate text-sm font-medium">{session.title}</div>
           <div className="truncate text-xs text-muted-foreground">
             {project?.name ?? "未归属"}

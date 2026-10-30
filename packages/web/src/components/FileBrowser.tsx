@@ -124,6 +124,8 @@ export function FileBrowser(props: {
   projects?: { id: string; name: string }[];
   onOpenProject?: (projectId: string) => void;
   compact?: boolean;
+  /** 打开 / 关闭编辑器时通知外层（手机上编辑时收起外层标题栏）。 */
+  onEditingChange?: (editing: boolean) => void;
 }) {
   const { projectId, path } = props;
   const timeZone = useTimeZone();
@@ -147,6 +149,8 @@ export function FileBrowser(props: {
   /** 正在编辑的文件（项目内相对路径）；编辑器占据整个文件管理器区域。 */
   const [editing, setEditing] = useState<string | null>(null);
   useEffect(() => setEditing(null), [projectId]);
+  const { onEditingChange } = props;
+  useEffect(() => onEditingChange?.(!!editing), [editing, onEditingChange]);
   const fileInput = useRef<HTMLInputElement>(null);
 
   // 后退 / 前进：记录在这个文件管理器里走过的路径

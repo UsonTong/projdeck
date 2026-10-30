@@ -91,7 +91,10 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent
+        // 手机上占满整屏，内容多时可以滚动
+        className="max-h-[calc(100dvh-2rem)] content-start overflow-y-auto sm:max-w-md max-sm:inset-0 max-sm:h-dvh max-sm:max-h-none max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:pt-[calc(1rem+env(safe-area-inset-top))] max-sm:pb-[calc(1rem+env(safe-area-inset-bottom))] max-sm:ring-0 max-sm:[&>[data-slot=dialog-close]]:top-[calc(0.5rem+env(safe-area-inset-top))]"
+      >
         <DialogHeader>
           <DialogTitle>设置</DialogTitle>
           <DialogDescription>保存在你的电脑上，所有设备共享，改了立即生效。</DialogDescription>
