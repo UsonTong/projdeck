@@ -2,6 +2,7 @@ import type { AgentKind, ProjectView } from "@projdeck/shared";
 import { ArchiveIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -63,6 +64,16 @@ export function ProjectSettingsDialog(props: { project: ProjectView; open: boole
               </ToggleGroupItem>
             </ToggleGroup>
             <FieldDescription>项目标题旁新开会话的图标会把默认 agent 放在前面。</FieldDescription>
+          </Field>
+          <Field orientation="horizontal">
+            <Checkbox
+              id={`notify-${project.id}`}
+              checked={project.notify !== false}
+              onCheckedChange={(v) => void api.updateProject(project.id, { notify: v === true }).catch(fail)}
+            />
+            <FieldLabel htmlFor={`notify-${project.id}`} className="font-normal">
+              推送这个项目的完成 / 需处理通知
+            </FieldLabel>
           </Field>
         </FieldGroup>
         <DialogFooter className="sm:justify-between">

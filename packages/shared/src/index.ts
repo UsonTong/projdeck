@@ -12,6 +12,8 @@ export interface Project {
   archived: boolean;
   defaultAgent: AgentKind;
   agentArgs: Record<AgentKind, string[]>;
+  /** 是否推送这个项目里会话的完成 / 需处理通知（未设置视为开启）。 */
+  notify?: boolean;
 }
 
 /** 一个 herdr pane，在 projdeck 中称为「会话」。 */
@@ -92,6 +94,7 @@ export interface TranscriptPage {
 /** 新建时 git 默认为 true：初始化 git 仓库（claude-hud 等工具的 git 信息依赖它）。 */
 export type CreateProjectBody = { name: string; git?: boolean } | { path: string; name?: string };
 export interface UpdateProjectBody {
+  notify?: boolean;
   name?: string;
   archived?: boolean;
   defaultAgent?: AgentKind;

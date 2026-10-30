@@ -47,6 +47,13 @@ export const api = {
   logout: () => request("POST", "/api/auth/logout"),
 
   overview: () => request<Overview>("GET", "/api/overview"),
+  // 推送通知
+  pushKey: () => request<{ publicKey: string }>("GET", "/api/push/key"),
+  pushStatus: (endpoint: string) => request<{ subscribed: boolean }>("POST", "/api/push/status", { endpoint }),
+  pushSubscribe: (sub: { endpoint: string; keys: { p256dh: string; auth: string }; label: string }) =>
+    request("POST", "/api/push/subscribe", sub),
+  pushUnsubscribe: (endpoint: string) => request("POST", "/api/push/unsubscribe", { endpoint }),
+  pushTest: (endpoint: string) => request("POST", "/api/push/test", { endpoint }),
   startHerdr: () => request("POST", "/api/herdr/start"),
   terminalTheme: () => request<TerminalTheme>("GET", "/api/terminal-theme"),
   updateSettings: (patch: Partial<Settings>) => request<Settings>("PATCH", "/api/settings", patch),

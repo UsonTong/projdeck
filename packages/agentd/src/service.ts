@@ -189,6 +189,20 @@ export class ProjdeckService {
     return this.store.state.seenDone.includes(terminalId) ? "idle" : "done";
   }
 
+  /** 是否有网页正在看这个会话（终端或对话视图）。 */
+  isViewed(terminalId: string): boolean {
+    return this.viewers.has(terminalId);
+  }
+
+  /** 会话最后一条回复（通知里显示），过长时截断。 */
+  async lastReply(paneId: string): Promise<string | null> {
+    const page = await this.transcript(paneId, -1);
+    const last = page.entries.findLast((e) => e.kind === "assistant");
+    if (!last || last.kind !== "assistant") return null;
+    const text = last.text.replace(/\s+/g, " ").trim();
+    return text.length > 140 ? `${text.slice(0, 140)}…` : text;
+  }
+
   /** 网页开始查看一个会话（终端或对话视图）。返回结束查看的函数。 */
   async beginView(paneId: string): Promise<() => void> {
     const terminalId = await this.terminalIdOf(paneId);
@@ -273,8 +287,9 @@ export class ProjdeckService {
     return this.store.addProject(name?.trim() || basename(path), path);
   }
 
-  updateProject(id: string, patch: { name?: string; archived?: boolean; defaultAgent?: AgentKind }): Project {
+  updateProject(id: string, patch: { name?: string; archived?: boolean; defaultAgent?: AgentKind; notify?: boolean }): Project {
     const p = this.store.getProject(id);
+    if (patch.notify !== undefined) p.notify = patch.notify === true;
     if (patch.name !== undefined) p.name = patch.name.trim() || p.name;
     if (patch.archived !== undefined) p.archived = patch.archived;
     if (patch.defaultAgent !== undefined) p.defaultAgent = patch.defaultAgent;

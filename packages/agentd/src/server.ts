@@ -33,6 +33,7 @@ import {
   writeText,
 } from "./files.ts";
 import { DesktopFocus } from "./desktopFocus.ts";
+import type { PushService } from "./push.ts";
 import { loadGhosttyTheme, watchGhosttyTheme } from "./ghosttyTheme.ts";
 import { LiveHub } from "./live.ts";
 import { TerminalBridge } from "./terminal.ts";
@@ -50,7 +51,7 @@ function originHost(origin: string): string | null {
 
 const webDist = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "web", "dist");
 
-export async function buildServer(config: Config, service: ProjdeckService, herdr: HerdrClient) {
+export async function buildServer(config: Config, service: ProjdeckService, herdr: HerdrClient, push: PushService) {
   const app = Fastify({
     logger: { level: process.env.LOG_LEVEL ?? "info" },
     // 生产环境经服务器 Caddy → SSH 隧道 → 本机，真实 IP 在 X-Forwarded-For 中
@@ -172,6 +173,29 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
     const project = "path" in body ? service.importProject(body.path, body.name) : service.createProject(body.name, body.git ?? true);
     live.scheduleOverview();
     return project;
+  });
+
+  // ---- 推送通知（手机上的完成 / 需处理提醒，见 notifier.ts）----
+  type PushBody = { Body: { endpoint?: string; keys?: { p256dh?: string; auth?: string }; label?: string } };
+  app.get("/api/push/key", async () => ({ publicKey: push.publicKey }));
+  app.post<PushBody>("/api/push/status", async (req) => ({ subscribed: push.has(String(req.body?.endpoint ?? "")) }));
+  app.post<PushBody>("/api/push/subscribe", async (req) => {
+    const { endpoint, keys, label } = req.body ?? {};
+    if (!endpoint?.startsWith("https://") || !keys?.p256dh || !keys.auth) throw httpError(400, "订阅信息无效");
+    push.subscribe({ endpoint, keys: { p256dh: keys.p256dh, auth: keys.auth }, label: String(label ?? "").slice(0, 80) });
+    return { ok: true };
+  });
+  app.post<PushBody>("/api/push/unsubscribe", async (req) => {
+    push.unsubscribe(String(req.body?.endpoint ?? ""));
+    return { ok: true };
+  });
+  app.post<PushBody>("/api/push/test", async (req) => {
+    const delivered = await push.send(
+      { title: "projdeck 通知测试", body: "能看到这条，说明这台设备会收到完成 / 需处理的提醒。", url: "/" },
+      String(req.body?.endpoint ?? ""),
+    );
+    if (!delivered) throw httpError(502, "推送服务没有接受这条通知，请重新开启通知");
+    return { ok: true };
   });
 
   app.patch<{ Params: { id: string }; Body: UpdateProjectBody }>("/api/projects/:id", async (req) => {

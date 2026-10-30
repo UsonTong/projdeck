@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0a0a0a" />
+    <title>projdeck · 连不上电脑</title>
+    <style>
+      html, body { height: 100%; margin: 0; background: #0a0a0a; color: #e5e5e5; font: 15px/1.6 system-ui, -apple-system, sans-serif; }
+      main { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; box-sizing: border-box; }
+      svg { margin-bottom: 8px; }
+      h1 { font-size: 18px; margin: 0; }
+      p { margin: 0; color: #a3a3a3; max-width: 320px; }
+      button { margin-top: 12px; padding: 8px 20px; border-radius: 10px; border: 0; background: #e5e5e5; color: #0a0a0a; font: inherit; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <svg width="64" height="64" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+        <rect width="512" height="512" rx="96" fill="#0a0a0a"/>
+        <rect x="96" y="128" width="320" height="64" rx="16" fill="#e5e5e5"/>
+        <rect x="96" y="224" width="320" height="64" rx="16" fill="#e5e5e5" opacity=".7"/>
+        <rect x="96" y="320" width="320" height="64" rx="16" fill="#e5e5e5" opacity=".4"/>
+      </svg>
+      <h1>连不上你的电脑</h1>
+      <p>可能是手机没网、电脑关机或休眠了，也可能是电脑到服务器的隧道断开了。</p>
+      <button onclick="location.reload()">重试</button>
+    </main>
+    <script>
+      // 网络恢复时自动重试
+      addEventListener("online", () => location.reload());
+    </script>
+  </body>
+</html>

@@ -1,12 +1,15 @@
 import { CheckIcon, SearchIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { setDevicePref, useTerminalSizing } from "@/lib/devicePrefs";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+import { Spinner } from "@/components/ui/spinner";
+import { setDevicePref, useTerminalSizing } from "@/lib/devicePrefs";
+import { disablePush, enablePush, pushState, testPush, type PushState } from "@/lib/push";
 import { allTimeZones, COMMON_TIME_ZONES, deviceTimeZone, formatDateTime, utcOffset } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { api } from "../api.ts";
@@ -19,12 +22,29 @@ interface Option {
   description: string;
 }
 
-/** 设置：自动信任文件夹、终端尺寸（本设备）、时区。时区用可搜索的列表直接选，不用下拉菜单。 */
+/** 设置：通知（本设备）、自动信任文件夹、终端尺寸（本设备）、时区。时区用可搜索的列表直接选，不用下拉菜单。 */
 export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { overview } = useLive();
   const current = overview?.settings.timeZone ?? null;
   const autoTrust = overview?.settings.autoTrust ?? true;
   const sizing = useTerminalSizing();
+  const [push, setPush] = useState<PushState | null>(null);
+  const [pushBusy, setPushBusy] = useState(false);
+  useEffect(() => {
+    if (open) pushState().then(setPush, () => setPush("unsupported"));
+  }, [open]);
+  const pushAction = async (fn: () => Promise<void>, done?: string) => {
+    setPushBusy(true);
+    try {
+      await fn();
+      if (done) toast.success(done);
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setPushBusy(false);
+      setPush(await pushState().catch(() => "unsupported" as const));
+    }
+  };
   const [query, setQuery] = useState("");
   const [now, setNow] = useState(() => new Date());
 
@@ -76,6 +96,36 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
           <DialogTitle>设置</DialogTitle>
           <DialogDescription>保存在你的电脑上，所有设备共享，改了立即生效。</DialogDescription>
         </DialogHeader>
+        <div className="flex min-w-0 flex-col gap-2">
+          <div className="text-sm font-medium">通知（这台设备）</div>
+          <p className="text-xs text-muted-foreground">
+            {push === null && "检查中…"}
+            {push === "on" && "已开启：Claude / Codex 完成或需要你处理时，这台设备会收到通知，点通知直接打开那个会话。"}
+            {push === "off" && "开启后，Claude / Codex 完成或需要你处理时推送到这台设备，不用一直开着网页。"}
+            {push === "denied" && "通知权限被拒绝了，需要在浏览器或系统设置里允许 projdeck 发通知，然后再回来开启。"}
+            {push === "needs-install" && "iPhone / iPad 需要先把 projdeck 添加到主屏幕（Safari 分享按钮 → 添加到主屏幕），再从主屏幕打开 projdeck 开启通知。"}
+            {push === "unsupported" && "这个浏览器不支持推送通知。"}
+          </p>
+          {(push === "on" || push === "off") && (
+            <div className="flex gap-2">
+              {push === "off" ? (
+                <Button size="sm" disabled={pushBusy} onClick={() => void pushAction(enablePush, "已开启通知")}>
+                  {pushBusy && <Spinner data-icon="inline-start" />}
+                  开启通知
+                </Button>
+              ) : (
+                <>
+                  <Button size="sm" variant="outline" disabled={pushBusy} onClick={() => void pushAction(testPush, "已发送，几秒内会收到")}>
+                    发送测试通知
+                  </Button>
+                  <Button size="sm" variant="ghost" disabled={pushBusy} onClick={() => void pushAction(disablePush, "已关闭通知")}>
+                    关闭
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
         <Field orientation="horizontal">
           <Checkbox id="auto-trust" checked={autoTrust} onCheckedChange={(v) => void setAutoTrust(v === true)} />
           <FieldContent>
