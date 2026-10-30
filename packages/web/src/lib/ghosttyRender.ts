@@ -44,13 +44,15 @@ interface LinkRange {
 interface Renderer {
   ctx: CanvasRenderingContext2D;
   renderLine(line: Cell[], row: number, cols: number): void;
-  currentBuffer: { getGraphemeString?(row: number, col: number): string } | null;
+  currentBuffer: { getGraphemeString?(row: number, col: number): string; getLine?(row: number): Cell[] | null } | null;
   currentSelectionCoords: unknown;
   fontSize: number;
   fontFamily: string;
   devicePixelRatio: number;
   metrics: Metrics;
-  theme: { background: string; selectionBackground: string; selectionForeground: string };
+  theme: { background: string; selectionBackground: string; selectionForeground: string; cursor: string; cursorAccent: string };
+  cursorStyle: "block" | "underline" | "bar";
+  renderCursor(x: number, y: number): void;
   measureFont(): Metrics;
   remeasureFont(): void;
   isInSelection(col: number, row: number): boolean;
@@ -522,6 +524,38 @@ function renderLine(r: Renderer, line: Cell[], row: number, cols: number): void 
   if (canSpace) ctx.letterSpacing = "0px";
 }
 
+/**
+ * 光标。ghostty-web 的方块光标只是一个色块，盖住了下面的字；在中文等宽字符上也只有一格宽，挡住半个字。
+ * 这里与原生 Ghostty 一致：宽字符上光标占两格，方块光标里用光标文字色（cursor-text）把字重新画出来。
+ */
+function renderCursor(r: Renderer, x: number, y: number): void {
+  const ctx = r.ctx;
+  const { width, height, baseline } = r.metrics;
+  const cell = r.currentBuffer?.getLine?.(y)?.[x];
+  const w = width * (cell?.width === 2 ? 2 : 1);
+  const left = x * width;
+  const top = y * height;
+  ctx.fillStyle = r.theme.cursor;
+  if (r.cursorStyle === "underline") {
+    const h = Math.max(2, Math.floor(height * 0.15));
+    ctx.fillRect(left, top + height - h, w, h);
+    return;
+  }
+  if (r.cursorStyle === "bar") {
+    ctx.fillRect(left, top, Math.max(2, Math.floor(width * 0.15)), height);
+    return;
+  }
+  ctx.fillRect(left, top, w, height);
+  if (!cell || cell.flags & CellFlags.INVISIBLE || isSpecial(cell.codepoint)) return;
+  const cp = cell.codepoint;
+  if (cell.grapheme_len === 0 && (cp === 0 || cp === 32)) return;
+  const text = cell.grapheme_len > 0 ? (r.currentBuffer?.getGraphemeString?.(y, x) ?? String.fromCodePoint(cp)) : String.fromCodePoint(cp);
+  ctx.font = `${cell.flags & CellFlags.ITALIC ? "italic " : ""}${cell.flags & CellFlags.BOLD ? "bold " : ""}${r.fontSize}px ${r.fontFamily}`;
+  if (canSpace) ctx.letterSpacing = "0px";
+  ctx.fillStyle = r.theme.cursorAccent;
+  ctx.fillText(text, left, top + baseline);
+}
+
 /** 下划线、删除线、链接悬停下划线（与 ghostty-web 原实现一致）。 */
 function drawDecorations(r: Renderer, cell: Cell, col: number, row: number, color: string): void {
   const ctx = r.ctx;
@@ -670,6 +704,7 @@ export function patchRenderer(term: Terminal): void {
   r.remeasureFont();
   // 中文等宽字符与原生 Ghostty 一样按正常字号、从格子左侧画，不放大
   r.renderLine = (line, row, cols) => renderLine(r, line, row, cols);
+  r.renderCursor = (x, y) => renderCursor(r, x, y);
   cacheViewport(term);
   fixResetReferences(term);
   fixWideCharSelection(term);
