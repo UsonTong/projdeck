@@ -23,19 +23,19 @@ class Session {
   final String? restoreError;
 
   Session.fromJson(Map<String, dynamic> j)
-      : paneId = j['paneId'],
-        terminalId = j['terminalId'] ?? '',
-        workspaceId = j['workspaceId'] ?? '',
-        kind = _kind(j['kind']),
-        status = _status(j['status']),
-        title = j['title'] ?? '',
-        cwd = j['cwd'] ?? '',
-        conversationId = j['conversationId'],
-        hidden = j['hidden'] == true,
-        order = (j['order'] as num?)?.toInt() ?? 0,
-        activeAt = (j['activeAt'] as num?)?.toInt(),
-        renamed = j['renamed'] == true,
-        restoreError = j['restoreError'];
+    : paneId = j['paneId'],
+      terminalId = j['terminalId'] ?? '',
+      workspaceId = j['workspaceId'] ?? '',
+      kind = _kind(j['kind']),
+      status = _status(j['status']),
+      title = j['title'] ?? '',
+      cwd = j['cwd'] ?? '',
+      conversationId = j['conversationId'],
+      hidden = j['hidden'] == true,
+      order = (j['order'] as num?)?.toInt() ?? 0,
+      activeAt = (j['activeAt'] as num?)?.toInt(),
+      renamed = j['renamed'] == true,
+      restoreError = j['restoreError'];
 }
 
 class Project {
@@ -50,15 +50,15 @@ class Project {
   final List<Session> sessions;
 
   Project.fromJson(Map<String, dynamic> j)
-      : id = j['id'],
-        name = j['name'] ?? '',
-        path = j['path'] ?? '',
-        archived = j['archived'] == true,
-        defaultAgent = _kind(j['defaultAgent']),
-        notify = j['notify'] != false,
-        note = (j['note'] as String?)?.isNotEmpty == true ? j['note'] : null,
-        order = (j['order'] as num?)?.toInt(),
-        sessions = [for (final s in (j['sessions'] as List? ?? [])) Session.fromJson(s)];
+    : id = j['id'],
+      name = j['name'] ?? '',
+      path = j['path'] ?? '',
+      archived = j['archived'] == true,
+      defaultAgent = _kind(j['defaultAgent']),
+      notify = j['notify'] != false,
+      note = (j['note'] as String?)?.isNotEmpty == true ? j['note'] : null,
+      order = (j['order'] as num?)?.toInt(),
+      sessions = [for (final s in (j['sessions'] as List? ?? [])) Session.fromJson(s)];
 }
 
 class ArchivedSession {
@@ -70,12 +70,12 @@ class ArchivedSession {
   final String archivedAt;
 
   ArchivedSession.fromJson(Map<String, dynamic> j)
-      : id = j['id'],
-        projectId = j['projectId'],
-        kind = _kind(j['kind']),
-        title = j['title'] ?? '',
-        cwd = j['cwd'] ?? '',
-        archivedAt = j['archivedAt'] ?? '';
+    : id = j['id'],
+      projectId = j['projectId'],
+      kind = _kind(j['kind']),
+      title = j['title'] ?? '',
+      cwd = j['cwd'] ?? '',
+      archivedAt = j['archivedAt'] ?? '';
 }
 
 class Overview {
@@ -88,13 +88,13 @@ class Overview {
   final bool autoTrust;
 
   Overview.fromJson(Map<String, dynamic> j)
-      : herdrOnline = j['herdr']?['online'] == true,
-        herdrError = j['herdr']?['error'],
-        projects = [for (final p in (j['projects'] as List? ?? [])) Project.fromJson(p)],
-        unassigned = [for (final s in (j['unassigned'] as List? ?? [])) Session.fromJson(s)],
-        archived = [for (final a in (j['archived'] as List? ?? [])) ArchivedSession.fromJson(a)],
-        timeZone = j['settings']?['timeZone'],
-        autoTrust = j['settings']?['autoTrust'] != false;
+    : herdrOnline = j['herdr']?['online'] == true,
+      herdrError = j['herdr']?['error'],
+      projects = [for (final p in (j['projects'] as List? ?? [])) Project.fromJson(p)],
+      unassigned = [for (final s in (j['unassigned'] as List? ?? [])) Session.fromJson(s)],
+      archived = [for (final a in (j['archived'] as List? ?? [])) ArchivedSession.fromJson(a)],
+      timeZone = j['settings']?['timeZone'],
+      autoTrust = j['settings']?['autoTrust'] != false;
 
   /// 按 paneId 找会话和它所在的项目。
   (Session, Project?)? find(String paneId) {
@@ -121,13 +121,13 @@ class TerminalTheme {
   final List<String> palette;
 
   TerminalTheme.fromJson(Map<String, dynamic> j)
-      : background = j['background'] ?? '#0a0a0a',
-        foreground = j['foreground'] ?? '#e5e5e5',
-        cursor = j['cursor'] ?? '#e5e5e5',
-        cursorText = j['cursorText'] ?? '#0a0a0a',
-        selectionBackground = j['selectionBackground'] ?? '#404040',
-        selectionForeground = j['selectionForeground'] ?? '#e5e5e5',
-        palette = [for (final c in (j['palette'] as List? ?? [])) c as String];
+    : background = j['background'] ?? '#0a0a0a',
+      foreground = j['foreground'] ?? '#e5e5e5',
+      cursor = j['cursor'] ?? '#e5e5e5',
+      cursorText = j['cursorText'] ?? '#0a0a0a',
+      selectionBackground = j['selectionBackground'] ?? '#404040',
+      selectionForeground = j['selectionForeground'] ?? '#e5e5e5',
+      palette = [for (final c in (j['palette'] as List? ?? [])) c as String];
 
   static TerminalTheme get fallback => TerminalTheme.fromJson({});
 }
@@ -140,10 +140,10 @@ sealed class TranscriptEntry {
   TranscriptEntry(this.id, this.time);
 
   static TranscriptEntry fromJson(Map<String, dynamic> j) => switch (j['kind']) {
-        'user' => UserEntry(j['id'], j['time'], j['text'] ?? '', [for (final i in (j['images'] as List? ?? [])) i as String]),
-        'assistant' => AssistantEntry(j['id'], j['time'], j['text'] ?? ''),
-        _ => ToolEntry(j['id'], j['time'], j['name'] ?? '', j['summary'] ?? ''),
-      };
+    'user' => UserEntry(j['id'], j['time'], j['text'] ?? '', [for (final i in (j['images'] as List? ?? [])) i as String]),
+    'assistant' => AssistantEntry(j['id'], j['time'], j['text'] ?? ''),
+    _ => ToolEntry(j['id'], j['time'], j['name'] ?? '', j['summary'] ?? ''),
+  };
 }
 
 class UserEntry extends TranscriptEntry {

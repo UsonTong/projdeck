@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import '../api/client.dart';
 import '../theme.dart';
 
@@ -45,32 +46,37 @@ class _LoginPageState extends State<LoginPage> {
         child: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(28),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              const Text('projdeck', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 8),
-              Text('粘贴电脑上 projdeck 的访问链接（形如 https://<地址>/k/<访问 key>，key 在电脑的 ~/.config/projdeck/edge-key）。只需要一次。',
-                  style: TextStyle(color: p.mutedFg, height: 1.5)),
-              const SizedBox(height: 20),
-              TextField(
-                controller: _ctl,
-                decoration: InputDecoration(
-                  hintText: 'https://…/k/…',
-                  errorText: _error,
-                  suffixIcon: IconButton(
-                    icon: const Icon(Icons.content_paste_rounded),
-                    onPressed: () async => _ctl.text = (await Clipboard.getData('text/plain'))?.text ?? '',
-                  ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text('projdeck', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 8),
+                Text(
+                  '粘贴电脑上 projdeck 的访问链接（形如 https://<地址>/k/<访问 key>，key 在电脑的 ~/.config/projdeck/edge-key）。只需要一次。',
+                  style: TextStyle(color: p.mutedFg, height: 1.5),
                 ),
-                keyboardType: TextInputType.url,
-                onSubmitted: (_) => _submit(),
-              ),
-              const SizedBox(height: 16),
-              FilledButton(
-                onPressed: _busy ? null : _submit,
-                style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(46)),
-                child: _busy ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('连接'),
-              ),
-            ]),
+                const SizedBox(height: 20),
+                TextField(
+                  controller: _ctl,
+                  decoration: InputDecoration(
+                    hintText: 'https://…/k/…',
+                    errorText: _error,
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.content_paste_rounded),
+                      onPressed: () async => _ctl.text = (await Clipboard.getData('text/plain'))?.text ?? '',
+                    ),
+                  ),
+                  keyboardType: TextInputType.url,
+                  onSubmitted: (_) => _submit(),
+                ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: _busy ? null : _submit,
+                  style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(46)),
+                  child: _busy ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('连接'),
+                ),
+              ],
+            ),
           ),
         ),
       ),

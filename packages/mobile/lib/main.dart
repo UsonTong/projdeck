@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import 'api/client.dart';
 import 'api/models.dart';
 import 'native.dart';
@@ -44,9 +45,9 @@ class _ProjdeckAppState extends State<ProjdeckApp> {
       });
     }
     restartApp = () => setState(() {
-          _state?.dispose();
-          _state = null;
-        });
+      _state?.dispose();
+      _state = null;
+    });
     // 点通知打开 App：进入对应的会话
     Native.onOpen(_openPath);
     Native.initialPath().then((p) => p != null ? WidgetsBinding.instance.addPostFrameCallback((_) => _openPath(p)) : null);

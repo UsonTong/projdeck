@@ -11,12 +11,12 @@ const unassignedSortLabels = {UnassignedSort.herdr: 'herdr 顺序', UnassignedSo
 
 /// 越需要关注越靠前：需处理 > 工作中 > 已完成 > 其他。
 int statusRank(Session s) => switch (s.status) {
-      SessionStatus.blocked => 0,
-      SessionStatus.working => 1,
-      SessionStatus.done => 2,
-      SessionStatus.idle => 3,
-      SessionStatus.unknown => 4,
-    };
+  SessionStatus.blocked => 0,
+  SessionStatus.working => 1,
+  SessionStatus.done => 2,
+  SessionStatus.idle => 3,
+  SessionStatus.unknown => 4,
+};
 
 int _projectRank(Project p) => p.sessions.where((s) => !s.hidden).map(statusRank).fold(5, (a, b) => a < b ? a : b);
 int _projectActiveAt(Project p) => p.sessions.where((s) => !s.hidden).map((s) => s.activeAt ?? 0).fold(0, (a, b) => a > b ? a : b);
@@ -86,6 +86,6 @@ List<Session> sortUnassigned(List<Session> sessions, UnassignedSort mode) {
 
 /// 列表里从上到下的全部会话（不含隐藏的）：先各项目，再未归属。
 List<Session> navigationOrder(Overview o, ProjectSort ps, UnassignedSort us) => [
-      for (final p in sortProjects(o.projects, ps)) ...sortProjectSessions(p.sessions.where((s) => !s.hidden).toList(), ps),
-      ...sortUnassigned(o.unassigned.where((s) => !s.hidden).toList(), us),
-    ];
+  for (final p in sortProjects(o.projects, ps)) ...sortProjectSessions(p.sessions.where((s) => !s.hidden).toList(), ps),
+  ...sortUnassigned(o.unassigned.where((s) => !s.hidden).toList(), us),
+];

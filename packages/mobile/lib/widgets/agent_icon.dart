@@ -1,16 +1,11 @@
 import 'package:flutter/material.dart';
+
 import '../api/models.dart';
 import '../theme.dart';
 
 /// Claude Code 的螃蟹、Codex 的小家伙：按它们在终端里打印的标志逐像素还原（与网页的 AgentIcon 相同）。
 /// 终端里一个「像素」是半个字符格，宽高约 1:2，所以每个像素画成 1×2 的矩形。
-const _crab = [
-  '...############...',
-  '...##.######.##...',
-  '.################.',
-  '...############...',
-  '....#.#....#.#....',
-];
+const _crab = ['...############...', '...##.######.##...', '.################.', '...############...', '....#.#....#.#....'];
 const _codex = [
   '.#............#.',
   '..############..',
@@ -74,36 +69,47 @@ class AgentIcon extends StatelessWidget {
     };
     return SizedBox.square(
       dimension: size,
-      child: Stack(clipBehavior: Clip.none, children: [
-        Container(
-          decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(size * 0.28), border: Border.all(color: ring)),
-          alignment: Alignment.center,
-          child: kind == SessionKind.shell
-              ? Icon(Icons.terminal_rounded, size: size * 0.55, color: fg)
-              : SizedBox(
-                  width: size * (kind == SessionKind.claude ? 0.78 : 0.72),
-                  height: size * 0.7,
-                  child: CustomPaint(painter: _PixelPainter(kind == SessionKind.claude ? _crab : _codex, fg)),
-                ),
-        ),
-        if (plus)
-          Positioned(
-            right: -3,
-            bottom: -3,
-            child: Container(
-              width: size * 0.42,
-              height: size * 0.42,
-              decoration: BoxDecoration(color: p.fg, shape: BoxShape.circle, border: Border.all(color: p.bg, width: 2)),
-              child: Icon(Icons.add, size: size * 0.32, color: p.bg),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              color: bg,
+              borderRadius: BorderRadius.circular(size * 0.28),
+              border: Border.all(color: ring),
             ),
+            alignment: Alignment.center,
+            child: kind == SessionKind.shell
+                ? Icon(Icons.terminal_rounded, size: size * 0.55, color: fg)
+                : SizedBox(
+                    width: size * (kind == SessionKind.claude ? 0.78 : 0.72),
+                    height: size * 0.7,
+                    child: CustomPaint(painter: _PixelPainter(kind == SessionKind.claude ? _crab : _codex, fg)),
+                  ),
           ),
-        if (dot != null)
-          Positioned(
-            right: -2,
-            bottom: -2,
-            child: _StatusDot(color: dot, pulse: status == SessionStatus.working, size: size * 0.3, ring: p.bg),
-          ),
-      ]),
+          if (plus)
+            Positioned(
+              right: -3,
+              bottom: -3,
+              child: Container(
+                width: size * 0.42,
+                height: size * 0.42,
+                decoration: BoxDecoration(
+                  color: p.fg,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: p.bg, width: 2),
+                ),
+                child: Icon(Icons.add, size: size * 0.32, color: p.bg),
+              ),
+            ),
+          if (dot != null)
+            Positioned(
+              right: -2,
+              bottom: -2,
+              child: _StatusDot(color: dot, pulse: status == SessionStatus.working, size: size * 0.3, ring: p.bg),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -144,11 +150,17 @@ class _StatusDotState extends State<_StatusDot> with SingleTickerProviderStateMi
   @override
   Widget build(BuildContext context) {
     return FadeTransition(
-      opacity: widget.pulse ? Tween(begin: 0.45, end: 1.0).animate(CurvedAnimation(parent: _c, curve: Curves.easeInOut)) : const AlwaysStoppedAnimation(1),
+      opacity: widget.pulse
+          ? Tween(begin: 0.45, end: 1.0).animate(CurvedAnimation(parent: _c, curve: Curves.easeInOut))
+          : const AlwaysStoppedAnimation(1),
       child: Container(
         width: widget.size,
         height: widget.size,
-        decoration: BoxDecoration(color: widget.color, shape: BoxShape.circle, border: Border.all(color: widget.ring, width: 2)),
+        decoration: BoxDecoration(
+          color: widget.color,
+          shape: BoxShape.circle,
+          border: Border.all(color: widget.ring, width: 2),
+        ),
       ),
     );
   }

@@ -1,7 +1,12 @@
 package dev.projdeck.app
 
 import android.Manifest
+import android.app.DownloadManager
+import android.content.ClipboardManager
 import android.content.Intent
+import android.net.Uri
+import android.os.Environment
+import android.provider.OpenableColumns
 import android.content.pm.PackageManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -44,11 +49,46 @@ class MainActivity : FlutterActivity() {
                 // 用 adb 安装后直接登录：am start … --es link https://…/k/…
                 "initialLink" -> result.success(intent?.getStringExtra("link").also { intent?.removeExtra("link") })
                 "initialPath" -> result.success(intent?.getStringExtra(NotifyService.EXTRA_PATH).also { intent?.removeExtra(NotifyService.EXTRA_PATH) })
+                "clipboardFile" -> result.success(clipboardFile())
+                "download" -> {
+                    val req = DownloadManager.Request(Uri.parse(call.argument<String>("url")))
+                        .addRequestHeader("Cookie", call.argument<String>("cookie"))
+                        .setTitle(call.argument<String>("name"))
+                        .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                        .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, call.argument<String>("name"))
+                    (getSystemService(DOWNLOAD_SERVICE) as DownloadManager).enqueue(req)
+                    result.success(true)
+                }
                 else -> result.notImplemented()
             }
         }
         // 已经开着通知：确保后台连接在跑（例如被系统清理后重新打开 App）
         if (Prefs.notificationsEnabled(this)) NotifyService.start(this)
+    }
+
+    /**
+     * 剪贴板里的图片或文件（Flutter 自带的剪贴板只支持文字）：返回名字、类型和内容；剪贴板里没有文件时为 null。
+     */
+    private fun clipboardFile(): Map<String, Any>? {
+        val clip = (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).primaryClip ?: return null
+        for (i in 0 until clip.itemCount) {
+            val uri = clip.getItemAt(i).uri ?: continue
+            val mime = contentResolver.getType(uri) ?: clip.description.getMimeType(0) ?: "application/octet-stream"
+            val bytes = try {
+                contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            } catch (_: Exception) {
+                null
+            } ?: continue
+            var name = "clipboard.${mime.substringAfter('/').substringBefore(';').ifEmpty { "bin" }}"
+            try {
+                contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                    if (c.moveToFirst()) c.getString(0)?.let { name = it }
+                }
+            } catch (_: Exception) {
+            }
+            return mapOf("name" to name, "mime" to mime, "bytes" to bytes)
+        }
+        return null
     }
 
     private fun enable(config: Pair<String, String>) {

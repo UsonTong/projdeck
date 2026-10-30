@@ -1,12 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:xterm/xterm.dart' as xt;
+
 import '../state.dart';
 import '../theme.dart';
+import 'attach.dart';
+import 'common.dart';
 
 /// 原生终端：xterm.dart 渲染，通过 /ws/term 连接电脑上 herdr 的这个 pane（与网页终端同一个接口）。
 /// 手势与网页一致：单指上下滑滚动历史（转成滚轮事件交给 herdr）、双指捏合调字号、轻点弹出键盘。
@@ -66,6 +70,9 @@ class TerminalPaneState extends State<TerminalPane> with WidgetsBindingObserver 
 
   void sendRaw(String data) => _send({'t': 'i', 'd': data});
 
+  /// 以粘贴方式输入（支持 bracketed paste，agent 会当作一次粘贴处理）。
+  void paste(String text) => terminal.paste(text);
+
   void sendKey(xt.TerminalKey key, {bool shift = false, bool ctrl = false}) => terminal.keyInput(key, shift: shift, ctrl: ctrl);
 
   bool get ctrlArmed => _ctrl;
@@ -80,13 +87,9 @@ class TerminalPaneState extends State<TerminalPane> with WidgetsBindingObserver 
     final app = AppScope.read(context);
     _sub?.cancel();
     _ws?.sink.close();
-    final uri = app.conn.ws('/ws/term').replace(queryParameters: {
-      'pane': widget.paneId,
-      'cols': '$_cols',
-      'rows': '$_rows',
-      'sizing': 'fit',
-      'active': '1',
-    });
+    final uri = app.conn
+        .ws('/ws/term')
+        .replace(queryParameters: {'pane': widget.paneId, 'cols': '$_cols', 'rows': '$_rows', 'sizing': 'fit', 'active': '1'});
     setState(() {
       _status = 'connecting';
       _error = null;
@@ -97,25 +100,29 @@ class TerminalPaneState extends State<TerminalPane> with WidgetsBindingObserver 
     ws.ready.then((_) {
       if (_ws == ws && mounted) setState(() => _status = 'open');
     }, onError: (_) {});
-    _sub = ws.stream.listen((data) {
-      if (data is List<int>) {
-        if (first) {
-          first = false;
-          // herdr 在连接时会完整重绘：清掉旧画面
-          terminal.write('\x1b[2J\x1b[3J\x1b[H');
-          if (!_painted) WidgetsBinding.instance.addPostFrameCallback((_) => mounted ? setState(() => _painted = true) : null);
+    _sub = ws.stream.listen(
+      (data) {
+        if (data is List<int>) {
+          if (first) {
+            first = false;
+            // herdr 在连接时会完整重绘：清掉旧画面
+            terminal.write('\x1b[2J\x1b[3J\x1b[H');
+            if (!_painted) WidgetsBinding.instance.addPostFrameCallback((_) => mounted ? setState(() => _painted = true) : null);
+          }
+          terminal.write(_decode(data is Uint8List ? data : Uint8List.fromList(data)));
+          return;
         }
-        terminal.write(_decode(data is Uint8List ? data : Uint8List.fromList(data)));
-        return;
-      }
-      final msg = jsonDecode(data as String) as Map<String, dynamic>;
-      if (msg['t'] == 'error') {
-        setState(() {
-          _status = 'error';
-          _error = msg['message'] as String?;
-        });
-      }
-    }, onDone: () => _closed(ws), onError: (_) => _closed(ws));
+        final msg = jsonDecode(data as String) as Map<String, dynamic>;
+        if (msg['t'] == 'error') {
+          setState(() {
+            _status = 'error';
+            _error = msg['message'] as String?;
+          });
+        }
+      },
+      onDone: () => _closed(ws),
+      onError: (_) => _closed(ws),
+    );
   }
 
   // 收到的字节可能在多字节字符（中文）中间断开：末尾不完整的部分留到下一段
@@ -129,7 +136,13 @@ class TerminalPaneState extends State<TerminalPane> with WidgetsBindingObserver 
     for (var i = all.length - 1; i >= 0 && i >= all.length - 4; i--) {
       final b = all[i];
       if (b & 0xc0 == 0x80) continue; // 续字节
-      final need = b >= 0xf0 ? 4 : b >= 0xe0 ? 3 : b >= 0xc0 ? 2 : 1;
+      final need = b >= 0xf0
+          ? 4
+          : b >= 0xe0
+          ? 3
+          : b >= 0xc0
+          ? 2
+          : 1;
       if (all.length - i < need) end = i;
       break;
     }
@@ -223,59 +236,68 @@ class TerminalPaneState extends State<TerminalPane> with WidgetsBindingObserver 
     );
     return Container(
       color: hexColor(t.background),
-      child: Stack(children: [
-        // 第一段画面到了再淡入，不显示只有光标的空白终端
-        AnimatedOpacity(
-          opacity: _painted ? 1 : 0,
-          duration: const Duration(milliseconds: 200),
-          child: xt.TerminalView(
-            terminal,
-            controller: controller,
-            focusNode: focus,
-            theme: theme,
-            padding: const EdgeInsets.all(4),
-            textStyle: xt.TerminalStyle(fontSize: _fontSize, fontFamily: 'monospace'),
-            keyboardType: TextInputType.text,
-            keyboardAppearance: p.dark ? Brightness.dark : Brightness.light,
-            deleteDetection: true,
-          ),
-        ),
-        // 手势层盖在终端上：滚动、捏合、轻点
-        Positioned.fill(
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () {
-              focus.requestFocus();
-              SystemChannels.textInput.invokeMethod('TextInput.show');
-            },
-            onScaleStart: _onScaleStart,
-            onScaleUpdate: _onScaleUpdate,
-            onScaleEnd: _onScaleEnd,
-          ),
-        ),
-        if (_status != 'open' && (_status == 'error' || _painted))
-          Positioned.fill(
-            child: Container(
-              color: hexColor(t.background).withValues(alpha: 0.85),
-              alignment: Alignment.center,
-              padding: const EdgeInsets.all(24),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                if (_status == 'error') ...[
-                  Icon(Icons.error_outline_rounded, color: p.destructive),
-                  const SizedBox(height: 8),
-                  Text(_error ?? '连接出错', textAlign: TextAlign.center, style: TextStyle(color: p.mutedFg)),
-                  const SizedBox(height: 12),
-                  OutlinedButton(onPressed: _connect, child: const Text('重试')),
-                ] else ...[
-                  const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2)),
-                  const SizedBox(height: 10),
-                  Text(_status == 'connecting' ? '连接中…' : '已断开，正在重连…', style: TextStyle(color: p.mutedFg)),
-                ],
-              ]),
+      child: Stack(
+        children: [
+          // 第一段画面到了再淡入，不显示只有光标的空白终端
+          AnimatedOpacity(
+            opacity: _painted ? 1 : 0,
+            duration: const Duration(milliseconds: 200),
+            child: xt.TerminalView(
+              terminal,
+              controller: controller,
+              focusNode: focus,
+              theme: theme,
+              padding: const EdgeInsets.all(4),
+              textStyle: xt.TerminalStyle(fontSize: _fontSize, fontFamily: 'monospace'),
+              keyboardType: TextInputType.text,
+              keyboardAppearance: p.dark ? Brightness.dark : Brightness.light,
+              deleteDetection: true,
             ),
           ),
-        if (!_painted && _status != 'error') const Center(child: SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))),
-      ]),
+          // 手势层盖在终端上：滚动、捏合、轻点
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                focus.requestFocus();
+                SystemChannels.textInput.invokeMethod('TextInput.show');
+              },
+              onScaleStart: _onScaleStart,
+              onScaleUpdate: _onScaleUpdate,
+              onScaleEnd: _onScaleEnd,
+            ),
+          ),
+          if (_status != 'open' && (_status == 'error' || _painted))
+            Positioned.fill(
+              child: Container(
+                color: hexColor(t.background).withValues(alpha: 0.85),
+                alignment: Alignment.center,
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_status == 'error') ...[
+                      Icon(Icons.error_outline_rounded, color: p.destructive),
+                      const SizedBox(height: 8),
+                      Text(
+                        _error ?? '连接出错',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: p.mutedFg),
+                      ),
+                      const SizedBox(height: 12),
+                      OutlinedButton(onPressed: _connect, child: const Text('重试')),
+                    ] else ...[
+                      const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                      const SizedBox(height: 10),
+                      Text(_status == 'connecting' ? '连接中…' : '已断开，正在重连…', style: TextStyle(color: p.mutedFg)),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          if (!_painted && _status != 'error') const Center(child: SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+        ],
+      ),
     );
   }
 }
@@ -283,7 +305,8 @@ class TerminalPaneState extends State<TerminalPane> with WidgetsBindingObserver 
 /// 终端下方的快捷键条（手机软键盘上没有的键）。方向键按住连发。
 class KeyBar extends StatefulWidget {
   final GlobalKey<TerminalPaneState> term;
-  const KeyBar({super.key, required this.term});
+  final String paneId;
+  const KeyBar({super.key, required this.term, required this.paneId});
 
   @override
   State<KeyBar> createState() => _KeyBarState();
@@ -320,12 +343,31 @@ class _KeyBarState extends State<KeyBar> {
               height: 36,
               padding: const EdgeInsets.symmetric(horizontal: 10),
               alignment: Alignment.center,
-              child: Text(label, style: TextStyle(fontFamily: mono, fontSize: 13, color: active ? p.bg : p.fg)),
+              child: Text(
+                label,
+                style: TextStyle(fontFamily: mono, fontSize: 13, color: active ? p.bg : p.fg),
+              ),
             ),
           ),
         ),
       ),
     );
+  }
+
+  int _uploading = 0;
+
+  /// 上传图片或文件，把电脑上的路径粘贴进终端（agent 会读取它；图片会被当作图片附件）。
+  Future<void> _attach() async {
+    final files = await pickAttachments(context);
+    if (files.isEmpty || !mounted) return;
+    final app = AppScope.read(context);
+    setState(() => _uploading += files.length);
+    for (final f in files) {
+      final u = await run(context, () => app.api.uploadForSession(widget.paneId, f));
+      if (!mounted) return;
+      setState(() => _uploading--);
+      if (u != null) widget.term.currentState?.paste('${u.path} ');
+    }
   }
 
   @override
@@ -336,23 +378,38 @@ class _KeyBarState extends State<KeyBar> {
     return Container(
       color: p.card,
       padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(children: [
-          _key('ctrl', () => setState(() => widget.term.currentState?.toggleCtrl()), active: t?.ctrlArmed ?? false),
-          _key('esc', () => key(xt.TerminalKey.escape)),
-          _key('tab', () => key(xt.TerminalKey.tab)),
-          _key('⇧tab', () => key(xt.TerminalKey.tab, shift: true)),
-          _key('↑', () => key(xt.TerminalKey.arrowUp), repeat: true),
-          _key('↓', () => key(xt.TerminalKey.arrowDown), repeat: true),
-          _key('←', () => key(xt.TerminalKey.arrowLeft), repeat: true),
-          _key('→', () => key(xt.TerminalKey.arrowRight), repeat: true),
-          _key('⏎', () => key(xt.TerminalKey.enter)),
-          _key('^C', () => key(xt.TerminalKey.keyC, ctrl: true)),
-          _key('/', () => widget.term.currentState?.sendRaw('/')),
-          _key('|', () => widget.term.currentState?.sendRaw('|')),
-          _key('~', () => widget.term.currentState?.sendRaw('~')),
-        ]),
+      child: Row(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _key('ctrl', () => setState(() => widget.term.currentState?.toggleCtrl()), active: t?.ctrlArmed ?? false),
+                  _key('esc', () => key(xt.TerminalKey.escape)),
+                  _key('tab', () => key(xt.TerminalKey.tab)),
+                  _key('⇧tab', () => key(xt.TerminalKey.tab, shift: true)),
+                  _key('↑', () => key(xt.TerminalKey.arrowUp), repeat: true),
+                  _key('↓', () => key(xt.TerminalKey.arrowDown), repeat: true),
+                  _key('←', () => key(xt.TerminalKey.arrowLeft), repeat: true),
+                  _key('→', () => key(xt.TerminalKey.arrowRight), repeat: true),
+                  _key('⏎', () => key(xt.TerminalKey.enter)),
+                  _key('^C', () => key(xt.TerminalKey.keyC, ctrl: true)),
+                  _key('/', () => widget.term.currentState?.sendRaw('/')),
+                  _key('|', () => widget.term.currentState?.sendRaw('|')),
+                  _key('~', () => widget.term.currentState?.sendRaw('~')),
+                ],
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: '上传图片或文件，把路径粘贴到终端',
+            onPressed: _uploading > 0 ? null : _attach,
+            icon: _uploading > 0
+                ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.attach_file_rounded),
+          ),
+        ],
       ),
     );
   }

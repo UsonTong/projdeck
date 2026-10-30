@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/io.dart';
+
 import 'api/client.dart';
 import 'api/models.dart';
 import 'sort.dart';
@@ -33,9 +35,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   final Map<String, PaneTranscript> transcripts = {};
   bool _disposed = false;
 
-  AppState(this.conn, this.prefs)
-      : api = Api(conn),
-        theme = _cachedTheme(prefs) {
+  AppState(this.conn, this.prefs) : api = Api(conn), theme = _cachedTheme(prefs) {
     WidgetsBinding.instance.addObserver(this);
     _connect();
     refreshTheme();

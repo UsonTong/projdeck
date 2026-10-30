@@ -1,6 +1,52 @@
 import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
+import 'package:mime/mime.dart';
+
 import 'models.dart';
+
+/// 要上传的文件（从相册、文件管理器选的，或剪贴板、输入法里的图片）。
+class LocalFile {
+  final String name;
+  final int length;
+  final Stream<List<int>> Function() open;
+  final String mime;
+
+  /// 图片的内容（用来显示缩略图）；其他文件为 null。
+  final Uint8List? preview;
+
+  LocalFile({required this.name, required this.length, required this.open, String? mime, this.preview})
+    : mime = mime ?? lookupMimeType(name) ?? 'application/octet-stream';
+
+  factory LocalFile.bytes(String name, Uint8List bytes, {String? mime}) {
+    final m = mime ?? lookupMimeType(name, headerBytes: bytes) ?? 'application/octet-stream';
+    return LocalFile(name: name, length: bytes.length, open: () => Stream.value(bytes), mime: m, preview: m.startsWith('image/') ? bytes : null);
+  }
+
+  bool get isImage => mime.startsWith('image/');
+}
+
+/// 上传后的文件：本地绝对路径（发给 agent 的消息里附上它）。
+class Uploaded {
+  final String path;
+  final String name;
+  final bool image;
+  Uploaded.fromJson(Map<String, dynamic> j) : path = j['path'], name = j['name'] ?? '', image = j['image'] == true;
+}
+
+class FileEntry {
+  final String name;
+  final bool dir;
+  final int size;
+  final String modifiedAt;
+  FileEntry.fromJson(Map<String, dynamic> j)
+    : name = j['name'],
+      dir = j['type'] == 'dir',
+      size = (j['size'] as num?)?.toInt() ?? 0,
+      modifiedAt = j['modifiedAt'] ?? '';
+}
 
 class ApiError implements Exception {
   final int status;
@@ -84,4 +130,56 @@ class Api {
   Future<void> deleteArchive(String archiveId) => delete('/api/archive/$archiveId');
   Future<void> startHerdr() => post('/api/herdr/start');
   Future<void> notifyTest() => post('/api/notify/test');
+
+  // ---- 上传 ----
+
+  Future<dynamic> _upload(String path, List<LocalFile> files) async {
+    final req = http.MultipartRequest('POST', conn.url(path))..headers.addAll(conn.headers);
+    for (final f in files) {
+      req.files.add(http.MultipartFile('file', http.ByteStream(f.open()), f.length, filename: f.name, contentType: MediaType.parse(f.mime)));
+    }
+    final res = await http.Response.fromStream(await _http.send(req));
+    final data = res.body.isEmpty ? null : jsonDecode(utf8.decode(res.bodyBytes));
+    if (res.statusCode >= 400) throw ApiError(res.statusCode, data is Map && data['error'] is String ? data['error'] : '上传失败（${res.statusCode}）');
+    return data;
+  }
+
+  /// 会话的附件：属于项目时存到项目的 .uploads/，返回电脑上的路径。
+  Future<Uploaded> uploadForSession(String paneId, LocalFile f) async => Uploaded.fromJson(await _upload('${pane(paneId)}/uploads', [f]));
+
+  // ---- 项目文件（路径为项目内的相对路径） ----
+
+  static String files(String projectId) => '/api/projects/${Uri.encodeComponent(projectId)}/files';
+  static String q(String path) => Uri.encodeQueryComponent(path);
+
+  Future<List<FileEntry>> listDir(String projectId, String path, {bool hidden = false}) async {
+    final r = await get('${files(projectId)}?path=${q(path)}&hidden=${hidden ? 1 : 0}');
+    return [for (final e in (r['entries'] as List)) FileEntry.fromJson(e)];
+  }
+
+  /// 文字文件的内容；二进制文件返回 null。
+  Future<({String text, bool truncated})?> readText(String projectId, String path) async {
+    final r = await get('${files(projectId)}/text?path=${q(path)}');
+    if (r['binary'] == true) return null;
+    return (text: r['text'] as String, truncated: r['truncated'] == true);
+  }
+
+  Future<({String text, int mtimeMs})> readForEdit(String projectId, String path) async {
+    final r = await get('${files(projectId)}/edit?path=${q(path)}');
+    return (text: r['text'] as String, mtimeMs: (r['mtimeMs'] as num).toInt());
+  }
+
+  /// 保存；文件在打开之后被改过时抛出 409（baseMtimeMs 为 null 表示确认覆盖）。
+  Future<int> saveFile(String projectId, String path, String text, int? baseMtimeMs) async =>
+      ((await _send('PUT', '${files(projectId)}/edit', {'path': path, 'text': text, 'baseMtimeMs': baseMtimeMs}))['mtimeMs'] as num).toInt();
+
+  Future<void> uploadToDir(String projectId, String dir, List<LocalFile> list) => _upload('${files(projectId)}/upload?path=${q(dir)}', list);
+  Future<void> mkdir(String projectId, String dir, String name) => post('${files(projectId)}/mkdir', {'path': dir, 'name': name});
+  Future<void> renameFile(String projectId, String path, String name) => post('${files(projectId)}/rename', {'path': path, 'name': name});
+  Future<void> deleteFile(String projectId, String path) => delete('${files(projectId)}?path=${q(path)}');
+  Uri rawUrl(String projectId, String path) => conn.url('${files(projectId)}/raw?path=${q(path)}');
+  Uri downloadUrl(String projectId, String path) => conn.url('${files(projectId)}/download?path=${q(path)}');
+
+  /// 对话里的图片缩略图（只允许项目内的图片）。
+  Uri imageUrl(String projectId, String absPath) => conn.url('/api/file?project=${Uri.encodeQueryComponent(projectId)}&path=${q(absPath)}');
 }
