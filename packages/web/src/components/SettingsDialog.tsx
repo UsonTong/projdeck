@@ -30,6 +30,11 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
   const autoTrust = overview?.settings.autoTrust ?? true;
   const sizing = useTerminalSizing();
   const barKeys = useBarKeys();
+  // 安卓 App（发布了才显示下载）
+  const [androidApp, setAndroidApp] = useState<{ version: string; size: number; builtAt: string } | null>(null);
+  useEffect(() => {
+    if (open) api.androidApp().then(setAndroidApp, () => undefined);
+  }, [open]);
   const [push, setPush] = useState<PushState | null>(null);
   const [pushBusy, setPushBusy] = useState(false);
   useEffect(() => {
@@ -159,6 +164,23 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
             Ghostty 时恢复电脑的尺寸（这时网页按电脑的行列数缩小显示）。网页只是失去焦点不会让出尺寸。手机上始终适配本设备。
           </p>
         </div>
+        {androidApp && (
+          <div className="flex min-w-0 flex-col gap-2">
+            <div className="text-sm font-medium">安卓 App</div>
+            <div className="flex items-center gap-3">
+              <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+                原生 App：列表、终端、对话、文件、CC Switch，后台通知不经过谷歌推送。版本 {androidApp.version.split("+")[0]} ·{" "}
+                {(androidApp.size / 1024 / 1024).toFixed(1)} MB · {formatDateTime(androidApp.builtAt, current ?? deviceTimeZone())} 发布
+              </p>
+              <Button size="sm" variant="outline" asChild>
+                <a href="/app/projdeck.apk" download>
+                  下载
+                </a>
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">在手机浏览器里点下载，下载完成后打开安装（第一次需要允许浏览器安装应用）。已经装过的会直接升级。</p>
+          </div>
+        )}
         <div className="flex min-w-0 flex-col gap-2">
           <div className="flex items-center justify-between">
             <div className="text-sm font-medium">快捷键条（这台设备）</div>

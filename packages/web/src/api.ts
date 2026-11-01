@@ -82,6 +82,7 @@ export const api = {
   ccswitchUsage: (range: CcUsageRange, app: string) =>
     request<CcUsage>("GET", `/api/ccswitch/usage?range=${range}${app ? `&app=${encodeURIComponent(app)}` : ""}`),
   reorderProjects: (ids: string[]) => request("POST", "/api/projects/order", { ids }),
+  androidApp: () => request<{ version: string; size: number; builtAt: string } | null>("GET", "/api/app"),
   notifyTest: () => request<void>("POST", "/api/notify/test").then(() => undefined),
   rename: (paneId: string, label: string | null) => request("POST", `${pane(paneId)}/rename`, { label }),
   moveBefore: (paneId: string, beforePaneId: string | null) => request("POST", `${pane(paneId)}/move-before`, { beforePaneId }),

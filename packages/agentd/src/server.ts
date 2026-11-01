@@ -279,6 +279,21 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
     return { ok: true };
   });
 
+  // 安卓 App 的安装包（packages/mobile/release.sh 发布），手机在网页设置里下载安装
+  const appDir = join(homedir(), ".cache", "projdeck", "android");
+  app.get("/api/app", async () => {
+    try {
+      return JSON.parse(readFileSync(join(appDir, "version.json"), "utf8")) as { version: string; size: number; builtAt: string };
+    } catch {
+      return null;
+    }
+  });
+  app.get("/app/projdeck.apk", async (_req, reply) => {
+    if (!existsSync(join(appDir, "projdeck.apk"))) throw httpError(404, "还没有发布安卓 App");
+    void reply.header("Content-Type", "application/vnd.android.package-archive").header("Content-Disposition", 'attachment; filename="projdeck.apk"');
+    return reply.sendFile("projdeck.apk", appDir, { maxAge: 0, cacheControl: false });
+  });
+
   // 安卓 App 的通知连接（见 notifyStream.ts）
   app.get("/api/notify/stream", async (_req, reply) => {
     reply.hijack();
