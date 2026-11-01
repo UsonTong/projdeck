@@ -9,6 +9,8 @@ import '../theme.dart';
 import '../widgets/agent_icon.dart';
 import '../widgets/common.dart';
 import '../widgets/session_tile.dart';
+import '../api/ccswitch.dart';
+import 'ccswitch_page.dart';
 import 'files_page.dart';
 import 'settings_page.dart';
 
@@ -22,6 +24,14 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin {
   late final TabController _tabs = TabController(length: 3, vsync: this);
+  // 电脑上装了 CC Switch 才显示它的入口
+  bool _ccswitch = false;
+
+  @override
+  void initState() {
+    super.initState();
+    AppScope.read(context).api.ccStatus().then((s) => mounted && s.installed ? setState(() => _ccswitch = true) : null, onError: (_) {});
+  }
 
   @override
   void dispose() {
@@ -87,6 +97,12 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                           ),
                         ),
                         onPressed: () => app.showHidden = !app.showHidden,
+                      ),
+                    if (_ccswitch)
+                      IconButton(
+                        tooltip: 'CC Switch：用量、切换供应商',
+                        icon: const Icon(Icons.swap_horiz_rounded, size: 22),
+                        onPressed: () => CcSwitchPage.open(context),
                       ),
                     IconButton(
                       tooltip: '设置',
