@@ -48,8 +48,19 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("release")
+            // libadb-android 和 Conscrypt 里有按名字反射加载的类，不能被混淆或裁掉
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
+}
+
+dependencies {
+    // 远程调试：App 里的 adb 客户端（无线调试配对、TLS 连接）
+    implementation("com.github.MuntashirAkon:libadb-android:3.1.1")
+    // 生成连接 adbd 用的 X509 证书（库的 README 推荐）
+    implementation("com.github.MuntashirAkon:sun-security-android:1.1")
+    // TLS 1.3：系统自带的 Conscrypt 不能直接用，自带一份，库发现它就会自动使用
+    implementation("org.conscrypt:conscrypt-android:2.5.3")
 }
 
 kotlin {

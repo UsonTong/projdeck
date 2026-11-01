@@ -27,6 +27,25 @@ class Native {
   static Future<void> download(Uri url, String name, Connection conn) =>
       _ch.invokeMethod('download', {'url': url.toString(), 'name': name, 'cookie': conn.headers['Cookie']});
 
+  // ---- 远程调试（App 里的 adb 客户端，见 docs/REMOTE_ADB.md） ----
+
+  static Future<Map<String, dynamic>> adbStatus() async => Map<String, dynamic>.from(await _ch.invokeMapMethod<String, Object?>('adbStatus') ?? {});
+
+  /// 开始配对：配对码在通知里输入。
+  static Future<void> adbStartPairing() => _ch.invokeMethod('adbStartPairing');
+
+  /// 打开系统的开发者选项（定位到「无线调试」）。
+  static Future<bool> openDeveloperSettings() async => await _ch.invokeMethod<bool>('openDeveloperSettings') ?? false;
+
+  /// 打开系统的「无障碍」设置（打开配对助手）。
+  static Future<void> openAccessibilitySettings() => _ch.invokeMethod('openAccessibilitySettings');
+
+  /// 给 App 自己授权（需要已配对、无线调试开着）。返回结果说明；失败抛出 PlatformException。
+  static Future<String> adbGrantSelf() async => await _ch.invokeMethod<String>('adbGrantSelf') ?? '';
+
+  /// 把 adb 切到 TCP 模式（5555）。
+  static Future<String> adbEnableTcp() async => await _ch.invokeMethod<String>('adbEnableTcp') ?? '';
+
   /// 启动 App 时带的访问链接（用 adb 安装后直接登录）。
   static Future<String?> initialLink() => _ch.invokeMethod<String>('initialLink');
 

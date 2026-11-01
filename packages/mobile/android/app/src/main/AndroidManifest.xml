@@ -6,6 +6,9 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- 远程调试：用 adb 授权一次之后，App 才能自己打开 / 关闭无线调试（重启后自动恢复） -->
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
+    <!-- 配对时用 mDNS 找手机的无线调试服务 -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <application
         android:label="projdeck"
         android:name="${applicationName}"
@@ -35,6 +38,23 @@
         <!-- 后台保持与电脑的通知连接（Claude / Codex 完成、需处理） -->
         <service
             android:name=".NotifyService"
+            android:exported="false"
+            android:foregroundServiceType="remoteMessaging" />
+        <!-- 配对助手：配对时读取设置里的配对码，用完自己关闭 -->
+        <service
+            android:name=".PairingAccessibilityService"
+            android:exported="true"
+            android:label="@string/pairing_accessibility_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/pairing_accessibility" />
+        </service>
+        <service
+            android:name=".AdbPairingService"
             android:exported="false"
             android:foregroundServiceType="remoteMessaging" />
         <receiver

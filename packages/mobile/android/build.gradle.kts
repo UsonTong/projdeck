@@ -2,6 +2,8 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        // libadb-android（App 内的 adb 客户端，远程调试用）
+        maven { url = uri("https://jitpack.io") }
     }
 }
 

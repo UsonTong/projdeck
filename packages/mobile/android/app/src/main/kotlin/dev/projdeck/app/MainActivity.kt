@@ -5,7 +5,9 @@ import android.app.DownloadManager
 import android.content.ClipboardManager
 import android.content.Intent
 import android.net.Uri
+import android.os.Bundle
 import android.os.Environment
+import android.provider.Settings
 import android.provider.OpenableColumns
 import android.content.pm.PackageManager
 import io.flutter.embedding.android.FlutterActivity
@@ -50,6 +52,19 @@ class MainActivity : FlutterActivity() {
                 "initialLink" -> result.success(intent?.getStringExtra("link").also { intent?.removeExtra("link") })
                 "initialPath" -> result.success(intent?.getStringExtra(NotifyService.EXTRA_PATH).also { intent?.removeExtra(NotifyService.EXTRA_PATH) })
                 "clipboardFile" -> result.success(clipboardFile())
+                // ---- 远程调试 ----
+                "adbStatus" -> RemoteAdb.async({ RemoteAdb.status(this) }) { r -> r.fold({ result.success(it) }, { result.error("adb", it.message, null) }) }
+                "adbStartPairing" -> {
+                    AdbPairingService.start(this)
+                    result.success(true)
+                }
+                "openDeveloperSettings" -> result.success(openDeveloperSettings())
+                "openAccessibilitySettings" -> {
+                    startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                    result.success(true)
+                }
+                "adbGrantSelf" -> RemoteAdb.async({ RemoteAdb.grantSelf(this) }) { r -> reply(result, r) }
+                "adbEnableTcp" -> RemoteAdb.async({ RemoteAdb.enableTcp(this) }) { r -> reply(result, r) }
                 "download" -> {
                     val req = DownloadManager.Request(Uri.parse(call.argument<String>("url")))
                         .addRequestHeader("Cookie", call.argument<String>("cookie"))
@@ -64,6 +79,30 @@ class MainActivity : FlutterActivity() {
         }
         // 已经开着通知：确保后台连接在跑（例如被系统清理后重新打开 App）
         if (Prefs.notificationsEnabled(this)) NotifyService.start(this)
+    }
+
+    /** 打开系统的开发者选项，并定位到「无线调试」；打不开时返回 false。 */
+    private fun openDeveloperSettings(): Boolean {
+        val withTarget = Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS).apply {
+            putExtra(":settings:fragment_args_key", "toggle_adb_wireless")
+            putExtra(":settings:show_fragment_args", Bundle().apply { putString(":settings:fragment_args_key", "toggle_adb_wireless") })
+        }
+        for (intent in listOf(withTarget, Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS), Intent(Settings.ACTION_SETTINGS))) {
+            try {
+                startActivity(intent)
+                return true
+            } catch (_: Exception) {
+                // 换下一个
+            }
+        }
+        return false
+    }
+
+    private fun reply(result: MethodChannel.Result, r: kotlin.Result<String>) {
+        r.fold(
+            { RemoteAdb.lastMessage = it; result.success(it) },
+            { RemoteAdb.lastMessage = it.message ?: it.javaClass.simpleName; result.error("adb", RemoteAdb.lastMessage, null) },
+        )
     }
 
     /**
