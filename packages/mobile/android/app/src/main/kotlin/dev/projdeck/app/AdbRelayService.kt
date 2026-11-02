@@ -70,12 +70,16 @@ class AdbRelayService : Service() {
         val mine = RelayProcess.version(this)
         var failures = 0
         var nextLaunch = 0L
+        // 独立进程最近一次在运行的时间。它崩溃后外层循环 3 秒内会把它拉起来，所以不在也先等一等再让 App 内的转发顶上，
+        // 否则两边会轮流把对方挤下线（服务器上后连的顶掉先连的）
+        var lastDetached = System.currentTimeMillis()
         while (running) {
             try {
                 val d = RelayProcess.query()
                 if (d != null && d.version == mine) {
                     // 独立进程在正常运行：App 里的备用转发退场，状态以它为准
                     stopCore()
+                    lastDetached = System.currentTimeMillis()
                     mode = "detached"
                     state = d.state
                     error = d.error
@@ -89,8 +93,10 @@ class AdbRelayService : Service() {
                     Thread.sleep(1_000)
                 }
                 // 独立进程不在：先让 App 里的转发顶上，再尝试把独立进程启动起来
-                mode = "app"
-                startCore()
+                if (System.currentTimeMillis() - lastDetached >= 12_000) {
+                    mode = "app"
+                    startCore()
+                }
                 if (RemoteAdb.tcpReachable() && System.currentTimeMillis() >= nextLaunch) {
                     val base = Prefs.base(this)
                     val key = Prefs.key(this)

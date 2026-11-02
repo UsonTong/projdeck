@@ -77,3 +77,20 @@ App 的 `AdbRelayService` 退化成看管者（`superviseLoop`）：
 **注意**：app_process 里 `println` 进 stdout（已重定向到 `/data/local/tmp/projdeck-relay.log`，电脑上 `adb shell cat` 可看）；
 R8 会把没人引用的 `RelayMain` 删掉，要在 `proguard-rules.pro` 里 keep（注意是 `android/app/proguard-rules.pro`）。
 手机重启后独立进程会消失，需要 App 被拉起（BOOT_COMPLETED，小米要允许「自启动」）再启动它；TCP 模式的自动恢复仍在 App 里。
+
+### 从 Termux、Shizuku、黑阈学到的（2.3.0 续）
+
+- **黑阈**（`brevent/src/main/jni/brevent.c`，开源的旧版本）分两层：一个很小的原生守护进程 `brevent_daemon`
+  （`fork` → `setsid` → `chdir("/")` → stdin/out/err 都 `dup2` 到 `/dev/null`），它再 `fork+exec`
+  `app_process --nice-name=brevent_server …BreventServer`，并处理 `SIGCHLD`，**服务死了就重新拉起来**（日志里叫 `reborn`）。
+  我们照做，但不写原生代码：`setsid nohup sh -c 'while :; do app_process …; rc=$?; [ $rc -eq 0 ] && exit 0; sleep 3; done'`，
+  正常退出（收到 `quit`、或已有另一个在运行）返回 0 让循环结束，其他退出 3 秒后重启。
+- **Shizuku**（`starter.cpp`）：`fork` → `setsid` → `chdir("/")` → `execvp("app_process", …, ShizukuService)`。
+  另外，shell 身份启动的进程会继承 adbd 的 `oom_score_adj = -1000`（实测），低内存时 lmkd 不会杀它。
+- **Termux**（`TermuxService.java`）：并没有什么特别的招：前台服务 + 可选的 `PARTIAL_WAKE_LOCK` + `WIFI_MODE_FULL_HIGH_PERF`
+  （通知栏上的「Acquire wakelock」按钮），`START_NOT_STICKY`。它的 shell 进程是 App 的子进程，所以其实会被小米的后台清理杀掉；
+  这一套 projdeck 的 App 内服务早就有了（2.2.6）。
+
+踩到的坑：libadb 的 `openStream("shell:…")` 按**字符数**而不是字节数算长度，命令里有中文就被截断、什么都不会执行；
+shell 没权限读 `/sys/class/power_supply`（SELinux），电量改用 `dumpsys battery`；
+独立进程崩溃的 3 秒空档里，App 内的备用转发不能立刻顶上（服务器上后连的顶掉先连的，两边会轮流把对方挤下线），所以等 12 秒。

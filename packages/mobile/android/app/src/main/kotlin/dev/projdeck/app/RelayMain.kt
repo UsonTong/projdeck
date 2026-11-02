@@ -2,7 +2,6 @@ package dev.projdeck.app
 
 import android.os.Build
 import org.json.JSONObject
-import java.io.File
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.NetworkInterface
@@ -32,7 +31,7 @@ object RelayMain {
         val version = System.getenv("PROJDECK_VERSION") ?: "?"
         if (base == null || key == null || id == null) {
             println("缺少 PROJDECK_BASE / PROJDECK_KEY / PROJDECK_ID")
-            exitProcess(2)
+            exitProcess(0) // 配置不对，重启也没用，别让外层循环空转
         }
         // 同一时间只留一个：状态口被占用说明已经有一个在跑
         val server = try {
@@ -46,7 +45,7 @@ object RelayMain {
         }
         val core = RelayCore(
             base, key, RemoteAdb.TCP_PORT,
-            log = { println("${java.text.SimpleDateFormat("MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())} $it") },
+            log = ::log,
             report = { report(id, version) },
             onState = { s, e -> state = s; error = e },
         )
@@ -75,7 +74,27 @@ object RelayMain {
         }
     }
 
-    /** 没有 Context 时能拿到的设备信息：型号来自 Build，电量读 sysfs，网络看网卡。 */
+    private var lines = 0
+
+    /** 输出到日志文件；一次运行最多 400 行，免得服务器一直连不上时把文件写满。 */
+    private fun log(msg: String) {
+        if (++lines > 400) return
+        println("${java.text.SimpleDateFormat("MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())} $msg")
+        if (lines == 400) println("（日志已满 400 行，之后不再记录）")
+    }
+
+    /** 电量：shell 读不了 sysfs（SELinux 不允许），改用 dumpsys battery。 */
+    private fun battery(json: JSONObject) {
+        try {
+            val out = ProcessBuilder("dumpsys", "battery").redirectErrorStream(true).start().inputStream.bufferedReader().readText()
+            Regex("level: (\\d+)").find(out)?.let { json.put("battery", it.groupValues[1].toInt()) }
+            Regex("status: (\\d+)").find(out)?.let { json.put("charging", it.groupValues[1] == "2" || it.groupValues[1] == "5") }
+        } catch (_: Exception) {
+            // 拿不到就不报电量
+        }
+    }
+
+    /** 没有 Context 时能拿到的设备信息：型号来自 Build，电量用 dumpsys，网络看网卡。 */
     private fun report(id: String, version: String): JSONObject {
         val json = JSONObject()
             .put("id", id)
@@ -91,8 +110,7 @@ object RelayMain {
         json.put("network", if (up.any { it.startsWith("wlan") }) "wifi" else if (up.any { it.startsWith("rmnet") || it.startsWith("ccmni") }) "mobile" else "none")
         json.put("vpn", up.any { it.startsWith("tun") || it.startsWith("ppp") })
         json.put("tcpMode", runCatching { Socket().use { it.connect(InetSocketAddress("127.0.0.1", RemoteAdb.TCP_PORT), 300) }; true }.getOrDefault(false))
-        runCatching { File("/sys/class/power_supply/battery/capacity").readText().trim().toInt() }.onSuccess { json.put("battery", it) }
-        runCatching { File("/sys/class/power_supply/battery/status").readText().trim() }.onSuccess { json.put("charging", it == "Charging" || it == "Full") }
+        battery(json)
         return json
     }
 }

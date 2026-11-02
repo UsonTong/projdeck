@@ -40,10 +40,21 @@ object RelayProcess {
 
     private fun quote(s: String) = "'" + s.replace("'", "'\\''") + "'"
 
-    /** 启动独立进程的 shell 命令：先 setsid 脱离会话，输出写到 /data/local/tmp（shell 才有权限写，供电脑上排查）。 */
-    fun command(c: Context, base: String, key: String): String =
-        "CLASSPATH=${quote(c.applicationInfo.sourceDir)} PROJDECK_BASE=${quote(base)} PROJDECK_KEY=${quote(key)} " +
+    private const val LOG = "/data/local/tmp/projdeck-relay.log"
+
+    /**
+     * 启动独立进程的 shell 命令。照黑阈的做法分两层：外面一个 setsid 脱离会话的 sh 循环负责「死了就拉起来」，
+     * 里面才是 app_process 起的 [RelayMain]；它正常退出（exit 0：收到 quit、或已有另一个在运行）循环就结束，
+     * 其他退出（崩溃、被杀）3 秒后重启。输出写到 /data/local/tmp（shell 才有权限写，电脑上排查用），超过 500KB 清空。
+     * 命令里不要放中文（libadb 按字符数而不是字节数算长度，会被截断）。结尾的 sleep 1 不能省：shell 退得太快的话，后台进程来不及脱离（实测）。
+     */
+    fun command(c: Context, base: String, key: String): String {
+        val inner = "while :; do " +
+            "[ \"\$(stat -c %s $LOG 2>/dev/null || echo 0)\" -gt 500000 ] && : > $LOG; " +
+            "CLASSPATH=${quote(c.applicationInfo.sourceDir)} PROJDECK_BASE=${quote(base)} PROJDECK_KEY=${quote(key)} " +
             "PROJDECK_ID=${quote(Prefs.deviceId(c))} PROJDECK_VERSION=${quote(version(c))} " +
-            "setsid nohup app_process /system/bin --nice-name=projdeck_relay dev.projdeck.app.RelayMain " +
-            "</dev/null >/data/local/tmp/projdeck-relay.log 2>&1 & sleep 1; echo launched-by-\$(id -un) pid=\$!"
+            "app_process /system/bin --nice-name=projdeck_relay dev.projdeck.app.RelayMain; rc=\$?; " +
+            "echo \"\$(date '+%m-%d %H:%M:%S') relay exited rc=\$rc\"; [ \$rc -eq 0 ] && exit 0; sleep 3; done"
+        return "setsid nohup sh -c ${quote(inner)} </dev/null >>$LOG 2>&1 & sleep 1; echo launched-by-\$(id -un) pid=\$!"
+    }
 }
