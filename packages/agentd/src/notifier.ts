@@ -7,7 +7,7 @@ import type { ProjdeckService } from "./service.ts";
 /** 「需处理」要持续这么久才通知：自动信任文件夹之类会被立刻处理掉的确认框不打扰。 */
 const BLOCKED_GRACE_MS = 3_000;
 const POLL_MS = 10_000;
-const KIND = { claude: "Claude", codex: "Codex" } as const;
+const KIND = { claude: "Claude", codex: "Codex", pi: "Pi" } as const;
 
 /**
  * 盯着所有 agent 会话的状态，在手机上推送通知：

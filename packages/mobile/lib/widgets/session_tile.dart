@@ -10,7 +10,7 @@ import '../theme.dart';
 import 'agent_icon.dart';
 import 'common.dart';
 
-const kindLabel = {SessionKind.claude: 'Claude', SessionKind.codex: 'Codex', SessionKind.shell: '终端'};
+const kindLabel = {SessionKind.claude: 'Claude', SessionKind.codex: 'Codex', SessionKind.pi: 'Pi', SessionKind.shell: '终端'};
 const statusLabel = {SessionStatus.working: '工作中', SessionStatus.blocked: '需处理', SessionStatus.done: '已完成'};
 
 void openSession(BuildContext context, String paneId) {

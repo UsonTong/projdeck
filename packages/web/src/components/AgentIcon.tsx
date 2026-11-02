@@ -43,6 +43,17 @@ const CODEX = [
   "...#.#....#.#...",
 ];
 
+/** Pi：像素的希腊字母 π（pi 的名字，也是它在终端里的标志）。 */
+const PI = [
+  "###############",
+  "###############",
+  "..##.......##..",
+  "..##.......##..",
+  "..##.......##..",
+  "..##.......###.",
+  "..##........##.",
+];
+
 const STATUS_DOT: Partial<Record<SessionStatus, string>> = {
   working: "bg-status-working animate-pulse",
   blocked: "bg-status-blocked",
@@ -73,12 +84,14 @@ export function AgentIcon({
         box,
         kind === "claude" && "bg-[#d97757]/12 text-[#d97757] ring-[#d97757]/25",
         kind === "codex" && "bg-sky-400/10 text-sky-200 ring-sky-300/25",
+        kind === "pi" && "bg-violet-400/10 text-violet-300 ring-violet-300/25",
         kind === "shell" && "bg-muted text-muted-foreground ring-border",
         className,
       )}
     >
       {kind === "claude" && <PixelArt rows={CRAB} title="Claude" className="w-[78%]" />}
       {kind === "codex" && <PixelArt rows={CODEX} title="Codex" className="w-[72%]" />}
+      {kind === "pi" && <PixelArt rows={PI} title="Pi" className="w-[62%]" />}
       {kind === "shell" && <SquareTerminalIcon className="size-[55%]" />}
       {plus && (
         <span className="absolute -right-1 -bottom-1 flex size-3 items-center justify-center rounded-full bg-foreground text-background ring-2 ring-background">

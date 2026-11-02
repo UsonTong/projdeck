@@ -16,8 +16,15 @@ const _codex = [
   '...#.#....#.#...',
 ];
 
+/// Pi：像素的希腊字母 π。
+const _pi = ['###############', '###############', '..##.......##..', '..##.......##..', '..##.......##..', '..##.......###.', '..##........##.'];
+
+/// 能新开的 agent，按默认顺序。
+const agentKinds = [SessionKind.claude, SessionKind.codex, SessionKind.pi];
+
 const claudeColor = Color(0xffd97757);
 const codexColor = Color(0xffbae6fd);
+const piColor = Color(0xffc4b5fd);
 
 class _PixelPainter extends CustomPainter {
   final List<String> rows;
@@ -59,6 +66,7 @@ class AgentIcon extends StatelessWidget {
     final (bg, fg, ring) = switch (kind) {
       SessionKind.claude => (claudeColor.withValues(alpha: 0.12), claudeColor, claudeColor.withValues(alpha: 0.25)),
       SessionKind.codex => (const Color(0xff38bdf8).withValues(alpha: 0.10), codexColor, const Color(0xff7dd3fc).withValues(alpha: 0.25)),
+      SessionKind.pi => (const Color(0xffa78bfa).withValues(alpha: 0.10), piColor, const Color(0xffc4b5fd).withValues(alpha: 0.25)),
       SessionKind.shell => (p.muted, p.mutedFg, p.border),
     };
     final dot = switch (status) {
@@ -82,9 +90,9 @@ class AgentIcon extends StatelessWidget {
             child: kind == SessionKind.shell
                 ? Icon(Icons.terminal_rounded, size: size * 0.55, color: fg)
                 : SizedBox(
-                    width: size * (kind == SessionKind.claude ? 0.78 : 0.72),
+                    width: size * (kind == SessionKind.claude ? 0.78 : kind == SessionKind.pi ? 0.62 : 0.72),
                     height: size * 0.7,
-                    child: CustomPaint(painter: _PixelPainter(kind == SessionKind.claude ? _crab : _codex, fg)),
+                    child: CustomPaint(painter: _PixelPainter(kind == SessionKind.claude ? _crab : kind == SessionKind.pi ? _pi : _codex, fg)),
                   ),
           ),
           if (plus)

@@ -18,6 +18,8 @@ interface State {
 export const defaultArgs: Record<AgentKind, string[]> = {
   claude: ["--dangerously-skip-permissions"],
   codex: ["--yolo"],
+  // pi 没有权限确认，不需要额外参数
+  pi: [],
 };
 
 /** projdeck 自己持有的全部数据：项目登记、归档、隐藏、归属记忆。 */

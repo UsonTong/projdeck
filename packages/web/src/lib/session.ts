@@ -1,6 +1,9 @@
-import type { Session, SessionKind } from "@projdeck/shared";
+import type { AgentKind, Session, SessionKind } from "@projdeck/shared";
 
-export const KIND_LABEL: Record<SessionKind, string> = { claude: "Claude", codex: "Codex", shell: "终端" };
+/** 能新开的 agent，按默认顺序。 */
+export const AGENT_KINDS: AgentKind[] = ["claude", "codex", "pi"];
+
+export const KIND_LABEL: Record<SessionKind, string> = { claude: "Claude", codex: "Codex", pi: "Pi", shell: "终端" };
 
 export const STATUS_LABEL: Record<Session["status"], string> = {
   working: "工作中",

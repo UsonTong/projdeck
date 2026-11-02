@@ -274,7 +274,7 @@ class _ProjectGroup extends StatelessWidget {
 
   void _menu(BuildContext context) {
     final app = AppScope.read(context);
-    final starters = project.defaultAgent == SessionKind.codex ? [SessionKind.codex, SessionKind.claude] : [SessionKind.claude, SessionKind.codex];
+    final starters = [project.defaultAgent, ...agentKinds.where((k) => k != project.defaultAgent)];
     showActions(
       context,
       title: project.note ?? project.name,
@@ -302,7 +302,7 @@ class _ProjectGroup extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     final sorted = sortProjectSessions(sessions, sort);
-    final starters = project.defaultAgent == SessionKind.codex ? [SessionKind.codex, SessionKind.claude] : [SessionKind.claude, SessionKind.codex];
+    final starters = [project.defaultAgent, ...agentKinds.where((k) => k != project.defaultAgent)];
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 6, 4, 10),
       child: Column(

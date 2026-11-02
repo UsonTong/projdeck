@@ -62,6 +62,10 @@ export function ProjectSettingsDialog(props: { project: ProjectView; open: boole
                 <AgentIcon kind="codex" size="xs" />
                 Codex
               </ToggleGroupItem>
+              <ToggleGroupItem value="pi" className="flex-1 gap-2">
+                <AgentIcon kind="pi" size="xs" />
+                Pi
+              </ToggleGroupItem>
             </ToggleGroup>
             <FieldDescription>项目标题旁新开会话的图标会把默认 agent 放在前面。</FieldDescription>
           </Field>

@@ -63,7 +63,7 @@ class _SettingsPageState extends State<SettingsPage> {
           _Section('会话'),
           SwitchListTile(
             title: const Text('自动信任文件夹'),
-            subtitle: Text('Claude / Codex 问「是否信任这个文件夹」时自动选「信任」。', style: TextStyle(color: p.mutedFg, fontSize: 12)),
+            subtitle: Text('Claude / Codex 问「是否信任这个文件夹」时自动选「信任」（Pi 不会问）。', style: TextStyle(color: p.mutedFg, fontSize: 12)),
             value: autoTrust,
             onChanged: (v) => run(context, () => app.api.patch('/api/settings', {'autoTrust': v})),
           ),

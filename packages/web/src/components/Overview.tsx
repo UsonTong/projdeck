@@ -51,7 +51,7 @@ import {
   useUnassignedSort,
   type ProjectSort,
 } from "@/lib/sessionOrder";
-import { KIND_LABEL, markLaunching, STATUS_LABEL, statusRank } from "@/lib/session";
+import { AGENT_KINDS, KIND_LABEL, markLaunching, STATUS_LABEL, statusRank } from "@/lib/session";
 import { formatDateTime, useTimeZone } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { api } from "../api.ts";
@@ -362,7 +362,7 @@ function ProjectGroup(props: {
   };
 
   const sorted = sortProjectSessions(sessions, props.sort);
-  const starters: AgentKind[] = project.defaultAgent === "codex" ? ["codex", "claude"] : ["claude", "codex"];
+  const starters: AgentKind[] = [project.defaultAgent, ...AGENT_KINDS.filter((k) => k !== project.defaultAgent)];
 
   return (
     <section>

@@ -23,6 +23,7 @@ import { attribute, isWithin } from "./projects/attribution.ts";
 import { defaultArgs, type ProjectStore } from "./projects/store.ts";
 import { findClaudeTranscript, parseClaudeRecords } from "./transcript/claude.ts";
 import { listCodexRollouts, matchCodexRollouts, parseCodexRecords, type CodexRollout } from "./transcript/codex.ts";
+import { findPiSession, parsePiRecords, piSessionId } from "./transcript/pi.ts";
 import { readJsonl } from "./transcript/jsonl.ts";
 import { acceptTrustPrompt } from "./trust.ts";
 
@@ -54,6 +55,7 @@ interface Snapshot {
 /** 会话最后活动的时间：对话记录文件最后修改的时间（每条新消息都会写入）。 */
 function lastActivity(kind: SessionKind, conversationId: string | null, cwd: string, rollout?: CodexRollout): number | null {
   if (kind === "codex") return rollout?.mtimeMs ?? null;
+  if (kind === "pi") return conversationId ? (findPiSession(cwd, conversationId)?.mtimeMs ?? null) : null;
   if (kind !== "claude" || !conversationId) return null;
   const file = findClaudeTranscript(cwd, conversationId);
   try {
@@ -140,10 +142,12 @@ export class ProjdeckService {
     const workspaceNumber = new Map(workspaces.map((w) => [w.workspace_id, w.number]));
     for (const pane of panes) {
       const agent = agentByPane.get(pane.pane_id);
-      const kind: SessionKind = agent?.agent === "claude" || agent?.agent === "codex" ? agent.agent : "shell";
+      const kind: SessionKind = agent?.agent === "claude" || agent?.agent === "codex" || agent?.agent === "pi" ? agent.agent : "shell";
       let conversationId: string | null = null;
       let rollout: CodexRollout | undefined;
       if (kind === "claude") conversationId = agent?.agent_session?.value ?? null;
+      // pi：herdr 报的是会话文件的路径（文件在第一条消息之后才出现），取出其中的会话 id
+      if (kind === "pi") conversationId = piSessionId(agent?.agent_session?.value);
       if (kind === "codex") {
         const override = this.store.state.codexOverrides[pane.terminal_id];
         rollout = override ? (await this.codexRollouts()).find((r) => r.threadId === override) : codexMatches.get(pane.terminal_id);
@@ -371,7 +375,7 @@ export class ProjdeckService {
     await this.herdr.startAgent(paneId, kind, name, [...extraArgs, ...(project?.agentArgs[kind] ?? defaultArgs[kind])]);
     // 项目目录是用户主动新建或导入的，自动通过「信任此文件夹」确认；后台进行，不阻塞请求
     // （其他目录由设置里的「自动信任文件夹」处理）
-    if (project) void acceptTrustPrompt(this.herdr, paneId).catch(() => {});
+    if (project && kind !== "pi") void acceptTrustPrompt(this.herdr, paneId).catch(() => {});
   }
 
   /**
@@ -514,7 +518,8 @@ export class ProjdeckService {
     // 原目录不在项目里时（例如在上级目录启动后手动移到项目的会话），记为 sticky 让它仍归在原项目
     const paneId = await this.openPane(project, existsSync(item.cwd) ? item.cwd : (project?.path ?? homedir()));
     if (project) this.store.setSticky(await this.terminalIdOf(paneId), project.id);
-    const resumeArgs = item.kind === "claude" ? ["--resume", item.conversationId] : ["resume", item.conversationId];
+    const resumeArgs =
+      item.kind === "claude" ? ["--resume", item.conversationId] : item.kind === "pi" ? ["--session", item.conversationId] : ["resume", item.conversationId];
     await this.launchAgent(paneId, project, item.kind, resumeArgs);
     this.store.archive = this.store.archive.filter((a) => a.id !== archiveId);
     this.store.saveArchive();
@@ -537,11 +542,16 @@ export class ProjdeckService {
     let file: string | null = null;
     if (session.kind === "claude") file = findClaudeTranscript(session.cwd, session.conversationId);
     if (session.kind === "codex") file = rollout?.file ?? null;
+    if (session.kind === "pi") file = findPiSession(session.cwd, session.conversationId)?.file ?? null;
     if (!file) return { ...empty, conversationId: session.conversationId };
 
     const chunk = await readJsonl(file, cursor);
     const entries =
-      session.kind === "claude" ? parseClaudeRecords(chunk.records) : parseCodexRecords(chunk.records, chunk.cursor);
+      session.kind === "claude"
+        ? parseClaudeRecords(chunk.records)
+        : session.kind === "pi"
+          ? parsePiRecords(chunk.records)
+          : parseCodexRecords(chunk.records, chunk.cursor);
     return { conversationId: session.conversationId, entries, cursor: chunk.cursor, reset: chunk.reset };
   }
 

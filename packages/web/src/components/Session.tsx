@@ -1,4 +1,4 @@
-import type { Session } from "@projdeck/shared";
+import type { AgentKind, Session } from "@projdeck/shared";
 import { ArrowLeftIcon, FolderOpenIcon, MessagesSquareIcon, SquareTerminalIcon, TriangleAlertIcon } from "lucide-react";
 import { lazy, Suspense, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -266,7 +266,7 @@ export function SessionPage({ paneId }: { paneId: string }) {
           <BubblesView
             paneId={paneId}
             projectId={project?.id ?? null}
-            agent={session.kind === "codex" ? "codex" : "claude"}
+            agent={session.kind === "shell" ? "claude" : session.kind}
             status={session.status}
           />
         )}
@@ -322,7 +322,7 @@ export function SessionPage({ paneId }: { paneId: string }) {
   );
 }
 
-function BubblesView(props: { paneId: string; projectId: string | null; agent: "claude" | "codex"; status: Session["status"] }) {
+function BubblesView(props: { paneId: string; projectId: string | null; agent: AgentKind; status: Session["status"] }) {
   const pane = usePane(props.paneId);
   return (
     <Bubbles

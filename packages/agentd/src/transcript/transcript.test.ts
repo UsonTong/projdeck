@@ -6,6 +6,7 @@ import { test } from "node:test";
 import { claudeProjectDirName, parseClaudeRecords } from "./claude.ts";
 import { matchCodexRollouts, parseCodexRecords } from "./codex.ts";
 import { readJsonl } from "./jsonl.ts";
+import { parsePiRecords, piSessionDirName, piSessionId } from "./pi.ts";
 
 test("claudeProjectDirName 把非字母数字替换为 -", () => {
   assert.equal(claudeProjectDirName("/home/yl/Repositories"), "-home-yl-Repositories");
@@ -96,4 +97,50 @@ test("readJsonl：增量读取只消费完整行，截断后重置", async () =>
   const third = await readJsonl(file, second.cursor);
   assert.equal(third.reset, true);
   assert.deepEqual(third.records, [{ b: 1 }]);
+});
+
+test("piSessionId：路径取出会话 id，裸 id 原样返回", () => {
+  assert.equal(piSessionId("/h/.pi/agent/sessions/--x--/2026-11-02T13-13-27-569Z_01a19c64-b310-7127-8db0-72fd2e34693f.jsonl"), "01a19c64-b310-7127-8db0-72fd2e34693f");
+  assert.equal(piSessionId("abc"), "abc");
+  assert.equal(piSessionId(undefined), null);
+});
+
+test("piSessionDirName：去掉开头的分隔符，/ \\ : 换成 -，两头加 --", () => {
+  assert.equal(piSessionDirName("/home/yl/Workspaces/threads-follow-assistant"), "--home-yl-Workspaces-threads-follow-assistant--");
+  assert.equal(piSessionDirName("C:\\work\\a"), "--C--work-a--");
+});
+
+test("parsePiRecords：用户、助手文本、工具调用；系统消息、思考、工具结果不显示", () => {
+  const entries = parsePiRecords([
+    { type: "session", id: "s", cwd: "/p" },
+    { type: "model_change", id: "m1", modelId: "x" },
+    { type: "message", id: "sys", message: { role: "system", content: "", sections: { preamble: "..." } } },
+    { type: "message", id: "u1", timestamp: "2026-10-16T04:40:49.000Z", message: { role: "user", content: [{ type: "text", text: "你好" }] } },
+    { type: "message", id: "u2", message: { role: "user", content: "纯字符串也行" } },
+    {
+      type: "message",
+      id: "a1",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "想想" },
+          { type: "text", text: "先看看文件" },
+          { type: "toolCall", id: "c1", name: "bash", arguments: { command: "ls -la" } },
+        ],
+      },
+    },
+    { type: "message", id: "r1", message: { role: "toolResult", toolCallId: "c1", toolName: "bash", content: [{ type: "text", text: "total 0" }], isError: false } },
+  ]);
+  assert.deepEqual(
+    entries.map((e) => [e.kind, e.id]),
+    [
+      ["user", "u1"],
+      ["user", "u2"],
+      ["assistant", "a1:1"],
+      ["tool", "a1:2"],
+    ],
+  );
+  assert.equal(entries[0]!.kind === "user" && entries[0]!.text, "你好");
+  const tool = entries[3]!;
+  assert.ok(tool.kind === "tool" && tool.name === "bash" && tool.summary.includes("ls -la"));
 });

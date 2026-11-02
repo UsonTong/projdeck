@@ -61,7 +61,7 @@ function toBlocks(entries: TranscriptEntry[]): Block[] {
 }
 
 
-const AGENT_NAME: Record<AgentKind, string> = { claude: "Claude", codex: "Codex" };
+const AGENT_NAME: Record<AgentKind, string> = { claude: "Claude", codex: "Codex", pi: "Pi" };
 
 export function Bubbles(props: {
   entries: TranscriptEntry[];

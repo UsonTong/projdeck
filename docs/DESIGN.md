@@ -86,7 +86,7 @@
 |---|---|---|
 | 项目 | （无直接对应） | 一个文件夹；通常对应一个 workspace，但不强制 |
 | 会话 | pane | 一个 agent 或一个临时终端 |
-| agent | 检测到 claude / codex 的 pane | `agent.list` 返回 |
+| agent | 检测到 claude / codex / pi 的 pane | `agent.list` 返回 |
 | 临时终端 | 未检测到 agent 的 pane | 在项目目录里查东西、跑命令 |
 
 ### 4.1 归属推导规则
@@ -130,8 +130,8 @@ interface Project {
   path: string;          // 绝对路径，唯一
   createdAt: string;
   archived: boolean;     // 整个项目归档
-  defaultAgent: "claude" | "codex";
-  agentArgs?: Record<"claude" | "codex", string[]>; // 如 ["--dangerously-skip-permissions"] / ["--yolo"]
+  defaultAgent: "claude" | "codex" | "pi";
+  agentArgs?: Record<"claude" | "codex" | "pi", string[]>; // 如 ["--dangerously-skip-permissions"] / ["--yolo"] / []
 }
 
 // archive.json
@@ -480,3 +480,12 @@ projdeck/
 - [x] Codex rollout 匹配：真实环境中按 cwd + 修改时间匹配正确；同目录多个 Codex 时提供手动选择
 - [x] pane 的 cwd 会跟随 cd 变化 → 归属规则增加记忆与同 workspace 兜底（见 4.1）
 - [x] attach 对电脑端 TUI 的影响：不加 --takeover 可共存，断开后尺寸恢复（见 8.5）
+
+
+## Pi（pi coding agent）
+
+- herdr 原生支持（`agent.start --kind pi`；pi 里装了 `herdr-agent-state.ts` 扩展上报状态），`agent.list` 里 `agent: "pi"`。
+- 会话文件：`~/.pi/agent/sessions/--<cwd 去掉开头分隔符、/ \ : 换成 ->--/<时间>_<会话id>.jsonl`（格式见 pi 自带的 `docs/session-format.md`）。
+  herdr 的 `agent_session` 对 pi 是**文件路径**（`kind: "path"`，会话一开始就有，但文件要到第一条消息之后才出现），projdeck 从路径里取会话 id 作为 conversationId。
+- 对话气泡：`agentd/src/transcript/pi.ts` 解析 `message` 记录里的 `user`（文本）、`assistant`（文本、`toolCall` → 工具行），系统消息 / 思考 / `toolResult` 不显示。
+- 恢复归档的会话：`pi --session <会话id>`。pi 没有权限确认，所以默认参数为空，也没有「信任此文件夹」菜单要自动处理。

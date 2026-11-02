@@ -110,8 +110,8 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
           <div className="text-sm font-medium">通知（这台设备）</div>
           <p className="text-xs text-muted-foreground">
             {push === null && "检查中…"}
-            {push === "on" && "已开启：Claude / Codex 完成或需要你处理时，这台设备会收到通知，点通知直接打开那个会话。"}
-            {push === "off" && "开启后，Claude / Codex 完成或需要你处理时推送到这台设备，不用一直开着网页。"}
+            {push === "on" && "已开启：Claude / Codex / Pi 完成或需要你处理时，这台设备会收到通知，点通知直接打开那个会话。"}
+            {push === "off" && "开启后，Claude / Codex / Pi 完成或需要你处理时推送到这台设备，不用一直开着网页。"}
             {push === "denied" && "通知权限被拒绝了，需要在浏览器或系统设置里允许 projdeck 发通知，然后再回来开启。"}
             {push === "needs-install" && "iPhone / iPad 需要先把 projdeck 添加到主屏幕（Safari 分享按钮 → 添加到主屏幕），再从主屏幕打开 projdeck 开启通知。"}
             {push === "unsupported" && "这个浏览器不支持推送通知。"}
