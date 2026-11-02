@@ -53,7 +53,12 @@ class MainActivity : FlutterActivity() {
                 "initialPath" -> result.success(intent?.getStringExtra(NotifyService.EXTRA_PATH).also { intent?.removeExtra(NotifyService.EXTRA_PATH) })
                 "clipboardFile" -> result.success(clipboardFile())
                 // ---- 远程调试 ----
-                "adbStatus" -> RemoteAdb.async({ RemoteAdb.status(this) }) { r -> r.fold({ result.success(it) }, { result.error("adb", it.message, null) }) }
+                // 状态不能和配对、切 TCP、启动独立进程这些耗时的 adb 操作排同一个队，否则它们执行的那几秒页面拿不到状态，
+                // 三个步骤会全显示成「没完成」
+                "adbStatus" -> Thread {
+                    val r = runCatching { RemoteAdb.status(this) }
+                    runOnUiThread { r.fold({ result.success(it) }, { result.error("adb", it.message, null) }) }
+                }.start()
                 "adbStartPairing" -> {
                     AdbPairingService.start(this)
                     result.success(true)

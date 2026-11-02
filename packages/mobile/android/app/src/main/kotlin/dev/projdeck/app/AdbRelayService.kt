@@ -73,6 +73,8 @@ class AdbRelayService : Service() {
         // 独立进程最近一次在运行的时间。它崩溃后外层循环 3 秒内会把它拉起来，所以不在也先等一等再让 App 内的转发顶上，
         // 否则两边会轮流把对方挤下线（服务器上后连的顶掉先连的）
         var lastDetached = System.currentTimeMillis()
+        var launchStartedAt = 0L
+        var launchThread: Thread? = null
         while (running) {
             try {
                 val d = RelayProcess.query()
@@ -83,8 +85,10 @@ class AdbRelayService : Service() {
                     mode = "detached"
                     state = d.state
                     error = d.error
+                    if (launchStartedAt > 0) RelayLog.add(this, "独立转发进程已启动")
+                    launchStartedAt = 0
                     failures = 0
-                    Thread.sleep(5_000)
+                    Thread.sleep(2_000)
                     continue
                 }
                 if (d != null) {
@@ -92,39 +96,35 @@ class AdbRelayService : Service() {
                     RelayProcess.quit()
                     Thread.sleep(1_000)
                 }
-                // 独立进程不在：能启动就直接启动它；启动不了（5555 没开、刚失败过）就让 App 里的转发顶上
-                var launching = false
-                if (RemoteAdb.tcpReachable() && System.currentTimeMillis() >= nextLaunch) {
+                // 独立进程不在：在另一个线程里启动它（adb 那头有时要等好几秒才返回），这里继续看着，
+                // 起来了就让 App 内的转发退场；启动前 App 内的转发一直开着，不让连接空档
+                if (RemoteAdb.tcpReachable() && System.currentTimeMillis() >= nextLaunch && launchThread?.isAlive != true) {
                     val base = Prefs.base(this)
                     val key = Prefs.key(this)
                     if (base != null && key != null) {
-                        launching = true
-                        // 独立进程马上要接手：先让 App 内的转发退场，否则两边会轮流把对方挤下线
-                        stopCore()
-                        try {
-                            val out = RemoteAdb.startDetachedRelay(this, base, key)
-                            RelayLog.add(this, "启动命令输出：$out")
-                        } catch (e: Exception) {
-                            // 命令可能已经执行了、只是 adb 这头超时，所以不在这里下结论，下面看独立进程在不在
-                            RelayLog.add(this, "启动命令没有正常返回：${e.javaClass.simpleName}: ${e.message}")
+                        launchStartedAt = System.currentTimeMillis()
+                        launchThread = thread(name = "projdeck-relay-launch") {
+                            try {
+                                RelayLog.add(this, "启动命令输出：${RemoteAdb.startDetachedRelay(this, base, key)}")
+                            } catch (e: Exception) {
+                                RelayLog.add(this, "启动命令没有正常返回：${e.javaClass.simpleName}: ${e.message}")
+                            }
                         }
-                        Thread.sleep(3_000)
-                        if (RelayProcess.query() != null) {
-                            RelayLog.add(this, "独立转发进程已启动")
-                            failures = 0
-                            continue
-                        }
-                        failures++
-                        nextLaunch = System.currentTimeMillis() + (30_000L * failures).coerceAtMost(300_000L)
-                        lastDetached = 0 // 没起来：让 App 内的转发马上顶上
-                        RelayLog.add(this, "启动独立转发进程失败（第 $failures 次）")
                     }
                 }
-                if (!launching && System.currentTimeMillis() - lastDetached >= 12_000) {
+                // 启动命令发出 15 秒后独立进程还没起来，算失败，退避一阵再试
+                if (launchStartedAt > 0 && System.currentTimeMillis() - launchStartedAt > 15_000) {
+                    launchStartedAt = 0
+                    failures++
+                    nextLaunch = System.currentTimeMillis() + (30_000L * failures).coerceAtMost(300_000L)
+                    RelayLog.add(this, "启动独立转发进程失败（第 $failures 次）")
+                }
+                // 独立进程崩溃后外层循环 3 秒内会拉起它，所以多等几秒再让 App 内的转发顶上
+                if (System.currentTimeMillis() - lastDetached >= 6_000) {
                     mode = "app"
                     startCore()
                 }
-                Thread.sleep(5_000)
+                Thread.sleep(1_000)
             } catch (_: InterruptedException) {
                 break
             }

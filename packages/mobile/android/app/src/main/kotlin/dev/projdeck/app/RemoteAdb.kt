@@ -230,12 +230,16 @@ object RemoteAdb {
      */
     fun startDetachedRelay(c: Context, base: String, key: String): String {
         val task = io.submit<String> {
+            val t0 = System.currentTimeMillis()
             val m = manager(c)
             if (m.isConnected) m.disconnect()
             m.setTimeout(5, TimeUnit.SECONDS)
             if (!m.connect("127.0.0.1", TCP_PORT)) throw IllegalStateException("连不上本机的 adb（$TCP_PORT）")
+            RelayLog.add(c, "启动独立进程：adb 已连上（${System.currentTimeMillis() - t0}ms）")
             try {
-                runService(m, "shell:${RelayProcess.command(c, base, key)}")
+                runService(m, "shell:${RelayProcess.command(c, base, key)}").also {
+                    RelayLog.add(c, "启动独立进程：命令返回（${System.currentTimeMillis() - t0}ms）")
+                }
             } finally {
                 runCatching { m.disconnect() }
             }
