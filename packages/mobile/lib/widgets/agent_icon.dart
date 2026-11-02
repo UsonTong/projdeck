@@ -16,15 +16,33 @@ const _codex = [
   '...#.#....#.#...',
 ];
 
-/// Pi：像素的希腊字母 π。
-const _pi = ['###############', '###############', '..##.......##..', '..##.......##..', '..##.......##..', '..##.......###.', '..##........##.'];
+/// Pi 启动时在终端里打印的标志：4×4 的三色方块，深色底（P 粉、B 蓝、Y 黄，. 为空）。
+const _pi = ['PPP.', 'B.P.', 'BB.Y', 'B..Y'];
+const _piColors = {'P': Color(0xfff09082), 'B': Color(0xff4d9abf), 'Y': Color(0xfff1be58)};
 
 /// 能新开的 agent，按默认顺序。
 const agentKinds = [SessionKind.claude, SessionKind.codex, SessionKind.pi];
 
 const claudeColor = Color(0xffd97757);
 const codexColor = Color(0xffbae6fd);
-const piColor = Color(0xffc4b5fd);
+const piColor = Color(0xff4d9abf);
+
+/// Pi 的三色方块标志（方格是正方形，不像别的图标按 1×2 画）。
+class _PiPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cell = size.width / 4;
+    for (var y = 0; y < _pi.length; y++) {
+      for (var x = 0; x < _pi[y].length; x++) {
+        final color = _piColors[_pi[y][x]];
+        if (color != null) canvas.drawRect(Rect.fromLTWH(x * cell, y * cell, cell + 0.5, cell + 0.5), Paint()..color = color);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_PiPainter old) => false;
+}
 
 class _PixelPainter extends CustomPainter {
   final List<String> rows;
@@ -66,7 +84,7 @@ class AgentIcon extends StatelessWidget {
     final (bg, fg, ring) = switch (kind) {
       SessionKind.claude => (claudeColor.withValues(alpha: 0.12), claudeColor, claudeColor.withValues(alpha: 0.25)),
       SessionKind.codex => (const Color(0xff38bdf8).withValues(alpha: 0.10), codexColor, const Color(0xff7dd3fc).withValues(alpha: 0.25)),
-      SessionKind.pi => (const Color(0xffa78bfa).withValues(alpha: 0.10), piColor, const Color(0xffc4b5fd).withValues(alpha: 0.25)),
+      SessionKind.pi => (const Color(0xff151c26), piColor, Colors.white.withValues(alpha: 0.10)),
       SessionKind.shell => (p.muted, p.mutedFg, p.border),
     };
     final dot = switch (status) {
@@ -90,9 +108,9 @@ class AgentIcon extends StatelessWidget {
             child: kind == SessionKind.shell
                 ? Icon(Icons.terminal_rounded, size: size * 0.55, color: fg)
                 : SizedBox(
-                    width: size * (kind == SessionKind.claude ? 0.78 : kind == SessionKind.pi ? 0.62 : 0.72),
-                    height: size * 0.7,
-                    child: CustomPaint(painter: _PixelPainter(kind == SessionKind.claude ? _crab : kind == SessionKind.pi ? _pi : _codex, fg)),
+                    width: size * (kind == SessionKind.claude ? 0.78 : kind == SessionKind.pi ? 0.5 : 0.72),
+                    height: kind == SessionKind.pi ? size * 0.5 : size * 0.7,
+                    child: CustomPaint(painter: kind == SessionKind.pi ? _PiPainter() : _PixelPainter(kind == SessionKind.claude ? _crab : _codex, fg)),
                   ),
           ),
           if (plus)
