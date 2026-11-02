@@ -23,6 +23,8 @@ export interface Config {
   uploadRetentionDays: number;
   /** CC Switch 的 WebKit 调试端口（只监听本机），网页上的 CC Switch 界面经它操作电脑上的 CC Switch。 */
   ccswitchInspector: string;
+  /** 远程 adb：电脑上的 adb 连这个本机端口，经手机 App 转给手机的 adbd。 */
+  adbRelayPort: number;
 }
 
 const defaults: Config = {
@@ -36,6 +38,7 @@ const defaults: Config = {
   passwordHash: null,
   uploadRetentionDays: 30,
   ccswitchInspector: "127.0.0.1:47930",
+  adbRelayPort: 15555,
 };
 
 export function readJson<T>(file: string, fallback: T): T {
@@ -61,6 +64,7 @@ export function loadConfig(): Config {
   const config = { ...defaults, ...readJson<Partial<Config>>(configFile, {}) };
   // 环境变量优先，便于开发时指向 herdr 测试会话
   if (process.env.PROJDECK_HERDR_SOCKET) config.herdrSocket = process.env.PROJDECK_HERDR_SOCKET;
+  if (process.env.PROJDECK_ADB_RELAY_PORT) config.adbRelayPort = Number(process.env.PROJDECK_ADB_RELAY_PORT);
   if (process.env.PROJDECK_CCSWITCH_INSPECTOR) config.ccswitchInspector = process.env.PROJDECK_CCSWITCH_INSPECTOR;
   if (process.env.PROJDECK_HERDR_UNIT) config.herdrUnit = process.env.PROJDECK_HERDR_UNIT;
   if (process.env.PROJDECK_PORT) config.port = Number(process.env.PROJDECK_PORT);

@@ -9,6 +9,9 @@ object Prefs {
     fun notificationsEnabled(c: Context) = of(c).getBoolean("notifications", false)
     fun setNotifications(c: Context, on: Boolean) = of(c).edit().putBoolean("notifications", on).apply()
 
+    fun relayEnabled(c: Context) = of(c).getBoolean("relay", false)
+    fun setRelay(c: Context, on: Boolean) = of(c).edit().putBoolean("relay", on).apply()
+
     fun base(c: Context): String? = of(c).getString("base", null)
     fun key(c: Context): String? = of(c).getString("key", null)
     fun setConnection(c: Context, base: String, key: String) = of(c).edit().putString("base", base).putString("key", key).apply()

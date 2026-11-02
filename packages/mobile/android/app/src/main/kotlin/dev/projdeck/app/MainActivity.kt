@@ -58,6 +58,18 @@ class MainActivity : FlutterActivity() {
                     AdbPairingService.start(this)
                     result.success(true)
                 }
+                "adbRelaySet" -> {
+                    val on = call.argument<Boolean>("on") == true
+                    if (on) {
+                        Prefs.setConnection(this, call.argument<String>("base")!!, call.argument<String>("key")!!)
+                        Prefs.setRelay(this, true)
+                        AdbRelayService.start(this)
+                    } else {
+                        Prefs.setRelay(this, false)
+                        AdbRelayService.stop(this)
+                    }
+                    result.success(true)
+                }
                 "openDeveloperSettings" -> result.success(openDeveloperSettings())
                 "openAccessibilitySettings" -> {
                     startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))

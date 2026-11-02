@@ -61,6 +61,8 @@ dependencies {
     implementation("com.github.MuntashirAkon:sun-security-android:1.1")
     // TLS 1.3：系统自带的 Conscrypt 不能直接用，自带一份，库发现它就会自动使用
     implementation("org.conscrypt:conscrypt-android:2.5.3")
+    // 远程调试的转发：与服务器之间的 WebSocket
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }
 
 kotlin {

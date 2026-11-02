@@ -8,5 +8,6 @@ import android.content.Intent
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (Prefs.notificationsEnabled(context)) NotifyService.start(context)
+        if (Prefs.relayEnabled(context)) AdbRelayService.start(context)
     }
 }

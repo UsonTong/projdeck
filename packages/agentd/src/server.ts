@@ -40,6 +40,7 @@ import { LiveHub } from "./live.ts";
 import { TerminalBridge } from "./terminal.ts";
 import { httpError, type ProjdeckService } from "./service.ts";
 import { MAX_UPLOAD_BYTES, saveUpload, SHARED_UPLOAD_ROOT } from "./uploads.ts";
+import { AdbRelay } from "./adbRelay.ts";
 import { CcSwitch } from "./ccswitch.ts";
 import { NotifyStream } from "./notifyStream.ts";
 import { CcSwitchBridge, type CcSwitchEvent } from "./ccswitchBridge.ts";
@@ -95,7 +96,7 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
   // 除登录外所有 /api 与 /ws 都需要登录
   app.addHook("onRequest", async (req, reply) => {
     const url = req.url.split("?")[0]!;
-    const isWs = url === "/ws" || url === "/ws/term";
+    const isWs = url === "/ws" || url === "/ws/term" || url === "/ws/adb";
     if (!url.startsWith("/api/") && !isWs) return;
     if (url === "/api/auth/login" || url === "/api/auth/status") return;
     if (!authed(req)) return reply.status(401).send({ error: "未登录" });
@@ -292,6 +293,21 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
     if (!existsSync(join(appDir, "projdeck.apk"))) throw httpError(404, "还没有发布安卓 App");
     void reply.header("Content-Type", "application/vnd.android.package-archive").header("Content-Disposition", 'attachment; filename="projdeck.apk"');
     return reply.sendFile("projdeck.apk", appDir, { maxAge: 0, cacheControl: false });
+  });
+
+  // 远程 adb：手机 App 连上 /ws/adb，电脑上 adb 连 127.0.0.1:<adbRelayPort>（见 adbRelay.ts、docs/REMOTE_ADB.md）
+  const adbRelay = new AdbRelay(config.adbRelayPort, "127.0.0.1", (m) => app.log.info(m));
+  app.addHook("onClose", async () => adbRelay.stop());
+  app.get("/api/adb", async () => ({ ...adbRelay.status(), command: `adb connect 127.0.0.1:${config.adbRelayPort}` }));
+  app.get("/ws/adb", { websocket: true }, (socket) => {
+    const link = adbRelay.attach({
+      send: (f) => socket.send(f, { binary: true }),
+      bufferedAmount: () => socket.bufferedAmount,
+      close: () => socket.close(),
+    });
+    socket.on("message", (data: Buffer | Buffer[] | ArrayBuffer) => link.receive(Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data as ArrayBuffer)));
+    socket.on("close", () => link.detach());
+    socket.on("error", () => link.detach());
   });
 
   // 安卓 App 的通知连接（见 notifyStream.ts）

@@ -34,6 +34,10 @@ class Native {
   /// 开始配对：配对码在通知里输入。
   static Future<void> adbStartPairing() => _ch.invokeMethod('adbStartPairing');
 
+  /// 开关远程调试的转发：开了之后 App 在后台连着服务器，并自动保持 adb 的 TCP 模式。
+  static Future<void> adbRelaySet(bool on, Connection conn) =>
+      _ch.invokeMethod('adbRelaySet', {'on': on, 'base': conn.base.toString().replaceAll(RegExp(r'/$'), ''), 'key': conn.key});
+
   /// 打开系统的开发者选项（定位到「无线调试」）。
   static Future<bool> openDeveloperSettings() async => await _ch.invokeMethod<bool>('openDeveloperSettings') ?? false;
 

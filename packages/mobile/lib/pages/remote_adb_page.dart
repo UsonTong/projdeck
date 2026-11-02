@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../native.dart';
+import '../state.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 
@@ -65,6 +66,8 @@ class _RemoteAdbPageState extends State<RemoteAdbPage> with WidgetsBindingObserv
     final granted = _s['secureGranted'] == true;
     final tcp = _s['tcp'] == true;
     final helper = _s['accessibility'] == true;
+    final relayEnabled = _s['relayEnabled'] == true;
+    final relay = (_s['relay'] as String?) ?? 'off';
     final msg = (_s['message'] as String?) ?? '';
     return Scaffold(
       appBar: AppBar(title: const Text('远程调试')),
@@ -105,8 +108,20 @@ class _RemoteAdbPageState extends State<RemoteAdbPage> with WidgetsBindingObserv
             index: 3,
             title: 'TCP 模式',
             done: tcp,
-            detail: tcp ? 'adb 已经在手机的 5555 端口监听，电脑可以通过转发通道连上。手机重启后失效。' : '把手机的 adb 切到 TCP 模式，之后不需要 Wi-Fi。系统会在新的 Wi-Fi 上第一次弹框，选「始终允许」。',
+            detail: tcp
+                ? 'adb 已经在手机的 5555 端口监听。手机重启后会失效，打开下面的「远程连接」后，连上 Wi-Fi 会自动恢复。'
+                : '把手机的 adb 切到 TCP 模式，之后不需要 Wi-Fi。系统会在新的 Wi-Fi 上第一次弹框，选「始终允许」。打开下面的「远程连接」后会自动做这一步。',
             action: !paired || tcp ? null : _Btn('开启', _busy == 'tcp', () => _do('tcp', Native.adbEnableTcp)),
+          ),
+          _RelayCard(
+            enabled: relayEnabled,
+            state: relay,
+            ready: paired && granted,
+            onChanged: (on) async {
+              final conn = AppScope.read(context).conn;
+              await Native.adbRelaySet(on, conn);
+              _refresh();
+            },
           ),
           if (msg.isNotEmpty) ...[const SizedBox(height: 16), Text('最近一次：$msg', style: TextStyle(fontSize: 12, color: p.mutedFg))],
         ],
@@ -171,6 +186,84 @@ class _Step extends StatelessWidget {
                 child: action!.busy ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)) : Text(action!.label),
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 第 4 步：允许公司电脑连接。开着时 App 在后台连着服务器，并自动保持 adb 的 TCP 模式。
+class _RelayCard extends StatelessWidget {
+  final bool enabled;
+  final String state;
+  final bool ready;
+  final ValueChanged<bool> onChanged;
+  const _RelayCard({required this.enabled, required this.state, required this.ready, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final (label, color) = switch ((enabled, state)) {
+      (false, _) => ('已关闭', p.mutedFg),
+      (true, 'connected') => ('已连上服务器，公司电脑可以连接', p.done),
+      (true, _) => ('正在连接服务器…', p.working),
+    };
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: p.card,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: enabled && state == 'connected' ? p.done.withValues(alpha: 0.5) : p.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('远程连接', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 3),
+                    Text(label, style: TextStyle(fontSize: 12.5, color: color)),
+                  ],
+                ),
+              ),
+              Switch(value: enabled, onChanged: ready || enabled ? onChanged : null),
+            ],
+          ),
+          if (!ready && !enabled)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text('先完成上面的配对和授权', style: TextStyle(fontSize: 12, color: p.mutedFg)),
+            ),
+          if (enabled && state == 'connected') ...[
+            const SizedBox(height: 10),
+            Text('在公司电脑上执行：', style: TextStyle(fontSize: 12, color: p.mutedFg)),
+            const SizedBox(height: 4),
+            InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () {
+                Clipboard.setData(const ClipboardData(text: 'adb connect 127.0.0.1:15555'));
+                toast(context, '已复制');
+              },
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(color: p.muted, borderRadius: BorderRadius.circular(8)),
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: Text('adb connect 127.0.0.1:15555', style: TextStyle(fontFamily: mono, fontSize: 13)),
+                    ),
+                    Icon(Icons.copy_rounded, size: 16, color: p.mutedFg),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

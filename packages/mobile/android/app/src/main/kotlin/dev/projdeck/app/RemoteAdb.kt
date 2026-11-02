@@ -17,7 +17,7 @@ import java.util.concurrent.TimeUnit
  * 之后电脑经转发通道连到 localhost:5555 就是连这台手机。
  */
 object RemoteAdb {
-    private const val TCP_PORT = 5555
+    const val TCP_PORT = 5555
     private const val PERMISSION = "android.permission.WRITE_SECURE_SETTINGS"
 
     private val io = Executors.newSingleThreadExecutor()
@@ -67,6 +67,8 @@ object RemoteAdb {
         "wirelessOn" to wirelessOn(c),
         "tcp" to tcpReachable(),
         "accessibility" to accessibilityOn(c),
+        "relayEnabled" to Prefs.relayEnabled(c),
+        "relay" to AdbRelayService.state,
         "message" to lastMessage,
     )
 
@@ -105,6 +107,20 @@ object RemoteAdb {
     private fun connectTls(c: Context): ProjdeckAdb {
         val m = manager(c)
         if (m.isConnected) m.disconnect()
+        // 上次连上的端口（无线调试没关过的话端口不变），先试它，免得每次都等 mDNS 超时再扫描
+        val cached = prefs(c).getInt("tls_port", 0)
+        if (cached > 0) {
+            m.setTimeout(3, TimeUnit.SECONDS)
+            try {
+                if (m.connect("127.0.0.1", cached)) {
+                    Log.i("ProjdeckAdb", "已用上次的端口连上无线调试 port=$cached")
+                    return m
+                }
+            } catch (e: Exception) {
+                Log.i("ProjdeckAdb", "上次的端口 $cached 不能用了：${e.javaClass.simpleName}")
+                runCatching { m.disconnect() }
+            }
+        }
         val viaMdns = try {
             m.connectTls(c, 5_000)
         } catch (e: Exception) {
@@ -122,6 +138,7 @@ object RemoteAdb {
             try {
                 if (m.connect("127.0.0.1", port)) {
                     Log.i("ProjdeckAdb", "已通过端口扫描连上无线调试 port=$port")
+                    prefs(c).edit().putInt("tls_port", port).apply()
                     return m
                 }
             } catch (e: Exception) {

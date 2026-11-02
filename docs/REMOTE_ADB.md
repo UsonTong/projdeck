@@ -33,16 +33,24 @@
 - **mDNS 在 MIUI 上发现不了端口**（`connectTls` 超时，日志里一堆 `SERVICE_RESOLVED has no client mapping`）。备用办法：扫描本机 32768～60999 的监听端口，逐个用 libadb 的 `connect("127.0.0.1", port)` 试，连上的就是无线调试的 TLS 端口。扫描大约 12～17 秒。
 - 配对成功后，App 通过 TLS 连接发 `shell:pm grant <包名> android.permission.WRITE_SECURE_SETTINGS` 自己授权，再发 `tcpip:5555` 切到 TCP 模式。
 
+## 转发通道（已跑通，2026-11-02）
+
+- 服务器：`packages/agentd/src/adbRelay.ts`。手机 App 连上 `/ws/adb`（需要登录）时，agentd 才在本机 `127.0.0.1:15555` 监听；电脑上 `adb connect 127.0.0.1:15555` 的每个连接经 WebSocket 多路复用转给手机，手机断开就停止监听。帧格式：`[类型 1 字节][连接号 4 字节大端][数据]`，OPEN=1、DATA=2、CLOSE=3，单帧数据 ≤ 32KB（websocket 插件限制 64KB）。有背压：积压超过 8MB 暂停读电脑那一端。
+- 手机：`AdbRelayService`（前台服务，OkHttp WebSocket）把每个连接转给本机 `127.0.0.1:5555`；同一个服务里的 `recoveryLoop` 发现 5555 没在监听、又连着 Wi-Fi，就用 App 自己的授权打开无线调试 → 发 `tcpip:5555` → 关无线调试，失败时间隔逐步拉长到 5 分钟。开机后由 `BootReceiver` 拉起。
+- 实测（Redmi K20 Pro）：`adb connect 127.0.0.1:15555` 得到 `shell` 身份；30MB 随机文件推、拉的校验值一致（推 2.2MB/s、拉 3.3MB/s，路径绕公网服务器）；4 个 shell 并行；**手机 Wi-Fi 关掉、只用移动数据时依然可用**。
+- 安全：`127.0.0.1:15555` 是本机端口，公司电脑上的任何程序都能用它连手机，等同于拿到手机的 shell。手机上的「远程连接」开关关掉就停止监听；新的电脑密钥第一次连接，手机会弹「允许 USB 调试」。
+
 ## 还没验证
 
 - realme RMX3706（安卓 16，ColorOS）：授权、后台存活、自启动、各项限制。
-- 转发通道：`/ws/adb` 多路复用、断线重连、延迟。
+- 手机重启后的自动恢复（逻辑已写，没有实机重启测过）。
+- 新的电脑密钥第一次连接时的授权弹框。
 - 端口扫描太慢：记住上次成功的端口，先试它。
 - realme（安卓 16）上，无障碍服务属于「受限制的设置」，侧载安装的 App 要先在应用信息里「允许受限制的设置」才能打开。
 
 ## 实现顺序
 
 1. ~~App 内 adb 客户端 + 配对界面；自己给自己授权。~~（已完成，libadb-android：GPL-3.0-or-later 或 Apache-2.0 双协议，Apache 版带一个 LGPL 依赖）
-2. 常驻服务：开机等 Wi-Fi → 打开无线调试 → mDNS 找端口 → 连接 → `tcpip` → 关无线调试。
-3. 转发通道：agentd 监听 127.0.0.1:15555，经 `/ws/adb` 转给 App，App 转到 localhost:5555。
+2. ~~常驻服务：开机等 Wi-Fi → 打开无线调试 → 找端口 → 连接 → `tcpip` → 关无线调试。~~（已完成，未实机重启测试）
+3. ~~转发通道：agentd 监听 127.0.0.1:15555，经 `/ws/adb` 转给 App，App 转到 localhost:5555。~~（已完成）
 4. App 和网页设置里的开关与状态；realme 设置指南（自启动、电池、权限监控）。
