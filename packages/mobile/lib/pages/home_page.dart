@@ -438,12 +438,40 @@ class _UnassignedTab extends StatelessWidget {
     final p = Palette.of(context);
     final sort = app.unassignedSort;
     final sorted = sortUnassigned(sessions, sort);
-    final header = Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-      child: Align(
-        alignment: Alignment.centerRight,
-        child: SegmentedSwitch(value: sort, options: unassignedSortLabels, onChanged: (v) => app.unassignedSort = v),
+    Future<void> start(SessionKind kind) async {
+      HapticFeedback.lightImpact();
+      final paneId = await run(context, () => app.api.startUnassignedSession(kind));
+      if (paneId != null && context.mounted) openSession(context, paneId);
+    }
+
+    // 新开会话：和项目一样直接点图标，在主目录里启动，不属于任何项目
+    final starters = Padding(
+      padding: const EdgeInsets.fromLTRB(12, 2, 4, 0),
+      child: Row(
+        children: [
+          Expanded(child: Text('在 ~ 里新开', style: TextStyle(fontSize: 12, color: p.mutedFg))),
+          for (final k in agentKinds)
+            _IconTap(tooltip: '新开 ${kindLabel[k]}（在主目录）', onTap: () => start(k), child: AgentIcon(kind: k, size: 24, plus: true)),
+          _IconTap(
+            tooltip: '新开终端（在主目录）',
+            onTap: () => start(SessionKind.shell),
+            child: const AgentIcon(kind: SessionKind.shell, size: 24, plus: true),
+          ),
+        ],
       ),
+    );
+    final header = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        starters,
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: SegmentedSwitch(value: sort, options: unassignedSortLabels, onChanged: (v) => app.unassignedSort = v),
+          ),
+        ),
+      ],
     );
     if (sorted.isEmpty) {
       return ListView(

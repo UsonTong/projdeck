@@ -69,6 +69,9 @@ export const api = {
   startSession: (projectId: string, kind: SessionKind) =>
     request<{ paneId: string }>("POST", `/api/projects/${projectId}/sessions`, { kind }),
 
+  /** 不属于任何项目的新会话（在主目录里启动）。 */
+  startUnassignedSession: (kind: SessionKind) => request<{ paneId: string }>("POST", "/api/sessions", { kind }),
+
   prompt: (paneId: string, text: string, files: string[]) => request("POST", `${pane(paneId)}/prompt`, { text, files }),
   keys: (paneId: string, keys: string[]) => request("POST", `${pane(paneId)}/keys`, { keys }),
   setHidden: (paneId: string, hidden: boolean) => request("POST", `${pane(paneId)}/hidden`, { hidden }),

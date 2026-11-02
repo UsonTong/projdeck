@@ -115,6 +115,8 @@ class Api {
 
   Future<String> startSession(String projectId, SessionKind kind) async =>
       (await post('/api/projects/$projectId/sessions', {'kind': kind.name}))['paneId'];
+  /// 不属于任何项目的新会话（在主目录里启动）。
+  Future<String> startUnassignedSession(SessionKind kind) async => (await post('/api/sessions', {'kind': kind.name}))['paneId'];
   Future<void> setHidden(String paneId, bool hidden) => post('${pane(paneId)}/hidden', {'hidden': hidden});
   Future<void> rename(String paneId, String? label) => post('${pane(paneId)}/rename', {'label': label});
   Future<void> archive(String paneId) => post('${pane(paneId)}/archive');

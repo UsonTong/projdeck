@@ -379,6 +379,13 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
     return result;
   });
 
+  // 未归属：在主目录里新开 agent / 终端（不属于任何项目）
+  app.post<{ Body: StartSessionBody }>("/api/sessions", async (req) => {
+    const result = await service.startUnassignedSession(req.body.kind);
+    live.scheduleOverview();
+    return result;
+  });
+
   // ---- 会话 ----
 
   type PaneParams = { Params: { paneId: string } };

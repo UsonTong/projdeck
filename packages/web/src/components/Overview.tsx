@@ -721,11 +721,43 @@ function UnassignedTab({ sessions, activePane }: { sessions: Session[]; activePa
     });
   };
 
+  const start = async (kind: SessionKind) => {
+    try {
+      const { paneId } = await api.startUnassignedSession(kind);
+      if (kind !== "shell") markLaunching(paneId);
+      openSession(paneId);
+    } catch (err) {
+      fail(err);
+    }
+  };
+  // 新开会话：和项目一样直接点图标，在主目录里启动，不属于任何项目
+  const starters = (
+    <div className="flex items-center justify-between gap-2 px-2 pb-1">
+      <span className="truncate text-xs text-muted-foreground">在 ~ 里新开</span>
+      <div className="flex shrink-0 items-center">
+        {AGENT_KINDS.map((k) => (
+          <IconAction key={k} label={`新开 ${KIND_LABEL[k]}（在主目录）`} onClick={() => void start(k)}>
+            <AgentIcon kind={k} size="xs" plus />
+          </IconAction>
+        ))}
+        <IconAction label="新开终端（在主目录）" onClick={() => void start("shell")}>
+          <AgentIcon kind="shell" size="xs" plus />
+        </IconAction>
+      </div>
+    </div>
+  );
+
   if (sessions.length === 0) {
-    return <SectionEmpty icon={<InboxIcon />} title="没有未归属的会话" description="不在任何项目文件夹里启动的会话会出现在这里。" />;
+    return (
+      <div className="flex flex-col gap-0.5">
+        {starters}
+        <SectionEmpty icon={<InboxIcon />} title="没有未归属的会话" description="不在任何项目文件夹里启动的会话会出现在这里，也可以点上方图标在主目录里新开。" />
+      </div>
+    );
   }
   return (
     <div className="flex flex-col gap-0.5">
+      {starters}
       <SortSwitch value={sort} options={UNASSIGNED_SORTS} onChange={(v) => setDevicePref("unassignedSort", v)} />
       {sort === "herdr" ? (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={() => (draggedRef.current = true)} onDragEnd={onDragEnd}>

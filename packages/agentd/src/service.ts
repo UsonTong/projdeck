@@ -406,6 +406,14 @@ export class ProjdeckService {
     return { paneId };
   }
 
+  /** 不属于任何项目的会话：在用户主目录里新开（未归属页的按钮）。 */
+  async startUnassignedSession(kind: SessionKind): Promise<{ paneId: string }> {
+    const paneId = await this.openPane(null, homedir());
+    if (kind !== "shell") await this.launchAgent(paneId, null, kind, []);
+    this.snapshot = undefined;
+    return { paneId };
+  }
+
   async output(paneId: string, lines?: number): Promise<string> {
     await this.lookup(paneId);
     return this.herdr.readPane(paneId, lines);
