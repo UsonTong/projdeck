@@ -11,6 +11,7 @@ import '../widgets/common.dart';
 import '../widgets/session_tile.dart';
 import '../api/ccswitch.dart';
 import 'ccswitch_page.dart';
+import 'devices_page.dart';
 import 'files_page.dart';
 import 'settings_page.dart';
 
@@ -104,6 +105,11 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                         icon: const Icon(Icons.swap_horiz_rounded, size: 22),
                         onPressed: () => CcSwitchPage.open(context),
                       ),
+                    IconButton(
+                      tooltip: '设备：连进来的手机',
+                      icon: const Icon(Icons.smartphone_rounded, size: 21),
+                      onPressed: () => DevicesPage.open(context),
+                    ),
                     IconButton(
                       tooltip: '设置',
                       icon: const Icon(Icons.settings_outlined, size: 20),

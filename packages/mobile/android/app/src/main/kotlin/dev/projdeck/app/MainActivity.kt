@@ -71,6 +71,14 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 }
                 "openAutostartSettings" -> result.success(openAutostartSettings())
+                "requestUnrestrictedBattery" -> {
+                    try {
+                        startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
+                    } catch (_: Exception) {
+                        startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+                    }
+                    result.success(true)
+                }
                 "openDeveloperSettings" -> result.success(openDeveloperSettings())
                 "openAccessibilitySettings" -> {
                     startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
@@ -90,10 +98,21 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
-        // 已经开着通知：确保后台连接在跑（例如被系统清理后重新打开 App）
-        if (Prefs.notificationsEnabled(this)) NotifyService.start(this)
-        // 远程连接开着时，打开 App 就把转发服务拉起来（更新 App 后系统不一定会替我们启动它，MIUI 要先授权自启动）
-        if (Prefs.relayEnabled(this)) AdbRelayService.start(this)
+    }
+
+    /**
+     * 回到前台时确保后台连接在跑（例如被系统清理后重新打开 App、更新 App 后）。
+     * 必须在 onResume 里做：进程刚启动、界面还没出来时系统把 App 当成后台，会拒绝启动前台服务
+     * （日志里是 "Background start not allowed"），这就是更新后转发一直起不来的原因。
+     */
+    override fun onResume() {
+        super.onResume()
+        try {
+            if (Prefs.notificationsEnabled(this)) NotifyService.start(this)
+            if (Prefs.relayEnabled(this)) AdbRelayService.start(this)
+        } catch (e: Exception) {
+            RelayLog.add(this, "打开 App 时启动后台服务失败：${e.javaClass.simpleName}: ${e.message}")
+        }
     }
 
     /**

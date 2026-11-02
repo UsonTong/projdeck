@@ -68,6 +68,7 @@ class _RemoteAdbPageState extends State<RemoteAdbPage> with WidgetsBindingObserv
     final helper = _s['accessibility'] == true;
     final relayEnabled = _s['relayEnabled'] == true;
     final relay = (_s['relay'] as String?) ?? 'off';
+    final relayError = _s['relayError'] as String?;
     final msg = (_s['message'] as String?) ?? '';
     return Scaffold(
       appBar: AppBar(title: const Text('远程调试')),
@@ -116,6 +117,7 @@ class _RemoteAdbPageState extends State<RemoteAdbPage> with WidgetsBindingObserv
           _RelayCard(
             enabled: relayEnabled,
             state: relay,
+            error: relayError,
             ready: paired && granted,
             onChanged: (on) async {
               final conn = AppScope.read(context).conn;
@@ -131,6 +133,18 @@ class _RemoteAdbPageState extends State<RemoteAdbPage> with WidgetsBindingObserv
               style: TextStyle(fontSize: 12, color: Palette.of(context).mutedFg, height: 1.5),
             ),
           ),
+          if (_s['batteryUnrestricted'] != true)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.battery_alert_rounded),
+              title: const Text('电池不受限制'),
+              subtitle: Text(
+                '息屏后系统会掐掉后台连接，所以老是掉线。点这里选「不受限制」；小米手机还要在 App 详情的「省电策略」里选「无限制」。',
+                style: TextStyle(fontSize: 12, color: p.mutedFg, height: 1.5),
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: Native.requestUnrestrictedBattery,
+            ),
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.restart_alt_rounded),
@@ -216,8 +230,9 @@ class _RelayCard extends StatelessWidget {
   final bool enabled;
   final String state;
   final bool ready;
+  final String? error;
   final ValueChanged<bool> onChanged;
-  const _RelayCard({required this.enabled, required this.state, required this.ready, required this.onChanged});
+  const _RelayCard({required this.enabled, required this.state, required this.ready, required this.onChanged, this.error});
 
   @override
   Widget build(BuildContext context) {
@@ -253,6 +268,11 @@ class _RelayCard extends StatelessWidget {
               Switch(value: enabled, onChanged: ready || enabled ? onChanged : null),
             ],
           ),
+          if (enabled && state != 'connected' && error != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(error!, style: TextStyle(fontSize: 12, color: p.destructive)),
+            ),
           if (!ready && !enabled)
             Padding(
               padding: const EdgeInsets.only(top: 6),

@@ -5,6 +5,7 @@ import '../native.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import 'devices_page.dart';
 import 'remote_adb_page.dart';
 
 /// 设置：通知（这台手机）、自动信任文件夹（全局）、断开连接。
@@ -67,6 +68,13 @@ class _SettingsPageState extends State<SettingsPage> {
             onChanged: (v) => run(context, () => app.api.patch('/api/settings', {'autoTrust': v})),
           ),
           _Section('远程调试'),
+          ListTile(
+            leading: const Icon(Icons.smartphone_rounded),
+            title: const Text('设备'),
+            subtitle: Text('连进 projdeck 的手机', style: TextStyle(color: p.mutedFg, fontSize: 12)),
+            trailing: Icon(Icons.chevron_right_rounded, color: p.mutedFg),
+            onTap: () => DevicesPage.open(context),
+          ),
           ListTile(
             leading: const Icon(Icons.usb_rounded),
             title: const Text('远程 adb'),

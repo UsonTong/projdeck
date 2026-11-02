@@ -123,7 +123,7 @@ export function DevicesPage() {
             <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
               还没有设备连进来。
               <br />
-              在手机的 projdeck App 里打开「设置 → 远程 adb」，打开「转发」开关，手机就会出现在这里。
+              在手机的 projdeck App 里打开「设置 → 远程 adb」，打开「远程连接」开关，手机就会出现在这里。
             </div>
           ) : (
             devices.map((d) => <DeviceCard key={d.id} d={d} now={now} />)

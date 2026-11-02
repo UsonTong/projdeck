@@ -12,6 +12,8 @@
     <!-- 远程调试：用 adb 授权一次之后，App 才能自己打开 / 关闭无线调试（重启后自动恢复） -->
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
     <!-- 配对时用 mDNS 找手机的无线调试服务 -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <application

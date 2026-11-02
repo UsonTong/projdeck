@@ -13,7 +13,9 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.BatteryManager
 import android.os.Build
+import android.net.wifi.WifiManager
 import android.os.IBinder
+import android.os.PowerManager
 import android.util.Log
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -45,9 +47,12 @@ class AdbRelayService : Service() {
     private var linkThread: Thread? = null
     private var recoveryThread: Thread? = null
     private var reportThread: Thread? = null
+    private var wakeLock: PowerManager.WakeLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
 
     override fun onCreate() {
         super.onCreate()
+        RelayLog.add(this, "服务创建（进程启动）")
         getSystemService(NotificationManager::class.java)
             .createNotificationChannel(NotificationChannel(CHANNEL, "远程调试", NotificationManager.IMPORTANCE_MIN).apply { setShowBadge(false) })
     }
@@ -63,6 +68,7 @@ class AdbRelayService : Service() {
         if (!running) {
             running = true
             state = "connecting"
+            holdLocks()
             linkThread = thread(name = "projdeck-adb-link") { linkLoop() }
             recoveryThread = thread(name = "projdeck-adb-recovery") { recoveryLoop() }
             reportThread = thread(name = "projdeck-adb-report") { reportLoop() }
@@ -78,6 +84,7 @@ class AdbRelayService : Service() {
             val base = Prefs.base(this)
             val key = Prefs.key(this)
             if (base == null || key == null) {
+                error = "还没有服务器地址和访问密钥，请把「远程连接」开关关掉再打开"
                 Thread.sleep(5_000)
                 continue
             }
@@ -87,7 +94,9 @@ class AdbRelayService : Service() {
             val socket = client.newWebSocket(request, object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: Response) {
                     Log.i(TAG, "已连上服务器")
+                    RelayLog.add(this@AdbRelayService, "已连上服务器")
                     state = "connected"
+                    error = null
                     backoff = 2_000L
                     sendReport(webSocket)
                 }
@@ -104,6 +113,8 @@ class AdbRelayService : Service() {
 
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                     Log.w(TAG, "服务器连接断开：${t.javaClass.simpleName}: ${t.message} ${response?.code ?: ""}")
+                    RelayLog.add(this@AdbRelayService, "断开：${t.javaClass.simpleName}: ${t.message} ${response?.code ?: ""}")
+                    error = if (response?.code == 401) "服务器拒绝了访问密钥（401）" else "连不上服务器：${t.message ?: t.javaClass.simpleName}"
                     closed.countDown()
                 }
             })
@@ -123,7 +134,7 @@ class AdbRelayService : Service() {
             } catch (_: InterruptedException) {
                 break
             }
-            backoff = (backoff * 2).coerceAtMost(30_000L)
+            backoff = (backoff * 2).coerceAtMost(10_000L)
         }
     }
 
@@ -310,7 +321,25 @@ class AdbRelayService : Service() {
         }
     }
 
+    /**
+     * 保持 CPU 和 Wi-Fi 不休眠：息屏后 Wi-Fi 会进入省电模式、CPU 也会睡，长连接就会被悄悄掐掉。
+     * 代价是耗电多一点（和 Termux 开着「唤醒锁」一样）。
+     */
+    private fun holdLocks() {
+        try {
+            wakeLock = getSystemService(PowerManager::class.java).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "projdeck:relay").apply { setReferenceCounted(false); acquire() }
+            @Suppress("DEPRECATION")
+            wifiLock = applicationContext.getSystemService(WifiManager::class.java)
+                .createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "projdeck:relay").apply { setReferenceCounted(false); acquire() }
+        } catch (e: Exception) {
+            Log.w(TAG, "获取唤醒锁失败：${e.message}")
+        }
+    }
+
     override fun onDestroy() {
+        RelayLog.add(this, "服务停止（被系统杀掉或手动关闭）")
+        runCatching { wakeLock?.release() }
+        runCatching { wifiLock?.release() }
         running = false
         state = "off"
         ws?.cancel()
@@ -333,6 +362,9 @@ class AdbRelayService : Service() {
 
         /** off / connecting / connected */
         @Volatile var state = "off"
+
+        /** 最近一次连不上的原因，连上后清空；显示在「远程 adb」页上 */
+        @Volatile var error: String? = null
 
         fun start(c: Context) {
             c.startForegroundService(Intent(c, AdbRelayService::class.java))

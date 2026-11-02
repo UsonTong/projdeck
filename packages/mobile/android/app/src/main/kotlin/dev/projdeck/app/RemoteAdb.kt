@@ -61,7 +61,7 @@ object RemoteAdb {
         false
     }
 
-    fun status(c: Context): Map<String, Any> = mapOf(
+    fun status(c: Context): Map<String, Any?> = mapOf(
         "paired" to paired(c),
         "secureGranted" to hasSecure(c),
         "wirelessOn" to wirelessOn(c),
@@ -69,6 +69,8 @@ object RemoteAdb {
         "accessibility" to accessibilityOn(c),
         "relayEnabled" to Prefs.relayEnabled(c),
         "relay" to AdbRelayService.state,
+        "relayError" to AdbRelayService.error,
+        "batteryUnrestricted" to c.getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(c.packageName),
         "message" to lastMessage,
     )
 
