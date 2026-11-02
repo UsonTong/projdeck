@@ -131,6 +131,17 @@ class _RemoteAdbPageState extends State<RemoteAdbPage> with WidgetsBindingObserv
               style: TextStyle(fontSize: 12, color: Palette.of(context).mutedFg, height: 1.5),
             ),
           ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.restart_alt_rounded),
+            title: const Text('允许自启动'),
+            subtitle: Text(
+              '手机重启或 App 更新后，让远程连接自己恢复。小米、OPPO / realme 默认会拦截，请在打开的页面里允许 projdeck。',
+              style: TextStyle(fontSize: 12, color: p.mutedFg, height: 1.5),
+            ),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: Native.openAutostartSettings,
+          ),
           if (msg.isNotEmpty) ...[const SizedBox(height: 16), Text('最近一次：$msg', style: TextStyle(fontSize: 12, color: p.mutedFg))],
         ],
       ),
