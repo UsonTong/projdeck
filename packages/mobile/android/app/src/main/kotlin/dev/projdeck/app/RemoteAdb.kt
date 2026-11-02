@@ -240,7 +240,7 @@ object RemoteAdb {
                 runCatching { m.disconnect() }
             }
         }
-        return task.get(30, TimeUnit.SECONDS)
+        return task.get(20, TimeUnit.SECONDS)
     }
 
     fun close() {

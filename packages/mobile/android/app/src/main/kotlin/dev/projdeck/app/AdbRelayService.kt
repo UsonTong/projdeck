@@ -92,30 +92,37 @@ class AdbRelayService : Service() {
                     RelayProcess.quit()
                     Thread.sleep(1_000)
                 }
-                // 独立进程不在：先让 App 里的转发顶上，再尝试把独立进程启动起来
-                if (System.currentTimeMillis() - lastDetached >= 12_000) {
-                    mode = "app"
-                    startCore()
-                }
+                // 独立进程不在：能启动就直接启动它；启动不了（5555 没开、刚失败过）就让 App 里的转发顶上
+                var launching = false
                 if (RemoteAdb.tcpReachable() && System.currentTimeMillis() >= nextLaunch) {
                     val base = Prefs.base(this)
                     val key = Prefs.key(this)
                     if (base != null && key != null) {
+                        launching = true
+                        // 独立进程马上要接手：先让 App 内的转发退场，否则两边会轮流把对方挤下线
+                        stopCore()
                         try {
                             val out = RemoteAdb.startDetachedRelay(this, base, key)
                             RelayLog.add(this, "启动命令输出：$out")
-                            Thread.sleep(3_000)
-                            if (RelayProcess.query() != null) {
-                                RelayLog.add(this, "独立转发进程已启动")
-                                continue
-                            }
-                            throw IllegalStateException("启动命令执行了，但独立进程没有起来")
                         } catch (e: Exception) {
-                            failures++
-                            nextLaunch = System.currentTimeMillis() + (30_000L * failures).coerceAtMost(300_000L)
-                            RelayLog.add(this, "启动独立转发进程失败（第 $failures 次）：${e.javaClass.simpleName}: ${e.message}")
+                            // 命令可能已经执行了、只是 adb 这头超时，所以不在这里下结论，下面看独立进程在不在
+                            RelayLog.add(this, "启动命令没有正常返回：${e.javaClass.simpleName}: ${e.message}")
                         }
+                        Thread.sleep(3_000)
+                        if (RelayProcess.query() != null) {
+                            RelayLog.add(this, "独立转发进程已启动")
+                            failures = 0
+                            continue
+                        }
+                        failures++
+                        nextLaunch = System.currentTimeMillis() + (30_000L * failures).coerceAtMost(300_000L)
+                        lastDetached = 0 // 没起来：让 App 内的转发马上顶上
+                        RelayLog.add(this, "启动独立转发进程失败（第 $failures 次）")
                     }
+                }
+                if (!launching && System.currentTimeMillis() - lastDetached >= 12_000) {
+                    mode = "app"
+                    startCore()
                 }
                 Thread.sleep(5_000)
             } catch (_: InterruptedException) {
