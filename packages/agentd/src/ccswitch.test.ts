@@ -83,8 +83,9 @@ test("按应用列出供应商（不含配置和密钥），按 CC Switch 的顺
   assert.equal(s.running, false);
   assert.deepEqual(
     s.apps.map((a) => a.label),
-    ["Claude Code", "Codex"],
+    ["Claude Code", "Codex", "Pi"], // Pi 没有供应商时也列出来（空的）
   );
+  assert.deepEqual(s.apps[2]!.providers, []);
   const claude = s.apps[0]!;
   assert.deepEqual(
     claude.providers.map((p) => `${p.name}${p.current ? "*" : ""}`),

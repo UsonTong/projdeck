@@ -228,6 +228,11 @@ function ProvidersView({ app, onStatus }: { app: CcSwitchApp; onStatus: (s: CcSw
       <p className="text-xs text-muted-foreground">
         点一下切换，和在 CC Switch 里切换完全一样（由它完成），改的是电脑上的全局配置：之后新开的 {app.label} 会话生效，正在运行的不受影响。
       </p>
+      {app.providers.length === 0 && (
+        <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+          CC Switch 里还没有给 {app.label} 添加供应商。请先在电脑上的 CC Switch 里选「{app.label}」添加一个，添加后这里就能切换。
+        </div>
+      )}
       <div className="flex flex-col gap-1.5">
         {app.providers.map((p) => {
           const site = host(p.website);

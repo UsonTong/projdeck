@@ -665,6 +665,15 @@ class _ProvidersTabState extends State<_ProvidersTab> {
           style: TextStyle(fontSize: 12, color: p.mutedFg, height: 1.5),
         ),
         const SizedBox(height: 12),
+        if (widget.app.providers.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(border: Border.all(color: p.border), borderRadius: BorderRadius.circular(14)),
+            child: Text(
+              'CC Switch 里还没有给 ${widget.app.label} 添加供应商。请先在电脑上的 CC Switch 里选「${widget.app.label}」添加一个，添加后这里就能切换。',
+              style: TextStyle(fontSize: 13, color: p.mutedFg, height: 1.5),
+            ),
+          ),
         for (final pr in widget.app.providers)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),

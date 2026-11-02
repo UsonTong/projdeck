@@ -335,7 +335,10 @@ export class CcSwitch {
     const tray = await CcSwitchTray.find(running.pids);
     const sections = tray ? await tray.sections().catch(() => []) : [];
     const apps: CcSwitchApp[] = [];
-    for (const app of [...new Set(rows.map((r) => r.app))].sort((a, b) => appRank(a) - appRank(b))) {
+    // Pi 在 CC Switch 里没有配过供应商时也列出来（空的），免得在 projdeck 里找不到它、不知道要先去 CC Switch 里添加
+    const present = new Set(rows.map((r) => r.app));
+    present.add("pi");
+    for (const app of [...present].sort((a, b) => appRank(a) - appRank(b))) {
       const list = rows.filter((r) => r.app === app);
       const section = CcSwitch.sectionFor(sections, list.map((p) => p.name));
       const checked = section?.items.find((i) => i.checked)?.label;

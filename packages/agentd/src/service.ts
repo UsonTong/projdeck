@@ -17,7 +17,7 @@ import type {
   TranscriptPage,
 } from "@projdeck/shared";
 import type { Config } from "./config.ts";
-import type { HerdrClient } from "./herdr/client.ts";
+import { HerdrError, type HerdrClient } from "./herdr/client.ts";
 import type { HerdrAgent, HerdrPane } from "./herdr/types.ts";
 import { attribute, isWithin } from "./projects/attribution.ts";
 import { defaultArgs, type ProjectStore } from "./projects/store.ts";
@@ -417,7 +417,16 @@ export class ProjdeckService {
     const full = [text.trim(), files.join(" ")].filter(Boolean).join("\n\n");
     if (!full) throw httpError(400, "消息为空");
     if (session.kind === "shell") await this.herdr.sendInput(paneId, full, ["enter"]);
-    else await this.herdr.prompt(paneId, full);
+    else {
+      try {
+        await this.herdr.prompt(paneId, full);
+      } catch (err) {
+        // 刚启动的 agent，herdr 在它真正干过活之前一直标着「启动中」，agent.prompt 会拒绝（Pi 上能碰到）；
+        // 这时退回到往终端里输入文字再按回车，效果一样
+        if (err instanceof HerdrError && /not an active named agent/.test(err.message)) await this.herdr.sendInput(paneId, full, ["enter"]);
+        else throw err;
+      }
+    }
   }
 
   async keys(paneId: string, keys: string[]): Promise<void> {
