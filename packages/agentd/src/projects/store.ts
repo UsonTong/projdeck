@@ -18,8 +18,8 @@ interface State {
 export const defaultArgs: Record<AgentKind, string[]> = {
   claude: ["--dangerously-skip-permissions"],
   codex: ["--yolo"],
-  // pi 没有权限确认，不需要额外参数
-  pi: [],
+  // pi 的工具本来就不需要逐个确认（相当于 yolo），唯一的确认是「信任项目里的本地文件」，--approve 直接信任
+  pi: ["--approve"],
 };
 
 /** projdeck 自己持有的全部数据：项目登记、归档、隐藏、归属记忆。 */

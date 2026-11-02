@@ -488,4 +488,4 @@ projdeck/
 - 会话文件：`~/.pi/agent/sessions/--<cwd 去掉开头分隔符、/ \ : 换成 ->--/<时间>_<会话id>.jsonl`（格式见 pi 自带的 `docs/session-format.md`）。
   herdr 的 `agent_session` 对 pi 是**文件路径**（`kind: "path"`，会话一开始就有，但文件要到第一条消息之后才出现），projdeck 从路径里取会话 id 作为 conversationId。
 - 对话气泡：`agentd/src/transcript/pi.ts` 解析 `message` 记录里的 `user`（文本）、`assistant`（文本、`toolCall` → 工具行），系统消息 / 思考 / `toolResult` 不显示。
-- 恢复归档的会话：`pi --session <会话id>`。pi 没有权限确认，所以默认参数为空，也没有「信任此文件夹」菜单要自动处理。
+- 恢复归档的会话：`pi --session <会话id>`。pi 没有 `--yolo`：它的工具本来就不逐个确认，相当于一直是 yolo；唯一的确认是「信任项目里的本地文件」（AGENTS.md、`.pi/` 里的扩展），默认参数用 `--approve` 直接信任，所以也没有「信任此文件夹」菜单要自动处理。
