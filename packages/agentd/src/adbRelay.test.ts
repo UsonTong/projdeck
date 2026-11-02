@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createConnection, createServer, type Server, type Socket } from "node:net";
 import { test } from "node:test";
-import { AdbRelay, CLOSE, DATA, OPEN, type PhoneLink } from "./adbRelay.ts";
+import { AdbRelay, CLOSE, DATA, OPEN, parseReport, type PhoneLink } from "./adbRelay.ts";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -120,4 +120,29 @@ test("后连的手机顶掉先连的；断开后不能再收旧手机的帧", as
   c.destroy();
   relay.stop();
   echo.close();
+});
+
+test("手机的自我介绍：只挑认识的字段；断开后保留为不在线；旧手机的介绍不算", async () => {
+  assert.equal(parseReport({ model: "没有编号" }), null);
+  assert.equal(parseReport("x"), null);
+  const r = parseReport({ id: "abc", model: "Redmi K20 Pro", brand: "Redmi", os: "Android 11", battery: 83, charging: false, network: "wifi", vpn: true, tcpMode: true, evil: "x", appVersion: "2.2.4" });
+  assert.deepEqual(r, { id: "abc", model: "Redmi K20 Pro", brand: "Redmi", os: "Android 11", battery: 83, charging: false, network: "wifi", vpn: true, tcpMode: true, appVersion: "2.2.4" });
+  assert.equal(parseReport({ id: "a", battery: 300, network: "5g" })?.battery, null);
+  assert.equal(parseReport({ id: "a", battery: 300, network: "5g" })?.network, null);
+
+  const relay = new AdbRelay(0, "127.0.0.1");
+  assert.equal(relay.device(), null);
+  const mk = (): PhoneLink => ({ send: () => {}, bufferedAmount: () => 0, close: () => {} });
+  const first = relay.attach(mk());
+  first.report(r!);
+  assert.equal(relay.device()?.online, true);
+  assert.equal(relay.device()?.report.model, "Redmi K20 Pro");
+  const second = relay.attach(mk());
+  first.report({ ...r!, model: "旧手机" });
+  assert.equal(relay.device()?.report.model, "Redmi K20 Pro");
+  second.detach();
+  const gone = relay.device();
+  assert.equal(gone?.online, false);
+  assert.equal(gone?.since, null);
+  relay.stop();
 });

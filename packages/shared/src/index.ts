@@ -249,3 +249,29 @@ export interface CcUsage {
     latencyMs: number;
   }[];
 }
+
+/** 连进 projdeck 的设备（目前是通过远程 adb 中继连上来的安卓手机）。 */
+export interface DeviceView {
+  id: string;
+  kind: "android";
+  /** 品牌 + 型号 */
+  name: string;
+  model: string;
+  brand: string;
+  /** 例如 "Android 11" */
+  os: string;
+  online: boolean;
+  /** 本次连上的时间（毫秒时间戳），不在线时为 null */
+  since: number | null;
+  /** 最后一次有消息的时间；在线时就是现在 */
+  lastSeen: number;
+  battery: number | null;
+  charging: boolean | null;
+  network: "wifi" | "mobile" | "none" | null;
+  vpn: boolean | null;
+  /** 手机上 adb 的 TCP 模式（5555）是否在监听 */
+  tcpMode: boolean | null;
+  appVersion: string | null;
+  /** 电脑上连接这台手机的 adb 命令；不在线时为 null */
+  adb: { command: string; connections: number } | null;
+}

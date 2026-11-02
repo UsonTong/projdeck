@@ -7,9 +7,12 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.os.BatteryManager
+import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import okhttp3.OkHttpClient
@@ -19,6 +22,7 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okio.ByteString
 import okio.ByteString.Companion.toByteString
+import org.json.JSONObject
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.concurrent.ConcurrentHashMap
@@ -40,6 +44,7 @@ class AdbRelayService : Service() {
     private val conns = ConcurrentHashMap<Int, Conn>()
     private var linkThread: Thread? = null
     private var recoveryThread: Thread? = null
+    private var reportThread: Thread? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -60,6 +65,7 @@ class AdbRelayService : Service() {
             state = "connecting"
             linkThread = thread(name = "projdeck-adb-link") { linkLoop() }
             recoveryThread = thread(name = "projdeck-adb-recovery") { recoveryLoop() }
+            reportThread = thread(name = "projdeck-adb-report") { reportLoop() }
         }
         return START_STICKY
     }
@@ -83,6 +89,7 @@ class AdbRelayService : Service() {
                     Log.i(TAG, "已连上服务器")
                     state = "connected"
                     backoff = 2_000L
+                    sendReport(webSocket)
                 }
 
                 override fun onMessage(webSocket: WebSocket, bytes: ByteString) = onFrame(webSocket, bytes)
@@ -202,6 +209,52 @@ class AdbRelayService : Service() {
         return out.toByteString()
     }
 
+    // ---- 向服务器介绍自己（「设备」页显示的内容） ----
+
+    /** 连上后马上发一次，之后每 30 秒一次。服务器只当文本消息处理，不影响 adb 的数据帧。 */
+    private fun reportLoop() {
+        while (running) {
+            try {
+                Thread.sleep(30_000)
+            } catch (_: InterruptedException) {
+                break
+            }
+            ws?.let { sendReport(it) }
+        }
+    }
+
+    private fun sendReport(socket: WebSocket) {
+        try {
+            val battery = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            val level = battery?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+            val scale = battery?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
+            val status = battery?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+            val cm = getSystemService(ConnectivityManager::class.java)
+            @Suppress("DEPRECATION")
+            val caps = cm.allNetworks.mapNotNull { cm.getNetworkCapabilities(it) }
+            val real = caps.filter { !it.hasTransport(NetworkCapabilities.TRANSPORT_VPN) }
+            val network = when {
+                real.any { it.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) } -> "wifi"
+                real.any { it.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) } -> "mobile"
+                else -> "none"
+            }
+            val json = JSONObject()
+                .put("id", Prefs.deviceId(this))
+                .put("model", Build.MODEL)
+                .put("brand", Build.MANUFACTURER.replaceFirstChar { it.uppercase() })
+                .put("os", "Android ${Build.VERSION.RELEASE}")
+                .put("network", network)
+                .put("vpn", caps.any { it.hasTransport(NetworkCapabilities.TRANSPORT_VPN) })
+                .put("tcpMode", RemoteAdb.tcpReachable())
+                .put("appVersion", packageManager.getPackageInfo(packageName, 0).versionName)
+            if (level >= 0) json.put("battery", level * 100 / scale.coerceAtLeast(1))
+            if (status >= 0) json.put("charging", status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL)
+            socket.send(json.toString())
+        } catch (e: Exception) {
+            Log.w(TAG, "发送设备信息失败：${e.javaClass.simpleName}: ${e.message}")
+        }
+    }
+
     // ---- 自动恢复 TCP 模式 ----
 
     /**
@@ -264,6 +317,7 @@ class AdbRelayService : Service() {
         closeAll()
         linkThread?.interrupt()
         recoveryThread?.interrupt()
+        reportThread?.interrupt()
         super.onDestroy()
     }
 

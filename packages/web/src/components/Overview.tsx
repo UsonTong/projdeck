@@ -3,6 +3,7 @@ import {
   ArchiveIcon,
   ArchiveRestoreIcon,
   ArrowRightLeftIcon,
+  SmartphoneIcon,
   FolderInputIcon,
   FolderOpenIcon,
   GripVerticalIcon,
@@ -55,7 +56,7 @@ import { formatDateTime, useTimeZone } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { api } from "../api.ts";
 import { useLive } from "../live.ts";
-import { openCcSwitch, openFiles, openSession } from "../router.ts";
+import { openCcSwitch, openDevices, openFiles, openSession } from "../router.ts";
 import { AddProjectDialog } from "./AddProject.tsx";
 import { InlineInput } from "./InlineInput.tsx";
 import { AgentIcon } from "./AgentIcon.tsx";
@@ -127,6 +128,9 @@ export function OverviewPage({ activePane, activeFiles }: { activePane: string |
               <ArrowRightLeftIcon />
             </IconAction>
           )}
+          <IconAction label="设备：连进来的手机" onClick={() => openDevices()}>
+            <SmartphoneIcon />
+          </IconAction>
           <IconAction label="设置" onClick={() => setSettings(true)}>
             <SettingsIcon />
           </IconAction>

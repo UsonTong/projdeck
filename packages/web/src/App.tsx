@@ -12,6 +12,7 @@ import { ConfirmHost } from "./components/Confirm.tsx";
 import { Login } from "./components/Login.tsx";
 import { OverviewPage } from "./components/Overview.tsx";
 import { CcSwitchPage } from "./components/CcSwitchPage.tsx";
+import { DevicesPage } from "./components/DevicesPage.tsx";
 import { FilesPage } from "./components/FilesPage.tsx";
 import { SessionPage } from "./components/Session.tsx";
 import { live, useLive, useWide } from "./live.ts";
@@ -147,6 +148,8 @@ function Shell() {
       <FilesPage key={route.projectId} projectId={route.projectId} path={route.path} />
     ) : route.kind === "ccswitch" ? (
       <CcSwitchPage section={route.section} />
+    ) : route.kind === "devices" ? (
+      <DevicesPage />
     ) : null;
   const page = content && (
     <div key={pageKey} className="flex min-h-0 min-w-0 flex-1 flex-col animate-in duration-200 ease-out fade-in-0">

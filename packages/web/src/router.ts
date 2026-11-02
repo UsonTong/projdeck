@@ -6,12 +6,14 @@ import { useEffect, useState } from "react";
  *   #/s/<paneId>           会话页
  *   #/f/<projectId>/<路径>  项目文件管理器（路径为项目内相对路径，可为空）
  *   #/ccs/<栏目>            CC Switch（栏目为 usage 或应用，如 claude、codex）
+ *   #/devices              设备（连进 projdeck 的手机）
  */
 export type Route =
   | { kind: "overview" }
   | { kind: "session"; paneId: string }
   | { kind: "files"; projectId: string; path: string }
-  | { kind: "ccswitch"; section: string };
+  | { kind: "ccswitch"; section: string }
+  | { kind: "devices" };
 
 function parse(): Route {
   const s = /^#\/s\/(.+)$/.exec(location.hash);
@@ -20,6 +22,7 @@ function parse(): Route {
   if (f) return { kind: "files", projectId: decodeURIComponent(f[1]!), path: f[2] ? decodeURIComponent(f[2]) : "" };
   const c = /^#\/ccs\/?(.*)$/.exec(location.hash);
   if (c) return { kind: "ccswitch", section: decodeURIComponent(c[1] || "usage") };
+  if (location.hash === "#/devices") return { kind: "devices" };
   return { kind: "overview" };
 }
 
@@ -39,6 +42,10 @@ export function openSession(paneId: string | null): void {
 
 export function openFiles(projectId: string, path = ""): void {
   location.hash = `#/f/${encodeURIComponent(projectId)}/${encodeURIComponent(path)}`;
+}
+
+export function openDevices(): void {
+  location.hash = "#/devices";
 }
 
 export function openCcSwitch(section = "usage"): void {

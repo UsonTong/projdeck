@@ -4,6 +4,7 @@ import type {
   CcUsage,
   CcUsageRange,
   CreateProjectBody,
+  DeviceView,
   DirListing,
   FolderListing,
   Overview,
@@ -72,6 +73,7 @@ export const api = {
   keys: (paneId: string, keys: string[]) => request("POST", `${pane(paneId)}/keys`, { keys }),
   setHidden: (paneId: string, hidden: boolean) => request("POST", `${pane(paneId)}/hidden`, { hidden }),
   /** 拖动排序：把会话所在的 herdr 工作区移到另一个会话之前（null = 移到最后）。 */
+  devices: () => request<{ devices: DeviceView[] }>("GET", "/api/devices"),
   ccswitch: () => request<CcSwitchStatus>("GET", "/api/ccswitch"),
   ccswitchSwitch: (app: string, id: string) => request<CcSwitchStatus & { launched: boolean }>("POST", "/api/ccswitch/switch", { app, id }),
   ccswitchBridge: () => request<{ available: boolean; ui: { version: string; exact: boolean } | null }>("GET", "/api/ccswitch/bridge"),

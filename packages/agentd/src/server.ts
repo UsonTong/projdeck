@@ -12,6 +12,7 @@ import websocket from "@fastify/websocket";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import type {
   CreateProjectBody,
+  DeviceView,
   KeysBody,
   PromptBody,
   Settings,
@@ -40,7 +41,7 @@ import { LiveHub } from "./live.ts";
 import { TerminalBridge } from "./terminal.ts";
 import { httpError, type ProjdeckService } from "./service.ts";
 import { MAX_UPLOAD_BYTES, saveUpload, SHARED_UPLOAD_ROOT } from "./uploads.ts";
-import { AdbRelay } from "./adbRelay.ts";
+import { AdbRelay, parseReport } from "./adbRelay.ts";
 import { CcSwitch } from "./ccswitch.ts";
 import { NotifyStream } from "./notifyStream.ts";
 import { CcSwitchBridge, type CcSwitchEvent } from "./ccswitchBridge.ts";
@@ -299,13 +300,46 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
   const adbRelay = new AdbRelay(config.adbRelayPort, "127.0.0.1", (m) => app.log.info(m));
   app.addHook("onClose", async () => adbRelay.stop());
   app.get("/api/adb", async () => ({ ...adbRelay.status(), command: `adb connect 127.0.0.1:${config.adbRelayPort}` }));
+  app.get("/api/devices", async (): Promise<{ devices: DeviceView[] }> => {
+    const d = adbRelay.device();
+    if (!d) return { devices: [] };
+    const st = adbRelay.status();
+    const { id, model, brand, os, ...rest } = d.report;
+    return {
+      devices: [
+        {
+          ...rest,
+          id,
+          kind: "android",
+          name: [brand, model].filter(Boolean).join(" "),
+          model,
+          brand,
+          os,
+          online: d.online,
+          since: d.since,
+          lastSeen: d.lastSeen,
+          adb: d.online ? { command: `adb connect 127.0.0.1:${config.adbRelayPort}`, connections: st.connections } : null,
+        },
+      ],
+    };
+  });
   app.get("/ws/adb", { websocket: true }, (socket) => {
     const link = adbRelay.attach({
       send: (f) => socket.send(f, { binary: true }),
       bufferedAmount: () => socket.bufferedAmount,
       close: () => socket.close(),
     });
-    socket.on("message", (data: Buffer | Buffer[] | ArrayBuffer) => link.receive(Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data as ArrayBuffer)));
+    socket.on("message", (data: Buffer | Buffer[] | ArrayBuffer, isBinary: boolean) => {
+      const buf = Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data as ArrayBuffer);
+      if (isBinary) return link.receive(buf);
+      // 文本消息是手机的自我介绍（JSON），见 DeviceReport
+      try {
+        const report = parseReport(JSON.parse(buf.toString("utf8")));
+        if (report) link.report(report);
+      } catch {
+        // 格式不对就忽略
+      }
+    });
     socket.on("close", () => link.detach());
     socket.on("error", () => link.detach());
   });
