@@ -54,3 +54,26 @@
 2. ~~常驻服务：开机等 Wi-Fi → 打开无线调试 → 找端口 → 连接 → `tcpip` → 关无线调试。~~（已完成，未实机重启测试）
 3. ~~转发通道：agentd 监听 127.0.0.1:15555，经 `/ws/adb` 转给 App，App 转到 localhost:5555。~~（已完成）
 4. App 和网页设置里的开关与状态；realme 设置指南（自启动、电池、权限监控）。
+
+## 独立转发进程（2.3.0）
+
+**问题**：转发原先是 App 里的前台服务。小米在多任务界面「划掉」App 时（日志里是 `am_kill ... due to SwipeUpClean`）
+会连前台服务一起杀掉；Termux、Shizuku、黑阈划掉后不掉线，是因为 Shizuku / 黑阈的核心**根本不是 App 组件**：
+Shizuku 的启动器（`starter.cpp`）先 `fork()`、`setsid()` 脱离会话，再 `execvp("app_process", …, "rikka.shizuku.server.ShizukuService")`，
+是 shell（或 root）身份下的独立进程，系统清理 App 碰不到它。
+
+**做法**：照同样的办法。`RelayMain`（独立进程，shell 身份）里跑 `RelayCore`（WebSocket ↔ 本机 5555 的转发，和 App 内的备用转发是同一份代码）。
+App 的 `AdbRelayService` 退化成看管者（`superviseLoop`）：
+1. 通过本机 5555 的 adb（App 的密钥已在 `adb_keys` 里）执行
+   `CLASSPATH=<base.apk> PROJDECK_BASE=… PROJDECK_KEY=… setsid nohup app_process /system/bin --nice-name=projdeck_relay dev.projdeck.app.RelayMain … &`，
+   配置走环境变量（别的 App 读不到）。命令末尾要 `sleep 1`，否则 shell 退得太快，后台进程来不及脱离（实测）；
+2. 独立进程起来之前，App 内的 `RelayCore` 先顶上，起来后退场（服务器上后连的顶掉先连的，没有空档）；
+3. 本机 `127.0.0.1:15556` 是独立进程的状态口：`status` 返回版本/状态/错误，`quit` 让它退出。版本和 App 不一致（升级后）就让它退出再重启；
+4. 用户关掉「远程连接」开关时一并让它退出。
+
+**已验证（Redmi K20 Pro，Android 11）**：`am force-stop dev.projdeck.app` 后 App 进程消失，独立进程还在，电脑上 `adb connect 127.0.0.1:15555` 照常可用，
+「设备」页的信息也继续更新（电量读 sysfs，网络看网卡）。独立进程跑在 FlClash 的 VPN 下也能连上服务器。
+
+**注意**：app_process 里 `println` 进 stdout（已重定向到 `/data/local/tmp/projdeck-relay.log`，电脑上 `adb shell cat` 可看）；
+R8 会把没人引用的 `RelayMain` 删掉，要在 `proguard-rules.pro` 里 keep（注意是 `android/app/proguard-rules.pro`）。
+手机重启后独立进程会消失，需要 App 被拉起（BOOT_COMPLETED，小米要允许「自启动」）再启动它；TCP 模式的自动恢复仍在 App 里。

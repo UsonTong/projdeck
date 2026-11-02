@@ -17,36 +17,25 @@ import android.net.wifi.WifiManager
 import android.os.IBinder
 import android.os.PowerManager
 import android.util.Log
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.Response
-import okhttp3.WebSocket
-import okhttp3.WebSocketListener
-import okio.ByteString
-import okio.ByteString.Companion.toByteString
 import org.json.JSONObject
-import java.net.InetSocketAddress
-import java.net.Socket
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
-import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 /**
- * 远程调试的转发：保持一条到 projdeck 服务器的 WebSocket（/ws/adb），电脑上的 adb 通过它连到手机本机的 adbd（5555 端口）。
- * 同时负责「自动恢复」：手机重启后 TCP 模式会消失，这里发现了就用 App 自己的授权重新打开。
+ * 远程调试的转发的「看管者」。
  *
- * WebSocket 上的帧格式见服务器的 adbRelay.ts：[类型 1 字节][连接号 4 字节大端][数据]，OPEN=1、DATA=2、CLOSE=3。
+ * 真正的转发在独立进程里（[RelayMain]，像 Shizuku 那样用 app_process 启动，小米清理后台杀不到它）。
+ * 这个服务负责：
+ *  1. 独立进程不在（刚装好、手机重启、版本更新）时，通过 adb 把它启动起来；
+ *  2. 在启动成功之前，自己先在 App 里转发（[RelayCore]），不让连接空档；独立进程起来后就交给它；
+ *  3. 自动恢复 TCP 模式：手机重启后 5555 会消失，发现了就用 App 自己的授权重新打开。
  */
 class AdbRelayService : Service() {
-    private val client = OkHttpClient.Builder().pingInterval(20, TimeUnit.SECONDS).readTimeout(0, TimeUnit.MILLISECONDS).build()
     @Volatile private var running = false
-    @Volatile private var ws: WebSocket? = null
-    private val conns = ConcurrentHashMap<Int, Conn>()
-    private var linkThread: Thread? = null
+    private var core: RelayCore? = null
+    private var superviseThread: Thread? = null
     private var recoveryThread: Thread? = null
-    private var reportThread: Thread? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
 
@@ -69,200 +58,131 @@ class AdbRelayService : Service() {
             running = true
             state = "connecting"
             holdLocks()
-            linkThread = thread(name = "projdeck-adb-link") { linkLoop() }
+            superviseThread = thread(name = "projdeck-adb-supervise") { superviseLoop() }
             recoveryThread = thread(name = "projdeck-adb-recovery") { recoveryLoop() }
-            reportThread = thread(name = "projdeck-adb-report") { reportLoop() }
         }
         return START_STICKY
     }
 
-    // ---- 与服务器的连接 ----
+    // ---- 看管独立转发进程 ----
 
-    private fun linkLoop() {
-        var backoff = 2_000L
+    private fun superviseLoop() {
+        val mine = RelayProcess.version(this)
+        var failures = 0
+        var nextLaunch = 0L
         while (running) {
-            val base = Prefs.base(this)
-            val key = Prefs.key(this)
-            if (base == null || key == null) {
-                error = "还没有服务器地址和访问密钥，请把「远程连接」开关关掉再打开"
-                Thread.sleep(5_000)
-                continue
-            }
-            val closed = CountDownLatch(1)
-            val request = Request.Builder().url(base.replaceFirst("https://", "wss://").replaceFirst("http://", "ws://") + "/ws/adb")
-                .header("Cookie", "projdeck_key=$key").build()
-            val socket = client.newWebSocket(request, object : WebSocketListener() {
-                override fun onOpen(webSocket: WebSocket, response: Response) {
-                    Log.i(TAG, "已连上服务器")
-                    RelayLog.add(this@AdbRelayService, "已连上服务器")
-                    state = "connected"
-                    error = null
-                    backoff = 2_000L
-                    sendReport(webSocket)
-                }
-
-                override fun onMessage(webSocket: WebSocket, bytes: ByteString) = onFrame(webSocket, bytes)
-
-                override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-                    webSocket.close(1000, null)
-                }
-
-                override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                    closed.countDown()
-                }
-
-                override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                    Log.w(TAG, "服务器连接断开：${t.javaClass.simpleName}: ${t.message} ${response?.code ?: ""}")
-                    RelayLog.add(this@AdbRelayService, "断开：${t.javaClass.simpleName}: ${t.message} ${response?.code ?: ""}")
-                    error = if (response?.code == 401) "服务器拒绝了访问密钥（401）" else "连不上服务器：${t.message ?: t.javaClass.simpleName}"
-                    closed.countDown()
-                }
-            })
-            ws = socket
             try {
-                while (running && !closed.await(1, TimeUnit.SECONDS)) { /* 等它断开 */ }
-            } catch (_: InterruptedException) {
-                break
-            }
-            socket.cancel()
-            ws = null
-            closeAll()
-            if (!running) break
-            state = "connecting"
-            try {
-                Thread.sleep(backoff)
-            } catch (_: InterruptedException) {
-                break
-            }
-            backoff = (backoff * 2).coerceAtMost(10_000L)
-        }
-    }
-
-    private fun onFrame(webSocket: WebSocket, bytes: ByteString) {
-        if (bytes.size < 5) return
-        val type = bytes[0].toInt()
-        val id = ((bytes[1].toInt() and 0xff) shl 24) or ((bytes[2].toInt() and 0xff) shl 16) or ((bytes[3].toInt() and 0xff) shl 8) or (bytes[4].toInt() and 0xff)
-        when (type) {
-            OPEN -> conns.put(id, Conn(id, webSocket).also { it.start() })?.close()
-            DATA -> conns[id]?.queue?.put(bytes.substring(5).toByteArray())
-            CLOSE -> conns.remove(id)?.close()
-        }
-    }
-
-    private fun closeAll() {
-        for (c in conns.values) c.close()
-        conns.clear()
-    }
-
-    /** 电脑上的一个 adb 连接：手机这边连一个到本机 adbd 的 socket，两头互相转发。 */
-    private inner class Conn(val id: Int, val link: WebSocket) {
-        val queue = LinkedBlockingQueue<ByteArray>()
-        @Volatile private var socket: Socket? = null
-        @Volatile private var closed = false
-
-        fun start() {
-            thread(name = "projdeck-adb-conn-$id") {
-                try {
-                    val s = Socket().also { it.tcpNoDelay = true }
-                    s.connect(InetSocketAddress("127.0.0.1", RemoteAdb.TCP_PORT), 3_000)
-                    socket = s
-                    thread(name = "projdeck-adb-read-$id") { readLoop(s) }
-                    val out = s.getOutputStream()
-                    while (!closed) {
-                        val chunk = queue.poll(1, TimeUnit.SECONDS) ?: continue
-                        if (chunk.isEmpty()) break
-                        out.write(chunk)
-                        out.flush()
+                val d = RelayProcess.query()
+                if (d != null && d.version == mine) {
+                    // 独立进程在正常运行：App 里的备用转发退场，状态以它为准
+                    stopCore()
+                    mode = "detached"
+                    state = d.state
+                    error = d.error
+                    failures = 0
+                    Thread.sleep(5_000)
+                    continue
+                }
+                if (d != null) {
+                    RelayLog.add(this, "独立进程是旧版本（${d.version}），让它退出后重启")
+                    RelayProcess.quit()
+                    Thread.sleep(1_000)
+                }
+                // 独立进程不在：先让 App 里的转发顶上，再尝试把独立进程启动起来
+                mode = "app"
+                startCore()
+                if (RemoteAdb.tcpReachable() && System.currentTimeMillis() >= nextLaunch) {
+                    val base = Prefs.base(this)
+                    val key = Prefs.key(this)
+                    if (base != null && key != null) {
+                        try {
+                            val out = RemoteAdb.startDetachedRelay(this, base, key)
+                            RelayLog.add(this, "启动命令输出：$out")
+                            Thread.sleep(3_000)
+                            if (RelayProcess.query() != null) {
+                                RelayLog.add(this, "独立转发进程已启动")
+                                continue
+                            }
+                            throw IllegalStateException("启动命令执行了，但独立进程没有起来")
+                        } catch (e: Exception) {
+                            failures++
+                            nextLaunch = System.currentTimeMillis() + (30_000L * failures).coerceAtMost(300_000L)
+                            RelayLog.add(this, "启动独立转发进程失败（第 $failures 次）：${e.javaClass.simpleName}: ${e.message}")
+                        }
                     }
-                } catch (e: Exception) {
-                    Log.w(TAG, "连接 $id：${e.javaClass.simpleName}: ${e.message}")
-                } finally {
-                    close()
                 }
-            }
-        }
-
-        private fun readLoop(s: Socket) {
-            val buf = ByteArray(16 * 1024)
-            try {
-                val input = s.getInputStream()
-                while (!closed) {
-                    val n = input.read(buf)
-                    if (n < 0) break
-                    // 服务器那一头跟不上时先别读，免得手机上越积越多
-                    while (!closed && link.queueSize() > 4L * 1024 * 1024) Thread.sleep(50)
-                    link.send(frame(DATA, id, buf, n))
-                }
-            } catch (_: Exception) {
-                // 对方关闭
-            } finally {
-                close()
-            }
-        }
-
-        fun close() {
-            if (closed) return
-            closed = true
-            queue.offer(ByteArray(0))
-            runCatching { socket?.close() }
-            if (conns.remove(id, this)) link.send(frame(CLOSE, id, ByteArray(0), 0))
-        }
-    }
-
-    private fun frame(type: Int, id: Int, data: ByteArray, len: Int): ByteString {
-        val out = ByteArray(5 + len)
-        out[0] = type.toByte()
-        out[1] = (id ushr 24).toByte()
-        out[2] = (id ushr 16).toByte()
-        out[3] = (id ushr 8).toByte()
-        out[4] = id.toByte()
-        System.arraycopy(data, 0, out, 5, len)
-        return out.toByteString()
-    }
-
-    // ---- 向服务器介绍自己（「设备」页显示的内容） ----
-
-    /** 连上后马上发一次，之后每 30 秒一次。服务器只当文本消息处理，不影响 adb 的数据帧。 */
-    private fun reportLoop() {
-        while (running) {
-            try {
-                Thread.sleep(30_000)
+                Thread.sleep(5_000)
             } catch (_: InterruptedException) {
                 break
             }
-            ws?.let { sendReport(it) }
         }
     }
 
-    private fun sendReport(socket: WebSocket) {
+    /** App 里的备用转发（独立进程起来之前、或始终起不来时用）。 */
+    @Synchronized
+    private fun startCore() {
+        if (core != null) return
+        val base = Prefs.base(this)
+        val key = Prefs.key(this)
+        if (base == null || key == null) {
+            error = "还没有服务器地址和访问密钥，请把「远程连接」开关关掉再打开"
+            return
+        }
+        core = RelayCore(
+            base, key, RemoteAdb.TCP_PORT,
+            log = { Log.i(TAG, it); RelayLog.add(this, it) },
+            report = ::report,
+            onState = { s, e -> if (mode == "app") { state = s; error = e } },
+        ).also { it.start() }
+    }
+
+    @Synchronized
+    private fun stopCore() {
+        core?.stop()
+        core = null
+    }
+
+    /** 设备自我介绍（「设备」页显示的内容）。 */
+    private fun report(): JSONObject {
+        val battery = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val level = battery?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = battery?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
+        val status = battery?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        val cm = getSystemService(ConnectivityManager::class.java)
+        @Suppress("DEPRECATION")
+        val caps = cm.allNetworks.mapNotNull { cm.getNetworkCapabilities(it) }
+        val real = caps.filter { !it.hasTransport(NetworkCapabilities.TRANSPORT_VPN) }
+        val network = when {
+            real.any { it.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) } -> "wifi"
+            real.any { it.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) } -> "mobile"
+            else -> "none"
+        }
+        val json = JSONObject()
+            .put("id", Prefs.deviceId(this))
+            .put("model", Build.MODEL)
+            .put("brand", Build.MANUFACTURER.replaceFirstChar { it.uppercase() })
+            .put("os", "Android ${Build.VERSION.RELEASE}")
+            .put("network", network)
+            .put("vpn", caps.any { it.hasTransport(NetworkCapabilities.TRANSPORT_VPN) })
+            .put("tcpMode", RemoteAdb.tcpReachable())
+            .put("appVersion", packageManager.getPackageInfo(packageName, 0).versionName)
+        if (level >= 0) json.put("battery", level * 100 / scale.coerceAtLeast(1))
+        if (status >= 0) json.put("charging", status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL)
+        return json
+    }
+
+    /**
+     * 保持 CPU 和 Wi-Fi 不休眠：息屏后 Wi-Fi 会进入省电模式、CPU 也会睡，长连接就会被悄悄掐掉。
+     * 代价是耗电多一点（和 Termux 开着「唤醒锁」一样）。
+     */
+    private fun holdLocks() {
         try {
-            val battery = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-            val level = battery?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
-            val scale = battery?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
-            val status = battery?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
-            val cm = getSystemService(ConnectivityManager::class.java)
+            wakeLock = getSystemService(PowerManager::class.java).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "projdeck:relay").apply { setReferenceCounted(false); acquire() }
             @Suppress("DEPRECATION")
-            val caps = cm.allNetworks.mapNotNull { cm.getNetworkCapabilities(it) }
-            val real = caps.filter { !it.hasTransport(NetworkCapabilities.TRANSPORT_VPN) }
-            val network = when {
-                real.any { it.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) } -> "wifi"
-                real.any { it.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) } -> "mobile"
-                else -> "none"
-            }
-            val json = JSONObject()
-                .put("id", Prefs.deviceId(this))
-                .put("model", Build.MODEL)
-                .put("brand", Build.MANUFACTURER.replaceFirstChar { it.uppercase() })
-                .put("os", "Android ${Build.VERSION.RELEASE}")
-                .put("network", network)
-                .put("vpn", caps.any { it.hasTransport(NetworkCapabilities.TRANSPORT_VPN) })
-                .put("tcpMode", RemoteAdb.tcpReachable())
-                .put("appVersion", packageManager.getPackageInfo(packageName, 0).versionName)
-            if (level >= 0) json.put("battery", level * 100 / scale.coerceAtLeast(1))
-            if (status >= 0) json.put("charging", status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL)
-            socket.send(json.toString())
+            wifiLock = applicationContext.getSystemService(WifiManager::class.java)
+                .createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "projdeck:relay").apply { setReferenceCounted(false); acquire() }
         } catch (e: Exception) {
-            Log.w(TAG, "发送设备信息失败：${e.javaClass.simpleName}: ${e.message}")
+            Log.w(TAG, "获取唤醒锁失败：${e.message}")
         }
     }
 
@@ -321,32 +241,15 @@ class AdbRelayService : Service() {
         }
     }
 
-    /**
-     * 保持 CPU 和 Wi-Fi 不休眠：息屏后 Wi-Fi 会进入省电模式、CPU 也会睡，长连接就会被悄悄掐掉。
-     * 代价是耗电多一点（和 Termux 开着「唤醒锁」一样）。
-     */
-    private fun holdLocks() {
-        try {
-            wakeLock = getSystemService(PowerManager::class.java).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "projdeck:relay").apply { setReferenceCounted(false); acquire() }
-            @Suppress("DEPRECATION")
-            wifiLock = applicationContext.getSystemService(WifiManager::class.java)
-                .createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "projdeck:relay").apply { setReferenceCounted(false); acquire() }
-        } catch (e: Exception) {
-            Log.w(TAG, "获取唤醒锁失败：${e.message}")
-        }
-    }
-
     override fun onDestroy() {
-        RelayLog.add(this, "服务停止（被系统杀掉或手动关闭）")
+        RelayLog.add(this, "服务停止（被系统杀掉或手动关闭）；独立转发进程不受影响")
         runCatching { wakeLock?.release() }
         runCatching { wifiLock?.release() }
         running = false
         state = "off"
-        ws?.cancel()
-        closeAll()
-        linkThread?.interrupt()
+        stopCore()
+        superviseThread?.interrupt()
         recoveryThread?.interrupt()
-        reportThread?.interrupt()
         super.onDestroy()
     }
 
@@ -356,22 +259,23 @@ class AdbRelayService : Service() {
         private const val TAG = "ProjdeckAdb"
         private const val CHANNEL = "adb_relay"
         private const val ID = 4
-        private const val OPEN = 1
-        private const val DATA = 2
-        private const val CLOSE = 3
-
         /** off / connecting / connected */
         @Volatile var state = "off"
 
         /** 最近一次连不上的原因，连上后清空；显示在「远程 adb」页上 */
         @Volatile var error: String? = null
 
+        /** app：转发在 App 里跑（备用）；detached：转发在独立进程里跑 */
+        @Volatile var mode = "app"
+
         fun start(c: Context) {
             c.startForegroundService(Intent(c, AdbRelayService::class.java))
         }
 
+        /** 用户关掉「远程连接」：连独立转发进程也一起停掉。 */
         fun stop(c: Context) {
             c.stopService(Intent(c, AdbRelayService::class.java))
+            thread(name = "projdeck-relay-quit") { RelayProcess.quit() }
         }
     }
 }

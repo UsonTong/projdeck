@@ -69,6 +69,7 @@ class _RemoteAdbPageState extends State<RemoteAdbPage> with WidgetsBindingObserv
     final relayEnabled = _s['relayEnabled'] == true;
     final relay = (_s['relay'] as String?) ?? 'off';
     final relayError = _s['relayError'] as String?;
+    final relayDetached = _s['relayMode'] == 'detached';
     final msg = (_s['message'] as String?) ?? '';
     return Scaffold(
       appBar: AppBar(title: const Text('远程调试')),
@@ -118,6 +119,7 @@ class _RemoteAdbPageState extends State<RemoteAdbPage> with WidgetsBindingObserv
             enabled: relayEnabled,
             state: relay,
             error: relayError,
+            detached: relayDetached,
             ready: paired && granted,
             onChanged: (on) async {
               final conn = AppScope.read(context).conn;
@@ -231,15 +233,16 @@ class _RelayCard extends StatelessWidget {
   final String state;
   final bool ready;
   final String? error;
+  final bool detached;
   final ValueChanged<bool> onChanged;
-  const _RelayCard({required this.enabled, required this.state, required this.ready, required this.onChanged, this.error});
+  const _RelayCard({required this.enabled, required this.state, required this.ready, required this.onChanged, this.error, this.detached = false});
 
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     final (label, color) = switch ((enabled, state)) {
       (false, _) => ('已关闭', p.mutedFg),
-      (true, 'connected') => ('已连上服务器，公司电脑可以连接', p.done),
+      (true, 'connected') => (detached ? '已连上服务器，公司电脑可以连接（独立进程，清理后台不受影响）' : '已连上服务器，公司电脑可以连接（在 App 内运行，尚未转入独立进程）', p.done),
       (true, _) => ('正在连接服务器…', p.working),
     };
     return Container(

@@ -61,15 +61,21 @@ object RemoteAdb {
         false
     }
 
-    fun status(c: Context): Map<String, Any?> = mapOf(
+    fun status(c: Context): Map<String, Any?> {
+        val detached = RelayProcess.query()
+        return statusMap(c, detached)
+    }
+
+    private fun statusMap(c: Context, detached: RelayProcess.Info?): Map<String, Any?> = mapOf(
         "paired" to paired(c),
         "secureGranted" to hasSecure(c),
         "wirelessOn" to wirelessOn(c),
         "tcp" to tcpReachable(),
         "accessibility" to accessibilityOn(c),
         "relayEnabled" to Prefs.relayEnabled(c),
-        "relay" to AdbRelayService.state,
-        "relayError" to AdbRelayService.error,
+        "relay" to (detached?.state ?: AdbRelayService.state),
+        "relayError" to (if (detached != null) detached.error else AdbRelayService.error),
+        "relayMode" to if (detached != null) "detached" else "app",
         "batteryUnrestricted" to c.getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(c.packageName),
         "message" to lastMessage,
     )
@@ -216,6 +222,25 @@ object RemoteAdb {
         // 无线调试只是切换时需要，之后关掉，减少暴露
         if (turnedOn && hasSecure(c)) setWireless(c, false)
         return "已切到 TCP 模式（$TCP_PORT）"
+    }
+
+    /**
+     * 通过本机 5555 的 adb（App 的密钥已被授权）启动独立转发进程。要求 TCP 模式已经开着。
+     * 和别的 adb 操作排同一个队，免得同时用同一个连接。
+     */
+    fun startDetachedRelay(c: Context, base: String, key: String): String {
+        val task = io.submit<String> {
+            val m = manager(c)
+            if (m.isConnected) m.disconnect()
+            m.setTimeout(5, TimeUnit.SECONDS)
+            if (!m.connect("127.0.0.1", TCP_PORT)) throw IllegalStateException("连不上本机的 adb（$TCP_PORT）")
+            try {
+                runService(m, "shell:${RelayProcess.command(c, base, key)}")
+            } finally {
+                runCatching { m.disconnect() }
+            }
+        }
+        return task.get(30, TimeUnit.SECONDS)
     }
 
     fun close() {
