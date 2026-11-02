@@ -38,6 +38,9 @@ class Native {
   static Future<void> adbRelaySet(bool on, Connection conn) =>
       _ch.invokeMethod('adbRelaySet', {'on': on, 'base': conn.base.toString().replaceAll(RegExp(r'/$'), ''), 'key': conn.key});
 
+  /// 打开系统的「自启动管理」（手机重启、App 更新后让远程连接自己恢复）。
+  static Future<bool> openAutostartSettings() async => await _ch.invokeMethod<bool>('openAutostartSettings') ?? false;
+
   /// 打开系统的开发者选项（定位到「无线调试」）。
   static Future<bool> openDeveloperSettings() async => await _ch.invokeMethod<bool>('openDeveloperSettings') ?? false;
 

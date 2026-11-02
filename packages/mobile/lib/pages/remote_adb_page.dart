@@ -123,6 +123,14 @@ class _RemoteAdbPageState extends State<RemoteAdbPage> with WidgetsBindingObserv
               _refresh();
             },
           ),
+          Padding(
+            padding: const EdgeInsets.only(top: 4, bottom: 4),
+            child: Text(
+              '远程连接不是 VPN，不占手机唯一的 VPN 位，可以和 FlClash 同时开。建议在 FlClash 的「访问控制 / 应用代理」里把 projdeck 设为绕过，'
+              '或给服务器地址加一条直连规则，这样转发不会绕道代理。',
+              style: TextStyle(fontSize: 12, color: Palette.of(context).mutedFg, height: 1.5),
+            ),
+          ),
           if (msg.isNotEmpty) ...[const SizedBox(height: 16), Text('最近一次：$msg', style: TextStyle(fontSize: 12, color: p.mutedFg))],
         ],
       ),

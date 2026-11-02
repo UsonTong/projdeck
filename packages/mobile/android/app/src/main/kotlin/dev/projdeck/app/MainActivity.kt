@@ -70,6 +70,7 @@ class MainActivity : FlutterActivity() {
                     }
                     result.success(true)
                 }
+                "openAutostartSettings" -> result.success(openAutostartSettings())
                 "openDeveloperSettings" -> result.success(openDeveloperSettings())
                 "openAccessibilitySettings" -> {
                     startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
@@ -91,6 +92,30 @@ class MainActivity : FlutterActivity() {
         }
         // 已经开着通知：确保后台连接在跑（例如被系统清理后重新打开 App）
         if (Prefs.notificationsEnabled(this)) NotifyService.start(this)
+        // 远程连接开着时，打开 App 就把转发服务拉起来（更新 App 后系统不一定会替我们启动它，MIUI 要先授权自启动）
+        if (Prefs.relayEnabled(this)) AdbRelayService.start(this)
+    }
+
+    /**
+     * 打开「自启动管理」：手机重启、App 更新后，系统默认不让没授权的 App 自己启动，远程连接就恢复不了。
+     * 小米、OPPO / realme 各有各的入口；都打不开就打开这个 App 的系统详情页。
+     */
+    private fun openAutostartSettings(): Boolean {
+        val candidates = listOf(
+            Intent().setClassName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity"),
+            Intent().setClassName("com.coloros.safecenter", "com.coloros.safecenter.startupapp.StartupAppListActivity"),
+            Intent().setClassName("com.oplus.battery", "com.oplus.startupapp.view.StartupAppListActivity"),
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")),
+        )
+        for (intent in candidates) {
+            try {
+                startActivity(intent)
+                return true
+            } catch (_: Exception) {
+                // 换下一个
+            }
+        }
+        return false
     }
 
     /** 打开系统的开发者选项，并定位到「无线调试」；打不开时返回 false。 */

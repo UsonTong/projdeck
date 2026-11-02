@@ -204,10 +204,17 @@ class AdbRelayService : Service() {
 
     // ---- 自动恢复 TCP 模式 ----
 
+    /**
+     * 手机有没有连着 Wi-Fi。不能只看默认网络：开着 FlClash 之类的 VPN 时，默认网络是 VPN 网络，不是 Wi-Fi，
+     * 所以要看手机上所有的网络里有没有 Wi-Fi（VPN 自己不算）。
+     */
+    @Suppress("DEPRECATION")
     private fun onWifi(): Boolean {
         val cm = getSystemService(ConnectivityManager::class.java)
-        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
-        return caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+        return cm.allNetworks.any { n ->
+            val caps = cm.getNetworkCapabilities(n)
+            caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) && !caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+        }
     }
 
     /**
