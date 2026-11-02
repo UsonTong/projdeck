@@ -1,7 +1,7 @@
 name: projdeck
 description: projdeck 的安卓 App：远程查看和操作电脑上的 Claude Code / Codex 会话。
 publish_to: 'none'
-version: 2.1.0+3
+version: 2.2.0+4
 
 environment:
   sdk: ^3.13.5
