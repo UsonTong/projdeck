@@ -1,20 +1,13 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../api/models.dart';
 import '../theme.dart';
 
-/// Claude Code 的螃蟹、Codex 的小家伙：按它们在终端里打印的标志逐像素还原（与网页的 AgentIcon 相同）。
+/// Claude Code 的螃蟹按它在终端里打印的标志逐像素还原；Codex 是官方的云朵 >_ 标志，Pi 是它启动时的三色方块（与网页的 AgentIcon 相同）。
 /// 终端里一个「像素」是半个字符格，宽高约 1:2，所以每个像素画成 1×2 的矩形。
 const _crab = ['...############...', '...##.######.##...', '.################.', '...############...', '....#.#....#.#....'];
-const _codex = [
-  '.#............#.',
-  '..############..',
-  '.##.###########.',
-  '.###.##########.',
-  '.##.###....####.',
-  '..############..',
-  '...#.#....#.#...',
-];
 
 /// Pi 启动时在终端里打印的标志：4×4 的三色方块，深色底（P 粉、B 蓝、Y 黄，. 为空）。
 const _pi = ['PPP.', 'B.P.', 'BB.Y', 'B..Y'];
@@ -24,8 +17,48 @@ const _piColors = {'P': Color(0xfff09082), 'B': Color(0xff4d9abf), 'Y': Color(0x
 const agentKinds = [SessionKind.claude, SessionKind.codex, SessionKind.pi];
 
 const claudeColor = Color(0xffd97757);
-const codexColor = Color(0xffbae6fd);
+const codexColor = Colors.white;
+const _codexBg = Color(0xff0b0c10);
 const piColor = Color(0xff4d9abf);
+
+/// Codex 的云朵 >_ 标志：白色圆瓣并集，再用底色小一圈的圆瓣盖住里面，留下一道描边（与网页相同，按 24×24 的坐标）。
+class _CodexPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final k = size.width / 24;
+    final lobes = [
+      for (var i = 0; i < 6; i++) Offset(12 + 5.3 * math.cos(math.pi / 3 * i + math.pi / 6), 12 + 5.3 * math.sin(math.pi / 3 * i + math.pi / 6)),
+    ];
+    final white = Paint()..color = Colors.white;
+    final bg = Paint()..color = _codexBg;
+    canvas.drawCircle(Offset(12 * k, 12 * k), 6 * k, white);
+    for (final l in lobes) {
+      canvas.drawCircle(l * k, 4.4 * k, white);
+    }
+    canvas.drawCircle(Offset(12 * k, 12 * k), 5.2 * k, bg);
+    for (final l in lobes) {
+      canvas.drawCircle(l * k, 3.1 * k, bg);
+    }
+    final stroke = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5 * k
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawPath(
+      Path()
+        ..moveTo(8.3 * k, 9.7 * k)
+        ..lineTo(11.4 * k, 12 * k)
+        ..lineTo(8.3 * k, 14.3 * k)
+        ..moveTo(12.9 * k, 14.6 * k)
+        ..lineTo(16.2 * k, 14.6 * k),
+      stroke,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_CodexPainter old) => false;
+}
 
 /// Pi 的三色方块标志（方格是正方形，不像别的图标按 1×2 画）。
 class _PiPainter extends CustomPainter {
@@ -83,7 +116,7 @@ class AgentIcon extends StatelessWidget {
     final p = Palette.of(context);
     final (bg, fg, ring) = switch (kind) {
       SessionKind.claude => (claudeColor.withValues(alpha: 0.12), claudeColor, claudeColor.withValues(alpha: 0.25)),
-      SessionKind.codex => (const Color(0xff38bdf8).withValues(alpha: 0.10), codexColor, const Color(0xff7dd3fc).withValues(alpha: 0.25)),
+      SessionKind.codex => (_codexBg, codexColor, Colors.white.withValues(alpha: 0.10)),
       SessionKind.pi => (const Color(0xff151c26), piColor, Colors.white.withValues(alpha: 0.10)),
       SessionKind.shell => (p.muted, p.mutedFg, p.border),
     };
@@ -108,9 +141,15 @@ class AgentIcon extends StatelessWidget {
             child: kind == SessionKind.shell
                 ? Icon(Icons.terminal_rounded, size: size * 0.55, color: fg)
                 : SizedBox(
-                    width: size * (kind == SessionKind.claude ? 0.78 : kind == SessionKind.pi ? 0.5 : 0.72),
-                    height: kind == SessionKind.pi ? size * 0.5 : size * 0.7,
-                    child: CustomPaint(painter: kind == SessionKind.pi ? _PiPainter() : _PixelPainter(kind == SessionKind.claude ? _crab : _codex, fg)),
+                    width: size * (kind == SessionKind.claude ? 0.78 : kind == SessionKind.pi ? 0.5 : 0.7),
+                    height: kind == SessionKind.claude ? size * 0.7 : kind == SessionKind.pi ? size * 0.5 : size * 0.7,
+                    child: CustomPaint(
+                      painter: kind == SessionKind.pi
+                          ? _PiPainter()
+                          : kind == SessionKind.codex
+                          ? _CodexPainter()
+                          : _PixelPainter(_crab, fg),
+                    ),
                   ),
           ),
           if (plus)

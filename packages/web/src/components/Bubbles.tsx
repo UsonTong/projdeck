@@ -1,5 +1,4 @@
 import type { AgentKind, Session, TranscriptEntry } from "@projdeck/shared";
-import DOMPurify from "dompurify";
 import {
   ArrowDownIcon,
   BotIcon,
@@ -14,7 +13,6 @@ import {
   WrenchIcon,
   type LucideIcon,
 } from "lucide-react";
-import { Marked, type Tokens } from "marked";
 import { memo, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -22,6 +20,7 @@ import { formatMessageTime, useTimeZone } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { api } from "../api.ts";
 import { AgentIcon } from "./AgentIcon.tsx";
+import { Markdown } from "./Markdown.tsx";
 import { useStickToBottom } from "./useStickToBottom.ts";
 
 /** 只渲染最近这么多条，长会话也不卡。 */
@@ -202,35 +201,6 @@ function Thinking({ agent }: { agent: AgentKind }) {
     </div>
   );
 }
-
-/**
- * CommonMark 对中文加粗有个已知问题：「**当前目录：**里面」这种写法，结尾的 ** 前是全角标点、后是汉字，
- * 不算右侧定界符，整段不会加粗。Claude 的中文回复里很常见，这里加一条宽松的 **…** 规则优先匹配。
- */
-const md = new Marked({
-  gfm: true,
-  breaks: true,
-  extensions: [
-    {
-      name: "cjkStrong",
-      level: "inline",
-      start: (src: string) => {
-        const i = src.indexOf("**");
-        return i < 0 ? undefined : i;
-      },
-      tokenizer(src: string): Tokens.Strong | undefined {
-        const m = /^\*\*(?!\s)([^\n]*?\S)\*\*(?!\*)/.exec(src);
-        if (!m) return undefined;
-        return { type: "strong", raw: m[0], text: m[1]!, tokens: this.lexer.inlineTokens(m[1]!) };
-      },
-    },
-  ],
-});
-
-const Markdown = memo(function Markdown({ text }: { text: string }) {
-  const html = useMemo(() => DOMPurify.sanitize(md.parse(text, { async: false })), [text]);
-  return <div className="markdown text-[15px]" dangerouslySetInnerHTML={{ __html: html }} />;
-});
 
 /** 按工具名选图标（Claude Code 与 Codex 的常见工具）。 */
 function toolIcon(name: string): LucideIcon {

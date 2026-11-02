@@ -32,16 +32,35 @@ const CRAB = [
   "....#.#....#.#....",
 ];
 
-/** Codex：同风格的像素小家伙，头顶两根天线，脸是 Codex 的提示符 >_。 */
-const CODEX = [
-  ".#............#.",
-  "..############..",
-  ".##.###########.",
-  ".###.##########.",
-  ".##.###....####.",
-  "..############..",
-  "...#.#....#.#...",
-];
+/**
+ * Codex 的官方标志：白色描边的云朵（六个圆瓣），里面是命令行提示符 >_，深色底。
+ * 轮廓的画法：先画一圈白色的圆瓣并集，再在同样的圆心上画小一圈的底色圆瓣并集盖住里面，留下一道沿着外形走的描边。
+ */
+const CODEX_BG = "#0b0c10";
+const LOBES = Array.from({ length: 6 }, (_, i) => {
+  const a = (Math.PI / 3) * i + Math.PI / 6;
+  return { x: 12 + 5.3 * Math.cos(a), y: 12 + 5.3 * Math.sin(a) };
+});
+
+function CodexLogo({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} role="img" aria-label="Codex">
+      <g fill="#fff">
+        <circle cx="12" cy="12" r="6" />
+        {LOBES.map((l, i) => (
+          <circle key={i} cx={l.x} cy={l.y} r="4.4" />
+        ))}
+      </g>
+      <g fill={CODEX_BG}>
+        <circle cx="12" cy="12" r="5.2" />
+        {LOBES.map((l, i) => (
+          <circle key={i} cx={l.x} cy={l.y} r="3.1" />
+        ))}
+      </g>
+      <path d="M8.3 9.7 11.4 12 8.3 14.3M12.9 14.6h3.3" fill="none" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 
 /**
  * Pi 启动时在终端里打印的标志：4×4 的三色方块，深色底。
@@ -92,14 +111,14 @@ export function AgentIcon({
         "relative inline-flex shrink-0 items-center justify-center rounded-lg ring-1",
         box,
         kind === "claude" && "bg-[#d97757]/12 text-[#d97757] ring-[#d97757]/25",
-        kind === "codex" && "bg-sky-400/10 text-sky-200 ring-sky-300/25",
+        kind === "codex" && "bg-[#0b0c10] ring-white/10",
         kind === "pi" && "bg-[#151c26] ring-white/10",
         kind === "shell" && "bg-muted text-muted-foreground ring-border",
         className,
       )}
     >
       {kind === "claude" && <PixelArt rows={CRAB} title="Claude" className="w-[78%]" />}
-      {kind === "codex" && <PixelArt rows={CODEX} title="Codex" className="w-[72%]" />}
+      {kind === "codex" && <CodexLogo className="w-[78%]" />}
       {kind === "pi" && <PiLogo className="w-[52%]" />}
       {kind === "shell" && <SquareTerminalIcon className="size-[55%]" />}
       {plus && (

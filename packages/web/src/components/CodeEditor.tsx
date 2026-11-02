@@ -1,14 +1,20 @@
-import { ArrowLeftIcon, RotateCwIcon, SaveIcon } from "lucide-react";
+import { ArrowLeftIcon, ColumnsIcon, EyeIcon, PencilIcon, RotateCwIcon, SaveIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { applyEditorTheme, monaco } from "@/lib/monaco";
 import { useTerminalTheme } from "@/lib/terminalTheme";
+import { cn } from "@/lib/utils";
 import { api, ApiError } from "../api.ts";
 import { useWide } from "../live.ts";
 import { confirmDialog } from "./Confirm.tsx";
+import { Markdown } from "./Markdown.tsx";
+
+const MARKDOWN = /\.(md|markdown|mdx)$/i;
+type Mode = "edit" | "split" | "preview";
 
 /** 与终端一致的字体：Ghostty 配置的字体 → 内置 JetBrains Mono → 中文。 */
 const fontStack = (families: string[]) =>
@@ -31,6 +37,11 @@ export default function CodeEditor(props: { projectId: string; path: string; onC
   const [saving, setSaving] = useState(false);
   const dirtyRef = useRef(false);
   dirtyRef.current = dirty;
+  // Markdown 文件可以预览：编辑 / 并排（宽屏）/ 预览。预览内容跟着编辑器里的文字实时更新
+  const isMarkdown = MARKDOWN.test(path);
+  const [mode, setMode] = useState<Mode>(wide ? "split" : "edit");
+  const [mdText, setMdText] = useState("");
+  const mdTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const markSaved = (model: monaco.editor.ITextModel, mtimeMs: number) => {
     state.current = { baseMtimeMs: mtimeMs, savedVersion: model.getAlternativeVersionId() };
@@ -109,7 +120,12 @@ export default function CodeEditor(props: { projectId: string; path: string; onC
         });
         editorRef.current = editor;
         markSaved(model, r.mtimeMs);
-        model.onDidChangeContent(() => setDirty(model!.getAlternativeVersionId() !== state.current.savedVersion));
+        setMdText(r.text);
+        model.onDidChangeContent(() => {
+          setDirty(model!.getAlternativeVersionId() !== state.current.savedVersion);
+          clearTimeout(mdTimer.current);
+          mdTimer.current = setTimeout(() => model && setMdText(model.getValue()), 150);
+        });
         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => void save());
         editor.focus();
         setLoading(false);
@@ -121,6 +137,7 @@ export default function CodeEditor(props: { projectId: string; path: string; onC
     );
     return () => {
       disposed = true;
+      clearTimeout(mdTimer.current);
       editor?.dispose();
       model?.dispose();
       editorRef.current = null;
@@ -159,6 +176,24 @@ export default function CodeEditor(props: { projectId: string; path: string; onC
           </div>
           <div className="truncate font-mono text-[11px] text-muted-foreground">{path}</div>
         </div>
+        {isMarkdown && (
+          <ToggleGroup type="single" variant="outline" size="sm" value={mode} onValueChange={(v) => v && setMode(v as Mode)} aria-label="Markdown 视图">
+            <ToggleGroupItem value="edit" aria-label="只看编辑器" className="gap-1.5 px-2">
+              <PencilIcon className="size-3.5" />
+              <span className="max-sm:hidden">编辑</span>
+            </ToggleGroupItem>
+            {wide && (
+              <ToggleGroupItem value="split" aria-label="编辑和预览并排" className="gap-1.5 px-2">
+                <ColumnsIcon className="size-3.5" />
+                并排
+              </ToggleGroupItem>
+            )}
+            <ToggleGroupItem value="preview" aria-label="只看预览" className="gap-1.5 px-2">
+              <EyeIcon className="size-3.5" />
+              <span className="max-sm:hidden">预览</span>
+            </ToggleGroupItem>
+          </ToggleGroup>
+        )}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button variant="ghost" size="icon-sm" aria-label="重新加载" disabled={loading || !!error} onClick={() => void reload()}>
@@ -181,11 +216,22 @@ export default function CodeEditor(props: { projectId: string; path: string; onC
           </Button>
         </div>
       ) : (
-        <div className="relative min-h-0 flex-1">
-          <div ref={host} className="absolute inset-0" />
-          {loading && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <Spinner className="size-5" />
+        <div className="flex min-h-0 flex-1">
+          <div className={cn("relative min-w-0 flex-1", isMarkdown && mode === "preview" && "hidden")}>
+            <div ref={host} className="absolute inset-0" />
+            {loading && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <Spinner className="size-5" />
+              </div>
+            )}
+          </div>
+          {isMarkdown && mode !== "edit" && !loading && (
+            <div className={cn("min-w-0 flex-1 overflow-y-auto p-5", mode === "split" && "border-l")}>
+              <Markdown
+                text={mdText}
+                className="markdown mx-auto max-w-3xl text-[15px]"
+                imageBase={{ projectId, dir: path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "" }}
+              />
             </div>
           )}
         </div>
