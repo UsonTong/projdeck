@@ -83,9 +83,9 @@ function PiLogo({ className }: { className?: string }) {
 }
 
 const STATUS_DOT: Partial<Record<SessionStatus, string>> = {
-  working: "bg-status-working animate-pulse",
-  blocked: "bg-status-blocked",
-  done: "bg-status-done",
+  working: "bg-status-working animate-pulse transition-colors duration-500",
+  blocked: "bg-status-blocked transition-colors duration-500",
+  done: "bg-status-done transition-colors duration-500",
 };
 
 /** 会话类型图标，可带状态角标（工作中 / 需处理 / 已完成）。 */

@@ -56,6 +56,7 @@ import { formatDateTime, useTimeZone } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { api } from "../api.ts";
 import { useLive } from "../live.ts";
+import { useFlip } from "../lib/flip.ts";
 import { openCcSwitch, openDevices, openFiles, openSession } from "../router.ts";
 import { AddProjectDialog } from "./AddProject.tsx";
 import { InlineInput } from "./InlineInput.tsx";
@@ -254,6 +255,8 @@ function ProjectsTab(props: {
   // 拖动后先按新顺序显示，等服务端的新顺序推送过来再以它为准
   const [optimistic, setOptimistic] = useState<string[] | null>(null);
   const draggedRef = useRef(false);
+  const listRef = useRef<HTMLDivElement>(null);
+  useFlip(listRef, sort !== "custom"); // 拖动排序时交给 dnd-kit，别的排序方式切换/变动时让项目滑到新位置
   const projects = sortProjects(props.overview.projects, sort);
   const orderKey = projects.map((p) => p.id).join(",");
   useEffect(() => setOptimistic(null), [orderKey]);
@@ -313,7 +316,9 @@ function ProjectsTab(props: {
           </SortableContext>
         </DndContext>
       ) : (
-        <div className="flex flex-col gap-4">{shown.map((p) => group(p))}</div>
+        <div ref={listRef} className="flex flex-col gap-4">
+          {shown.map((p) => group(p))}
+        </div>
       )}
     </div>
   );
@@ -358,6 +363,8 @@ function ProjectGroup(props: {
   drag?: DragHandle;
 }) {
   const { project, sessions, activePane, drag } = props;
+  const rowsRef = useRef<HTMLDivElement>(null);
+  useFlip(rowsRef);
   const [settings, setSettings] = useState(false);
   const [editingNote, setEditingNote] = useState(false);
 
@@ -375,7 +382,7 @@ function ProjectGroup(props: {
   const starters: AgentKind[] = [project.defaultAgent, ...AGENT_KINDS.filter((k) => k !== project.defaultAgent)];
 
   return (
-    <section>
+    <section data-flip={project.id}>
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <div
@@ -446,7 +453,7 @@ function ProjectGroup(props: {
       {sorted.length === 0 ? (
         <p className="px-3 py-2 text-xs text-muted-foreground">没有运行中的会话，点上方图标新开一个</p>
       ) : (
-        <div className="flex flex-col gap-0.5">
+        <div ref={rowsRef} className="flex flex-col gap-0.5">
           {sorted.map((s) => (
             <SessionRow key={s.paneId} session={s} project={project} active={s.paneId === activePane} />
           ))}
@@ -508,7 +515,7 @@ function SessionRow({
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
-        <div className="relative overflow-hidden rounded-lg">
+        <div data-flip={s.paneId} className="motion-rise relative overflow-hidden rounded-lg">
           {/* 左滑露出的操作，在行的下面 */}
           {swipe.offset < 0 && (
             <div className="absolute inset-y-0 right-0 flex text-xs font-medium" style={{ width: SWIPE_BUTTON * 2 }}>
@@ -707,6 +714,8 @@ function UnassignedTab({ sessions, activePane }: { sessions: Session[]; activePa
   // 拖动后先按新顺序显示，等 herdr 的新顺序推送过来再以它为准
   const [optimistic, setOptimistic] = useState<string[] | null>(null);
   const draggedRef = useRef(false);
+  const listRef = useRef<HTMLDivElement>(null);
+  useFlip(listRef, sort !== "herdr");
   const sorted = sortUnassigned(sessions, sort);
   const orderKey = sorted.map((s) => s.paneId).join(",");
   useEffect(() => setOptimistic(null), [orderKey]);
@@ -763,7 +772,7 @@ function UnassignedTab({ sessions, activePane }: { sessions: Session[]; activePa
     );
   }
   return (
-    <div className="flex flex-col gap-0.5">
+    <div ref={listRef} className="flex flex-col gap-0.5">
       <SortSwitch value={sort} options={UNASSIGNED_SORTS} onChange={(v) => setDevicePref("unassignedSort", v)}>
         {starters}
       </SortSwitch>

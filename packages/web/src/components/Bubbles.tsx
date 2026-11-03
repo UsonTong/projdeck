@@ -13,7 +13,7 @@ import {
   WrenchIcon,
   type LucideIcon,
 } from "lucide-react";
-import { memo, useMemo } from "react";
+import { memo, useEffect, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { formatMessageTime, useTimeZone } from "@/lib/time";
@@ -70,6 +70,13 @@ export function Bubbles(props: {
   status: Session["status"];
 }) {
   const blocks = useMemo(() => toBlocks(props.entries), [props.entries]);
+  // 第一次拿到对话之后新出现的消息淡入上浮；刚打开时已有的那一大批不动
+  const seen = useRef<Set<string> | null>(null);
+  const isNew = (id: string) => seen.current !== null && !seen.current.has(id);
+  useEffect(() => {
+    if (blocks.length === 0) return;
+    seen.current = new Set(blocks.map((b) => (b.kind === "user" ? b.entry.id : b.id)));
+  }, [blocks]);
   const working = props.status === "working";
   const { ref, atBottom, scrollToBottom } = useStickToBottom<HTMLDivElement>([blocks, working]);
 
@@ -96,9 +103,13 @@ export function Bubbles(props: {
           )}
           {blocks.map((b) =>
             b.kind === "user" ? (
-              <UserMessage key={b.entry.id} entry={b.entry} files={b.files} projectId={props.projectId} />
+              <div key={b.entry.id} className={isNew(b.entry.id) ? "flex flex-col motion-rise" : "flex flex-col"}>
+                <UserMessage entry={b.entry} files={b.files} projectId={props.projectId} />
+              </div>
             ) : (
-              <AssistantTurn key={b.id} agent={props.agent} time={b.time} parts={b.parts} />
+              <div key={b.id} className={isNew(b.id) ? "flex flex-col motion-rise" : "flex flex-col"}>
+                <AssistantTurn agent={props.agent} time={b.time} parts={b.parts} />
+              </div>
             ),
           )}
           {working && <Thinking agent={props.agent} />}
