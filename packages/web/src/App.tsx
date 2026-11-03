@@ -1,5 +1,5 @@
 import { TerminalSquareIcon, WifiOffIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -139,8 +139,21 @@ function Shell() {
   const activePane = route.kind === "session" ? route.paneId : null;
   const activeFiles = route.kind === "files" ? route.projectId : null;
 
-  // 切换页面时新页面淡入，不生硬地跳过去
+  // 切换页面时新页面带着方向进来，不生硬地跳过去：手机上从总览往里走从右边滑入，返回时总览从左边淡入；
+  // 电脑上同级页面之间轻轻上浮。方向只在页面切换的那一刻算一次（动画 class 变了会重新播放），所以用 useMemo 钉住
   const pageKey = route.kind === "session" ? `s:${route.paneId}` : route.kind === "files" ? `f:${route.projectId}` : route.kind;
+  const depth = route.kind === "overview" ? 0 : 1;
+  const prevDepth = useRef(depth);
+  const enter = useMemo(() => {
+    const was = prevDepth.current;
+    if (wide) return "motion-rise";
+    return depth === 1 && was === 0 ? "motion-from-right" : depth === 0 && was === 1 ? "motion-from-left" : "motion-rise";
+    // 只在页面（pageKey）切换时重新算
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageKey, wide]);
+  useEffect(() => {
+    prevDepth.current = depth;
+  });
   const content =
     route.kind === "session" ? (
       <SessionPage key={route.paneId} paneId={route.paneId} />
@@ -152,7 +165,7 @@ function Shell() {
       <DevicesPage />
     ) : null;
   const page = content && (
-    <div key={pageKey} className="flex min-h-0 min-w-0 flex-1 flex-col animate-in duration-200 ease-out fade-in-0">
+    <div key={pageKey} className={`flex min-h-0 min-w-0 flex-1 flex-col ${enter}`}>
       {content}
     </div>
   );
@@ -173,7 +186,7 @@ function Shell() {
   return (
     <div className="flex h-full flex-col">
       <Banner />
-      {page ?? <OverviewPage activePane={null} activeFiles={null} />}
+      {page ?? <OverviewPage key={enter} activePane={null} activeFiles={null} enter={enter === "motion-from-left" ? enter : undefined} />}
     </div>
   );
 }

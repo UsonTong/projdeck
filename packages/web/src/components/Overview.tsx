@@ -77,7 +77,7 @@ const shortPath = (p: string) => p.replace(/^\/home\/[^/]+/, "~");
 
 type Tab = "projects" | "unassigned" | "archived";
 
-export function OverviewPage({ activePane, activeFiles }: { activePane: string | null; activeFiles: string | null }) {
+export function OverviewPage({ activePane, activeFiles, enter }: { activePane: string | null; activeFiles: string | null; enter?: string }) {
   const { overview } = useLive();
   const [tab, setTab] = useState<Tab>("projects");
   const [showHidden, setShowHidden] = useState(false);
@@ -101,7 +101,7 @@ export function OverviewPage({ activePane, activeFiles }: { activePane: string |
   const archivedCount = overview.archived.length + overview.projects.filter((p) => p.archived).length;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className={cn("flex min-h-0 flex-1 flex-col", enter)}>
       {/* 一行：左边切换列表，右边操作 */}
       <header className="flex items-center gap-1 px-3 pt-[calc(0.75rem+env(safe-area-inset-top))] pb-2">
         <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="min-w-0 flex-1">
@@ -141,11 +141,14 @@ export function OverviewPage({ activePane, activeFiles }: { activePane: string |
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
-        {tab === "projects" && (
-          <ProjectsTab overview={overview} visible={visible} activePane={activePane} activeFiles={activeFiles} onAdd={() => setAdding(true)} />
-        )}
-        {tab === "unassigned" && <UnassignedTab sessions={unassigned} activePane={activePane} />}
-        {tab === "archived" && <ArchivedTab overview={overview} />}
+        {/* 切换标签时内容轻轻上浮（key 变了才重新播放） */}
+        <div key={tab} className="motion-rise">
+          {tab === "projects" && (
+            <ProjectsTab overview={overview} visible={visible} activePane={activePane} activeFiles={activeFiles} onAdd={() => setAdding(true)} />
+          )}
+          {tab === "unassigned" && <UnassignedTab sessions={unassigned} activePane={activePane} />}
+          {tab === "archived" && <ArchivedTab overview={overview} />}
+        </div>
       </div>
 
       <AddProjectDialog open={adding} onOpenChange={setAdding} />

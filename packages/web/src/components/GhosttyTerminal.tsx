@@ -536,7 +536,7 @@ export const GhosttyTerminal = forwardRef<TerminalHandle, Props>(function Ghostt
           {/* ghostty-web 会在这个容器里放 canvas；键盘焦点在 attachTextInput 放进来的 textarea 上 */}
           <div
             ref={container}
-            className={cn("absolute touch-none overflow-hidden outline-none transition-opacity duration-200 ease-out", !painted && "opacity-0")}
+            className={cn("absolute touch-none overflow-hidden outline-none transition-[opacity,translate] duration-500 ease-[var(--ease-out-expo)]", !painted && "translate-y-2 opacity-0")}
             style={{ inset: `${props.padding.y}px ${props.padding.x}px` }}
             onClick={() => termRef.current?.focus()}
           />

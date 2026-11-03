@@ -296,3 +296,68 @@
   padding-left: 0.8em;
   color: var(--muted-foreground);
 }
+
+/* ---- 动效 ----
+ * 统一的缓动：先快后慢（expo out），比默认的 ease-out 更有「落下来」的感觉；进入用它，退出更短更直接。
+ * 页面切换：往里走（总览 → 会话）从右边滑入，返回从左边淡入，同级页面之间轻轻上浮。 */
+:root {
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-soft: cubic-bezier(0.4, 0, 1, 1);
+}
+
+@keyframes motion-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes motion-from-right {
+  from {
+    opacity: 0;
+    transform: translateX(32px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes motion-from-left {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.motion-rise {
+  animation: motion-rise 360ms var(--ease-out-expo) backwards;
+}
+
+.motion-from-right {
+  animation: motion-from-right 380ms var(--ease-out-expo) backwards;
+}
+
+.motion-from-left {
+  animation: motion-from-left 340ms var(--ease-out-expo) backwards;
+}
+
+/* 系统设置了「减少动态效果」就不要动 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
