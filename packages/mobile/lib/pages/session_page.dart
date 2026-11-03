@@ -31,6 +31,7 @@ class _SessionPageState extends State<SessionPage> {
   final _term = GlobalKey<TerminalPaneState>();
   SessionView? _view;
   double _dragX = 0;
+  bool _dragFromEdge = false;
 
   @override
   void initState() {
@@ -101,7 +102,11 @@ class _SessionPageState extends State<SessionPage> {
           children: [
             // 标题栏：左右滑切换会话
             GestureDetector(
-              onHorizontalDragUpdate: (d) => setState(() => _dragX += d.delta.dx),
+              onHorizontalDragStart: (d) => _dragFromEdge = d.localPosition.dx < 28 || d.localPosition.dx > MediaQuery.sizeOf(context).width - 28,
+              onHorizontalDragUpdate: (d) {
+                if (_dragFromEdge) return; // 屏幕边缘的滑动留给系统的返回手势
+                setState(() => _dragX += d.delta.dx);
+              },
               onHorizontalDragEnd: (d) {
                 final dx = _dragX;
                 setState(() => _dragX = 0);

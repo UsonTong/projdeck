@@ -112,6 +112,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                           ),
                           labelColor: p.fg,
                           unselectedLabelColor: p.mutedFg,
+                          labelPadding: const EdgeInsets.symmetric(horizontal: 4),
                           labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
                           splashBorderRadius: BorderRadius.circular(8),
                           tabs: [
@@ -192,13 +193,16 @@ class _TabLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
+    // 标签变窄时文字先省略，计数徽标完整保留，不会被挤出标签
     return Tab(
+      height: 30,
       child: Row(
         mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(text),
+          Flexible(child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false)),
           if (count > 0) ...[
-            const SizedBox(width: 5),
+            const SizedBox(width: 4),
             Container(
               constraints: const BoxConstraints(minWidth: 16),
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
