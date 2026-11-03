@@ -56,4 +56,5 @@ kotlin {
 
 dependencies {
     implementation(project(":remote-adb"))
+    implementation("androidx.core:core:1.13.1")
 }

@@ -19,7 +19,7 @@ import type {
   StartSessionBody,
   UpdateProjectBody,
 } from "@projdeck/shared";
-import { ACCESS_KEY_COOKIE, AccessKey, LoginLimiter, SESSION_COOKIE, SESSION_TTL_MS, SessionStore, verifyPassword } from "./auth.ts";
+import { ACCESS_KEY_COOKIE, AGENT_COOKIE, AccessKey, AgentKeys, LoginLimiter, SESSION_COOKIE, SESSION_TTL_MS, SessionStore, verifyPassword } from "./auth.ts";
 import type { Config } from "./config.ts";
 import type { HerdrClient } from "./herdr/client.ts";
 import {
@@ -67,6 +67,8 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
   });
   const sessions = new SessionStore();
   const accessKey = new AccessKey(config.accessKeyFile);
+  // 被控端密钥只能连 /ws/adb，不算「已登录」，访问不了其他接口
+  const agentKeys = new AgentKeys();
   if (accessKey.enabled) app.log.info("已启用访问 key：带有效 key 的请求无需密码");
   const limiter = new LoginLimiter();
   const live = new LiveHub(service, herdr);
@@ -100,7 +102,9 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
     const isWs = url === "/ws" || url === "/ws/term" || url === "/ws/adb";
     if (!url.startsWith("/api/") && !isWs) return;
     if (url === "/api/auth/login" || url === "/api/auth/status") return;
-    if (!authed(req)) return reply.status(401).send({ error: "未登录" });
+    // 被控端只允许连转发通道；它的密钥对别的接口一概无效
+    const agentOnly = url === "/ws/adb" && agentKeys.valid(req.cookies[AGENT_COOKIE]);
+    if (!authed(req) && !agentOnly) return reply.status(401).send({ error: "未登录" });
     // WebSocket 与写操作校验 Origin，防止跨站请求
     if (isWs || req.method !== "GET") {
       const origin = req.headers.origin;
@@ -296,6 +300,11 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
     return reply.sendFile("projdeck.apk", appDir, { maxAge: 0, cacheControl: false });
   });
   // 独立的「被控端」App（packages/agent）：只负责被远程控制，不含 projdeck 的界面
+  app.get("/app/projdeck-agent.json", async (_req, reply) => {
+    if (!existsSync(join(appDir, "projdeck-agent.json"))) throw httpError(404, "还没有发布被控端 App");
+    void reply.header("Cache-Control", "no-store");
+    return reply.send(readFileSync(join(appDir, "projdeck-agent.json"), "utf8"));
+  });
   app.get("/app/projdeck-agent.apk", async (_req, reply) => {
     if (!existsSync(join(appDir, "projdeck-agent.apk"))) throw httpError(404, "还没有发布被控端 App");
     void reply.header("Content-Type", "application/vnd.android.package-archive").header("Content-Disposition", 'attachment; filename="projdeck-agent.apk"');
@@ -306,6 +315,14 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
   const adbRelay = new AdbRelay(config.adbRelayPort, "127.0.0.1", (m) => app.log.info(m));
   app.addHook("onClose", async () => adbRelay.stop());
   app.get("/api/adb", async () => ({ ...adbRelay.status(), command: `adb connect 127.0.0.1:${config.adbRelayPort}` }));
+  // 被控端密钥：生成后只在生成时显示一次；一台设备一把，可以单独吊销
+  app.get("/api/agents", async () => ({ keys: agentKeys.list() }));
+  app.post<{ Body: { name?: string } }>("/api/agents", async (req) => agentKeys.issue(String(req.body?.name ?? "")));
+  app.delete<{ Params: { id: string } }>("/api/agents/:id", async (req, reply) => {
+    if (!agentKeys.revoke(req.params.id)) throw httpError(404, "没有这把密钥");
+    return reply.status(204).send();
+  });
+
   app.get("/api/devices", async (): Promise<{ devices: DeviceView[] }> => {
     const d = adbRelay.device();
     if (!d) return { devices: [] };

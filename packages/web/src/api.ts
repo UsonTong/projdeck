@@ -3,6 +3,7 @@ import type {
   CcSwitchStatus,
   CcUsage,
   CcUsageRange,
+  AgentKeySummary,
   CreateProjectBody,
   DeviceView,
   DirListing,
@@ -77,6 +78,9 @@ export const api = {
   setHidden: (paneId: string, hidden: boolean) => request("POST", `${pane(paneId)}/hidden`, { hidden }),
   /** 拖动排序：把会话所在的 herdr 工作区移到另一个会话之前（null = 移到最后）。 */
   devices: () => request<{ devices: DeviceView[] }>("GET", "/api/devices"),
+  agentKeys: () => request<{ keys: AgentKeySummary[] }>("GET", "/api/agents"),
+  createAgentKey: (name: string) => request<{ key: AgentKeySummary; token: string }>("POST", "/api/agents", { name }),
+  deleteAgentKey: (id: string) => request<void>("DELETE", `/api/agents/${encodeURIComponent(id)}`),
   ccswitch: () => request<CcSwitchStatus>("GET", "/api/ccswitch"),
   ccswitchSwitch: (app: string, id: string) => request<CcSwitchStatus & { launched: boolean }>("POST", "/api/ccswitch/switch", { app, id }),
   ccswitchBridge: () => request<{ available: boolean; ui: { version: string; exact: boolean } | null }>("GET", "/api/ccswitch/bridge"),

@@ -275,3 +275,11 @@ export interface DeviceView {
   /** 电脑上连接这台手机的 adb 命令；不在线时为 null */
   adb: { command: string; connections: number } | null;
 }
+
+/** 被控端密钥（只能连 /ws/adb，访问不了服务器的其他接口）。 */
+export interface AgentKeySummary {
+  id: string;
+  name: string;
+  createdAt: number;
+  lastUsedAt: number | null;
+}

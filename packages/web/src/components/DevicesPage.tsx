@@ -1,5 +1,5 @@
-import type { DeviceView } from "@projdeck/shared";
-import { ArrowLeftIcon, BatteryChargingIcon, BatteryIcon, CopyIcon, DownloadIcon, ShieldCheckIcon, SignalIcon, SmartphoneIcon, WifiIcon, WifiOffIcon } from "lucide-react";
+import type { AgentKeySummary, DeviceView } from "@projdeck/shared";
+import { ArrowLeftIcon, BatteryChargingIcon, BatteryIcon, CopyIcon, DownloadIcon, KeyRoundIcon, ShieldCheckIcon, SignalIcon, SmartphoneIcon, Trash2Icon, WifiIcon, WifiOffIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -78,6 +78,92 @@ function DeviceCard({ d, now }: { d: DeviceView; now: number }) {
   );
 }
 
+/*
+ * 被控端密钥：装在被控端 App 里的专用密钥，只能连转发通道（/ws/adb），拿它登录不了 projdeck，
+ * 也访问不了会话、文件、终端。一台设备一把，可以单独吊销。明文只在生成时显示一次。
+ */
+function AgentKeysCard() {
+  const [keys, setKeys] = useState<AgentKeySummary[] | null>(null);
+  const [name, setName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [token, setToken] = useState<{ key: AgentKeySummary; token: string } | null>(null);
+  const load = () => api.agentKeys().then((r) => setKeys(r.keys), (err: Error) => toast.error(err.message));
+  useEffect(() => void load(), []);
+  const create = async () => {
+    setCreating(true);
+    try {
+      setToken(await api.createAgentKey(name));
+      setName("");
+      await load();
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setCreating(false);
+    }
+  };
+  const remove = async (k: AgentKeySummary) => {
+    try {
+      await api.deleteAgentKey(k.id);
+      if (token?.key.id === k.id) setToken(null);
+      await load();
+    } catch (err) {
+      toast.error((err as Error).message);
+    }
+  };
+  return (
+    <section className="rounded-xl border bg-card p-4">
+      <div className="flex items-center gap-2">
+        <KeyRoundIcon className="size-4 text-muted-foreground" />
+        <span className="font-medium">被控端密钥</span>
+      </div>
+      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+        装在被控端 App 里，只能连接这台手机的转发通道，不能登录 projdeck。一台设备一把，可以单独吊销。
+      </p>
+      <div className="mt-3 flex gap-2">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="设备名，例如 红米 K20 Pro"
+          className="min-w-0 flex-1 rounded-md border bg-background px-2.5 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        />
+        <Button size="sm" disabled={creating} onClick={() => void create()}>
+          {creating && <Spinner data-icon="inline-start" />}
+          生成
+        </Button>
+      </div>
+      {token && (
+        <div className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+          <div className="text-xs text-muted-foreground">「{token.key.name}」的密钥，只显示这一次，请填到被控端 App 里：</div>
+          <div className="mt-2 flex items-center gap-2">
+            <code className="min-w-0 flex-1 break-all font-mono text-xs">{token.token}</code>
+            <Button variant="ghost" size="icon-sm" aria-label="复制" onClick={() => navigator.clipboard.writeText(token.token).then(() => toast.success("已复制"), () => toast.error("复制失败"))}>
+              <CopyIcon />
+            </Button>
+          </div>
+        </div>
+      )}
+      {keys && keys.length > 0 && (
+        <div className="mt-3 flex flex-col divide-y text-sm">
+          {keys.map((k) => (
+            <div key={k.id} className="flex items-center gap-2 py-2">
+              <div className="min-w-0 flex-1">
+                <div className="truncate">{k.name}</div>
+                <div className="text-xs text-muted-foreground">
+                  生成于 {new Date(k.createdAt).toLocaleDateString("zh-CN")}
+                  {k.lastUsedAt ? ` · 最近使用 ${new Date(k.lastUsedAt).toLocaleString("zh-CN", { hour12: false })}` : " · 还没用过"}
+                </div>
+              </div>
+              <Button variant="ghost" size="icon-sm" aria-label={`吊销 ${k.name}`} onClick={() => void remove(k)}>
+                <Trash2Icon />
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function DevicesPage() {
   const wide = useWide();
   const [devices, setDevices] = useState<DeviceView[] | null>(null);
@@ -128,6 +214,7 @@ export function DevicesPage() {
           ) : (
             devices.map((d) => <DeviceCard key={d.id} d={d} now={now} />)
           )}
+          <AgentKeysCard />
           <a
             href="/app/projdeck-agent.apk"
             className="flex items-center gap-3 rounded-xl border bg-card p-4 text-sm transition-colors hover:bg-accent/60"

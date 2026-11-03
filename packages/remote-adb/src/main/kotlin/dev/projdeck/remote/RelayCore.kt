@@ -62,7 +62,7 @@ class RelayCore(
         while (running) {
             val closed = CountDownLatch(1)
             val request = Request.Builder().url(base.replaceFirst("https://", "wss://").replaceFirst("http://", "ws://") + "/ws/adb")
-                .header("Cookie", "projdeck_key=$key").build()
+                .header("Cookie", "projdeck_key=$key; projdeck_agent=$key").build()
             val socket = client.newWebSocket(request, object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: Response) {
                     log("已连上服务器")

@@ -117,7 +117,7 @@ class MainActivity : android.app.Activity() {
             setText(Prefs.base(this@MainActivity) ?: "")
         }
         keyField = EditText(this).apply {
-            hint = "访问密钥（和网页登录用的一样）"
+            hint = "被控端密钥（在 projdeck 网页的「设备」页生成）"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
             setText(Prefs.key(this@MainActivity) ?: "")
         }
@@ -126,7 +126,7 @@ class MainActivity : android.app.Activity() {
             orientation = LinearLayout.VERTICAL
             addView(text("服务器", 13f, "#9A958A"))
             addView(baseField)
-            addView(text("访问密钥", 13f, "#9A958A"))
+            addView(text("被控端密钥", 13f, "#9A958A"))
             addView(keyField)
             addView(save)
         }))
@@ -173,6 +173,14 @@ class MainActivity : android.app.Activity() {
             addView(messageText.apply { setPadding(0, dp(8), 0, 0) })
         }))
         col.addView(space(12))
+        val versionName = try { packageManager.getPackageInfo(packageName, 0).versionName } catch (_: Exception) { "?" }
+        col.addView(card(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(text("版本", 15f, bold = true))
+            addView(text("当前 $versionName", 12f, "#9A958A").apply { setPadding(0, dp(6), 0, 0) })
+            addView(button("检查更新") { checkUpdate() })
+        }))
+        col.addView(space(12))
         col.addView(text("配对只需要一次。之后手机只负责保持「远程连接」开着；电脑上在 projdeck 的「设备」页可以看到它。", 12f, "#9A958A"))
 
         return ScrollView(this).apply { addView(col) }
@@ -184,7 +192,7 @@ class MainActivity : android.app.Activity() {
         val base = baseField.text.toString().trim().trimEnd('/')
         val key = keyField.text.toString().trim()
         if (!base.startsWith("http")) return toast("服务器地址要以 http:// 或 https:// 开头")
-        if (key.isEmpty()) return toast("请填写访问密钥")
+        if (key.isEmpty()) return toast("请填写被控端密钥")
         Prefs.setConnection(this, base, key)
         Prefs.setRelay(this, true)
         relaySwitch.isChecked = true
@@ -193,6 +201,68 @@ class MainActivity : android.app.Activity() {
     }
 
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
+
+    // ---- 更新 ----
+
+    private fun currentVersionCode(): Long {
+        val info = packageManager.getPackageInfo(packageName, 0)
+        @Suppress("DEPRECATION")
+        return if (android.os.Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
+    }
+
+    /**
+     * 检查并安装新版本：服务器上放着最新的安装包（/app/projdeck-agent.json 里有版本号）。
+     * 下载到自己的缓存目录，再交给系统安装；小米会弹一次安装确认。
+     */
+    private fun checkUpdate() {
+        val base = (Prefs.base(this) ?: baseField.text.toString()).trim().trimEnd('/')
+        if (base.isEmpty()) return toast("先填服务器地址")
+        statusText.text = "正在检查更新…"
+        Thread {
+            try {
+                val json = java.net.URL("$base/app/projdeck-agent.json").openConnection().run {
+                    connectTimeout = 10_000; readTimeout = 15_000
+                    (getInputStream().bufferedReader().readText())
+                }
+                val obj = org.json.JSONObject(json)
+                val code = obj.optLong("versionCode", 0)
+                val version = obj.optString("version", "?")
+                if (code <= currentVersionCode()) {
+                    main.post { toast("已经是最新版本（$version）"); refresh() }
+                    return@Thread
+                }
+                main.post { statusText.text = "正在下载 $version…" }
+                val dir = java.io.File(cacheDir, "updates").apply { mkdirs() }
+                val apk = java.io.File(dir, "projdeck-agent-$version.apk")
+                java.net.URL("$base/app/projdeck-agent.apk").openConnection().run {
+                    connectTimeout = 15_000; readTimeout = 60_000
+                    getInputStream().use { input -> apk.outputStream().use { input.copyTo(it) } }
+                }
+                main.post {
+                    refresh()
+                    installApk(apk)
+                }
+            } catch (e: Exception) {
+                main.post {
+                    refresh()
+                    toast("检查更新失败：${e.message ?: e.javaClass.simpleName}")
+                }
+            }
+        }.start()
+    }
+
+    private fun installApk(apk: java.io.File) {
+        try {
+            val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.files", apk)
+            startActivity(
+                Intent(Intent.ACTION_VIEW)
+                    .setDataAndType(uri, "application/vnd.android.package-archive")
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        } catch (e: Exception) {
+            toast("打开安装程序失败：${e.message}")
+        }
+    }
 
     private fun batteryUnrestricted() {
         try {

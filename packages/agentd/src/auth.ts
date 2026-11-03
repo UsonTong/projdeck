@@ -9,6 +9,11 @@ const scryptAsync = promisify(scrypt) as (pw: string, salt: Buffer, len: number)
 export const SESSION_COOKIE = "projdeck_session";
 /** 公网入口（projdeck-edge nginx）设置的访问 key cookie，见 deploy/projdeck-edge.conf。 */
 export const ACCESS_KEY_COOKIE = "projdeck_key";
+/**
+ * 被控端（手机上的 projdeck 被控端 App）专用：只能连 /ws/adb 这个转发通道，访问不了服务器的其他任何接口。
+ * 由网页「设备」页生成，一台设备一把，可以单独吊销。和上面的访问 key 是两回事。
+ */
+export const AGENT_COOKIE = "projdeck_agent";
 
 /**
  * 访问 key 校验：带有效 key 即视为已登录（公网入口只用 key，不再要密码）。
@@ -118,5 +123,70 @@ export class LoginLimiter {
 
   reset(ip: string): void {
     this.failures.delete(ip);
+  }
+}
+
+export interface AgentKeySummary {
+  id: string;
+  name: string;
+  createdAt: number;
+  lastUsedAt: number | null;
+}
+
+interface StoredAgentKey extends AgentKeySummary {
+  /** 只存 token 的 SHA-256：文件泄露也无法冒充被控端 */
+  tokenHash: string;
+}
+
+/** 被控端密钥：一台设备一把，只能用于 /ws/adb；每次用到更新 lastUsedAt（一分钟内不重复写盘）。 */
+export class AgentKeys {
+  private readonly file: string;
+  private keys: StoredAgentKey[];
+  private lastFlush = 0;
+
+  constructor(file = join(configDir, "agent-keys.json")) {
+    this.file = file;
+    this.keys = readJson<StoredAgentKey[]>(file, []);
+  }
+
+  list(): AgentKeySummary[] {
+    return this.keys.map(({ tokenHash: _t, ...rest }) => rest);
+  }
+
+  /** 生成一把新密钥，返回明文（只在这里出现一次，之后只有哈希）。 */
+  issue(name: string): { key: AgentKeySummary; token: string } {
+    const token = "pdagent_" + randomBytes(24).toString("base64url");
+    const key: StoredAgentKey = {
+      id: randomBytes(8).toString("hex"),
+      name: name.trim().slice(0, 40) || "未命名设备",
+      createdAt: Date.now(),
+      lastUsedAt: null,
+      tokenHash: sha256(token),
+    };
+    this.keys.push(key);
+    writeJson(this.file, this.keys);
+    const { tokenHash: _t, ...summary } = key;
+    return { key: summary, token };
+  }
+
+  valid(token: string | undefined): boolean {
+    if (!token) return false;
+    const h = sha256(token);
+    const found = this.keys.find((k) => k.tokenHash === h);
+    if (!found) return false;
+    found.lastUsedAt = Date.now();
+    if (Date.now() - this.lastFlush > 60_000) {
+      this.lastFlush = Date.now();
+      writeJson(this.file, this.keys);
+    }
+    return true;
+  }
+
+  revoke(id: string): boolean {
+    const before = this.keys.length;
+    this.keys = this.keys.filter((k) => k.id !== id);
+    if (this.keys.length === before) return false;
+    writeJson(this.file, this.keys);
+    return true;
   }
 }
