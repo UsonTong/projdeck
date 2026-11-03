@@ -159,9 +159,15 @@ function Count({ n }: { n: number }) {
 }
 
 /** 列表右上角的排序方式：直接点选，不用下拉菜单。 */
-function SortSwitch<T extends string>(props: { value: T; options: { value: T; label: string; hint: string }[]; onChange: (v: T) => void }) {
+function SortSwitch<T extends string>(props: {
+  value: T;
+  options: { value: T; label: string; hint: string }[];
+  onChange: (v: T) => void;
+  /** 同一行右侧的内容（排序在左、这个在右） */
+  children?: React.ReactNode;
+}) {
   return (
-    <div className="flex items-center justify-end px-2 pb-1.5">
+    <div className={cn("flex items-center px-2 pb-1.5", props.children ? "justify-between gap-2" : "justify-end")}>
       <div className="flex shrink-0 rounded-md bg-muted p-0.5">
         {props.options.map((o) => (
           <Tooltip key={o.value}>
@@ -180,6 +186,7 @@ function SortSwitch<T extends string>(props: { value: T; options: { value: T; la
           </Tooltip>
         ))}
       </div>
+      {props.children}
     </div>
   );
 }
@@ -732,32 +739,31 @@ function UnassignedTab({ sessions, activePane }: { sessions: Session[]; activePa
   };
   // 新开会话：和项目一样直接点图标，在主目录里启动，不属于任何项目
   const starters = (
-    <div className="flex items-center justify-end gap-2 px-2 pb-1">
-      <div className="flex shrink-0 items-center">
-        {AGENT_KINDS.map((k) => (
-          <IconAction key={k} label={`新开 ${KIND_LABEL[k]}（在主目录）`} onClick={() => void start(k)}>
-            <AgentIcon kind={k} size="xs" plus />
-          </IconAction>
-        ))}
-        <IconAction label="新开终端（在主目录）" onClick={() => void start("shell")}>
-          <AgentIcon kind="shell" size="xs" plus />
+    <div className="flex shrink-0 items-center">
+      {AGENT_KINDS.map((k) => (
+        <IconAction key={k} label={`新开 ${KIND_LABEL[k]}（在主目录）`} onClick={() => void start(k)}>
+          <AgentIcon kind={k} size="xs" plus />
         </IconAction>
-      </div>
+      ))}
+      <IconAction label="新开终端（在主目录）" onClick={() => void start("shell")}>
+        <AgentIcon kind="shell" size="xs" plus />
+      </IconAction>
     </div>
   );
 
   if (sessions.length === 0) {
     return (
       <div className="flex flex-col gap-0.5">
-        {starters}
+        <div className="flex justify-end px-2 pb-1">{starters}</div>
         <SectionEmpty icon={<InboxIcon />} title="没有未归属的会话" description="不在任何项目文件夹里启动的会话会出现在这里，也可以点上方图标在主目录里新开。" />
       </div>
     );
   }
   return (
     <div className="flex flex-col gap-0.5">
-      {starters}
-      <SortSwitch value={sort} options={UNASSIGNED_SORTS} onChange={(v) => setDevicePref("unassignedSort", v)} />
+      <SortSwitch value={sort} options={UNASSIGNED_SORTS} onChange={(v) => setDevicePref("unassignedSort", v)}>
+        {starters}
+      </SortSwitch>
       {sort === "herdr" ? (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={() => (draggedRef.current = true)} onDragEnd={onDragEnd}>
           <SortableContext items={shown.map((s) => s.paneId)} strategy={verticalListSortingStrategy}>

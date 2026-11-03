@@ -445,11 +445,9 @@ class _UnassignedTab extends StatelessWidget {
     }
 
     // 新开会话：和项目一样直接点图标，在主目录里启动，不属于任何项目
-    final starters = Padding(
-      padding: const EdgeInsets.fromLTRB(12, 2, 4, 0),
-      child: Row(
-        children: [
-          const Spacer(),
+    final starters = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
           for (final k in agentKinds)
             _IconTap(tooltip: '新开 ${kindLabel[k]}（在主目录）', onTap: () => start(k), child: AgentIcon(kind: k, size: 24, plus: true)),
           _IconTap(
@@ -457,21 +455,18 @@ class _UnassignedTab extends StatelessWidget {
             onTap: () => start(SessionKind.shell),
             child: const AgentIcon(kind: SessionKind.shell, size: 24, plus: true),
           ),
+      ],
+    );
+    // 排序在左、新开会话的图标在右，同一行
+    final header = Padding(
+      padding: const EdgeInsets.fromLTRB(12, 2, 4, 4),
+      child: Row(
+        children: [
+          SegmentedSwitch(value: sort, options: unassignedSortLabels, onChanged: (v) => app.unassignedSort = v),
+          const Spacer(),
+          starters,
         ],
       ),
-    );
-    final header = Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        starters,
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: SegmentedSwitch(value: sort, options: unassignedSortLabels, onChanged: (v) => app.unassignedSort = v),
-          ),
-        ),
-      ],
     );
     if (sorted.isEmpty) {
       return ListView(
