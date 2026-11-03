@@ -159,7 +159,9 @@ export function OverviewPage({ activePane, activeFiles, enter }: { activePane: s
 }
 
 function Count({ n }: { n: number }) {
-  return <span className="ml-1 rounded-full bg-muted px-1.5 text-[10px] leading-4 text-muted-foreground tabular-nums">{n}</span>;
+  return (
+    <span className="ml-1 min-w-4 rounded-full bg-foreground/10 px-1.5 text-center text-[10px] leading-4 text-foreground/70 tabular-nums">{n}</span>
+  );
 }
 
 /** 列表右上角的排序方式：直接点选，不用下拉菜单。 */

@@ -1,9 +1,54 @@
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type { ClientMessage, ServerMessage } from "@projdeck/shared";
 import type { WebSocket } from "ws";
 import type { HerdrClient } from "./herdr/client.ts";
 import type { ProjdeckService } from "./service.ts";
 
 const OVERVIEW_POLL_MS = 2_000;
+
+/**
+ * 输入框草稿：存在本机（重启后还在），并实时推给所有连着的页面 / 手机。
+ * 发送、清空都由客户端发 op:"draft"。按会话记，发消息后客户端发空串清掉。
+ */
+class DraftStore {
+  private drafts = new Map<string, { text: string; at: number }>();
+  private readonly file: string;
+  constructor(file: string) {
+    this.file = file;
+    try {
+      const saved = JSON.parse(readFileSync(file, "utf8")) as Record<string, { text: string; at: number }>;
+      for (const [k, v] of Object.entries(saved)) if (v?.text) this.drafts.set(k, v);
+    } catch {
+      // 没有草稿文件
+    }
+  }
+
+  get(paneId: string): { text: string; at: number } | null {
+    const d = this.drafts.get(paneId);
+    return d ? { ...d } : null;
+  }
+
+  set(paneId: string, text: string): { text: string; at: number } {
+    const d = { text, at: Date.now() };
+    if (text.trim()) this.drafts.set(paneId, d);
+    else this.drafts.delete(paneId);
+    this.save();
+    return d;
+  }
+
+  private timer: NodeJS.Timeout | undefined;
+  private save(): void {
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => {
+      try {
+        writeFileSync(this.file, JSON.stringify(Object.fromEntries(this.drafts), null, 2) + "\n", { mode: 0o600 });
+      } catch {
+        // 写不了就只在内存里
+      }
+    }, 500);
+  }
+}
 const TRANSCRIPT_POLL_MS = 1_500;
 
 interface Watch {
@@ -23,6 +68,7 @@ interface Watch {
 export class LiveHub {
   private readonly service: ProjdeckService;
   private readonly clients = new Set<WebSocket>();
+  private readonly drafts = new DraftStore(join(process.env.PROJDECK_CONFIG_DIR ?? join(process.env.HOME ?? ".", ".config", "projdeck"), "drafts.json"));
   private readonly watches = new Map<string, Watch>();
   private lastOverview = "";
   private overviewTimer: NodeJS.Timeout | undefined;
@@ -47,8 +93,17 @@ export class LiveHub {
       } catch {
         return;
       }
-      if (msg.op === "watch") void this.watch(ws, msg.paneId);
+      if (msg.op === "watch") {
+        void this.watch(ws, msg.paneId);
+        // 打开会话时把现有草稿同步过来
+        const d = this.drafts.get(msg.paneId);
+        if (d) send(ws, { type: "draft", paneId: msg.paneId, text: d.text, at: d.at });
+      }
       if (msg.op === "unwatch") this.unwatch(ws, msg.paneId);
+      if (msg.op === "draft") {
+        const d = this.drafts.set(msg.paneId, String(msg.text ?? "").slice(0, 20_000));
+        this.broadcast({ type: "draft", paneId: msg.paneId, text: d.text, at: d.at });
+      }
     });
     ws.on("close", () => {
       this.clients.delete(ws);

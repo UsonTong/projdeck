@@ -35,14 +35,18 @@ class _SessionPageState extends State<SessionPage> {
   @override
   void initState() {
     super.initState();
+    // 每个会话单独记住上次看的是终端还是对话：返回再进来还是那个视图
     SharedPreferences.getInstance().then((p) {
-      if (_view == null && mounted) setState(() => _view = p.getString('view') == 'chat' ? SessionView.chat : SessionView.terminal);
+      if (_view == null && mounted) {
+        final saved = p.getString('view:${widget.paneId}') ?? p.getString('view');
+        setState(() => _view = saved == 'chat' ? SessionView.chat : SessionView.terminal);
+      }
     });
   }
 
   void _setView(SessionView v) {
     setState(() => _view = v);
-    SharedPreferences.getInstance().then((p) => p.setString('view', v.name));
+    SharedPreferences.getInstance().then((p) => p.setString('view:${widget.paneId}', v.name));
   }
 
   /// 换到相邻的会话：新页面从滑动的方向进来。
@@ -250,15 +254,20 @@ class _ChatViewState extends State<_ChatView> {
     _add([f]);
   }
 
+  final _focus = FocusNode();
+
   @override
   void initState() {
     super.initState();
     _app = AppScope.read(context);
     _app.watch(widget.session.paneId);
+    // 先显示其他设备（或上次）留下的草稿
+    _input.text = _app.drafts[widget.session.paneId] ?? '';
   }
 
   @override
   void dispose() {
+    _focus.dispose();
     _app.unwatch(widget.session.paneId);
     _input.dispose();
     super.dispose();
@@ -276,6 +285,7 @@ class _ChatViewState extends State<_ChatView> {
     setState(() => _sending = false);
     if (ok == true) {
       _input.clear();
+      _app.clearDraft(widget.session.paneId);
       setState(() => _attachments.clear());
     }
   }
@@ -284,6 +294,15 @@ class _ChatViewState extends State<_ChatView> {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final p = Palette.of(context);
+    // 别的设备改了草稿：没在输入时跟着变
+    final remote = app.drafts[widget.session.paneId] ?? '';
+    if (!_focus.hasFocus && remote != _input.text) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_focus.hasFocus && remote != _input.text) {
+          _input.value = TextEditingValue(text: remote, selection: TextSelection.collapsed(offset: remote.length));
+        }
+      });
+    }
     final t = app.transcripts[widget.session.paneId];
     final entries = t?.entries ?? const [];
     return Column(
@@ -355,6 +374,8 @@ class _ChatViewState extends State<_ChatView> {
                   Expanded(
                     child: TextField(
                       controller: _input,
+                      focusNode: _focus,
+                      onChanged: (v) => _app.setDraft(widget.session.paneId, v),
                       minLines: 1,
                       maxLines: 6,
                       textInputAction: TextInputAction.newline,

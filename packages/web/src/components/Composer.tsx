@@ -11,6 +11,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { formatSize, uploadFile } from "@/lib/upload";
 import { cn } from "@/lib/utils";
 import { api } from "../api.ts";
+import { useLive } from "../live.ts";
 
 interface Attachment {
   id: number;
@@ -25,7 +26,7 @@ interface Attachment {
 
 let nextId = 0;
 
-/** 草稿按会话保存，切换会话或刷新页面不丢失。 */
+/** 草稿按会话保存：本机一份（刷新页面不丢），另外通过 live 同步到电脑和手机上的其他页面。 */
 const draftKey = (paneId: string) => `projdeck:draft:${paneId}`;
 
 export function Composer(props: {
@@ -36,7 +37,13 @@ export function Composer(props: {
   onSent?: () => void;
 }) {
   const { paneId, kind } = props;
-  const [text, setText] = useState(() => localStorage.getItem(draftKey(paneId)) ?? "");
+  const live = useLive();
+  const [text, setTextState] = useState(() => live.getDraft(paneId) || localStorage.getItem(draftKey(paneId)) || "");
+  const [focused, setFocused] = useState(false);
+  const setText = (v: string) => {
+    setTextState(v);
+    live.setDraft(paneId, v);
+  };
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [sending, setSending] = useState(false);
   // 发送成功后发送按钮短暂显示对勾
@@ -53,6 +60,14 @@ export function Composer(props: {
     if (text) localStorage.setItem(draftKey(paneId), text);
     else localStorage.removeItem(draftKey(paneId));
   }, [paneId, text]);
+
+  // 别的设备改了草稿：没在输入时跟着变；正在输入就以本地为准
+  useEffect(() => {
+    if (focused) return;
+    const remote = live.getDraft(paneId);
+    if (remote && remote !== text) setTextState(remote);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live.version, paneId, focused]);
 
   const addFiles = (files: File[]) => {
     if (!files.length) return;
@@ -97,7 +112,8 @@ export function Composer(props: {
     setSending(true);
     try {
       await api.prompt(paneId, text, ready.map((a) => a.path!));
-      setText("");
+      live.clearDraft(paneId);
+      setTextState("");
       attachments.forEach((a) => a.preview && URL.revokeObjectURL(a.preview));
       setAttachments([]);
       setSent(true);
@@ -131,6 +147,8 @@ export function Composer(props: {
           value={text}
           placeholder={kind === "shell" ? "输入命令" : dragging ? "松开以上传" : "输入消息，可粘贴或拖入图片和文件"}
           onChange={(e) => setText(e.target.value)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
           onPaste={onPaste}
           onKeyDown={(e) => {
             // 电脑上 Ctrl/⌘+Enter 发送；手机上回车只换行，用发送按钮提交

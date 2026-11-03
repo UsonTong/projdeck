@@ -179,13 +179,17 @@ export interface TerminalTheme {
 
 export type ClientMessage =
   | { op: "watch"; paneId: string }
-  | { op: "unwatch"; paneId: string };
+  | { op: "unwatch"; paneId: string }
+  /** 输入框里的草稿：各端实时同步（谁在输入就以谁的为准） */
+  | { op: "draft"; paneId: string; text: string };
 
 export type ServerMessage =
   | { type: "overview"; overview: Overview }
   | { type: "transcript"; paneId: string; page: TranscriptPage }
   /** 本机 Ghostty 配色变了（例如 dankcolors 随壁纸重新生成），前端重新获取主题。 */
-  | { type: "theme" };
+  | { type: "theme" }
+  /** 某个会话的输入框草稿（另一台设备上改的，或者刚打开时同步过来的） */
+  | { type: "draft"; paneId: string; text: string; at: number };
 
 /** CC Switch 里一个应用（Claude Code、Codex……）的供应商。不含任何配置和密钥。 */
 export interface CcSwitchApp {

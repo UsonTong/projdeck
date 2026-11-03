@@ -32,6 +32,9 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   Duration _backoff = const Duration(milliseconds: 500);
   Timer? _retry;
   final Map<String, int> _watching = {};
+  /// 各会话输入框的草稿，电脑和手机会实时同步
+  final Map<String, String> drafts = {};
+  Timer? _draftTimer;
   final Map<String, PaneTranscript> transcripts = {};
   bool _disposed = false;
 
@@ -104,6 +107,12 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       case 'theme':
         refreshTheme();
         return;
+      case 'draft':
+        // 服务端广播的草稿；正在输入时（见 setDraft 的标记）不覆盖
+        final paneId = msg['paneId'] as String;
+        if (paneId != _typingPane) {
+          drafts[paneId] = msg['text'] as String? ?? '';
+        }
       case 'transcript':
         final t = transcripts.putIfAbsent(msg['paneId'], PaneTranscript.new);
         final page = msg['page'] as Map<String, dynamic>;
@@ -121,6 +130,25 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   /// 开始 / 停止接收某个会话的对话记录（可以多处同时看同一个会话）。
+  /// 正在输入草稿的会话：这期间别的设备发来的草稿不覆盖本地输入。
+  String? _typingPane;
+
+  /// 输入时调用：本地立即生效，400ms 后才发给服务端。
+  void setDraft(String paneId, String text) {
+    drafts[paneId] = text;
+    _typingPane = text.trim().isEmpty ? null : paneId;
+    _draftTimer?.cancel();
+    _draftTimer = Timer(const Duration(milliseconds: 400), () => _send({'op': 'draft', 'paneId': paneId, 'text': text}));
+  }
+
+  /// 发送后清空草稿，并立刻告诉其他设备。
+  void clearDraft(String paneId) {
+    _draftTimer?.cancel();
+    _typingPane = null;
+    drafts[paneId] = '';
+    _send({'op': 'draft', 'paneId': paneId, 'text': ''});
+  }
+
   void watch(String paneId) {
     _watching[paneId] = (_watching[paneId] ?? 0) + 1;
     if (_watching[paneId] == 1) _send({'op': 'watch', 'paneId': paneId});

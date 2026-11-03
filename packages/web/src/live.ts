@@ -19,6 +19,9 @@ class LiveConnection {
   private ws: WebSocket | null = null;
   private listeners = new Set<Listener>();
   private panes = new Map<string, PaneState>();
+  /** 各会话输入框的草稿：服务端保存，所有设备实时同步 */
+  private drafts = new Map<string, { text: string; at: number }>();
+  private draftTimer: ReturnType<typeof setTimeout> | undefined;
   private watching = new Map<string, number>();
   private backoff = 500;
   private started = false;
@@ -60,6 +63,11 @@ class LiveConnection {
   private handle(msg: ServerMessage): void {
     if (msg.type === "theme") return refreshTheme(true);
     if (msg.type === "overview") this.overview = msg.overview;
+    if (msg.type === "draft") {
+      // 服务端广播的草稿可能比自己本地旧（网络乱序），按时间取新的
+      const cur = this.drafts.get(msg.paneId);
+      if (!cur || msg.at >= cur.at) this.drafts.set(msg.paneId, { text: msg.text, at: msg.at });
+    }
     if (msg.type === "transcript") {
       const p = this.pane(msg.paneId);
       const { page } = msg;
@@ -82,6 +90,24 @@ class LiveConnection {
 
   getPane(paneId: string): PaneState | undefined {
     return this.panes.get(paneId);
+  }
+
+  getDraft(paneId: string): string {
+    return this.drafts.get(paneId)?.text ?? "";
+  }
+
+  /** 输入时调用：本地立刻生效，400ms 后才发给服务端，免得每个字都推一次。 */
+  setDraft(paneId: string, text: string): void {
+    this.drafts.set(paneId, { text, at: Date.now() });
+    clearTimeout(this.draftTimer);
+    this.draftTimer = setTimeout(() => this.send({ op: "draft", paneId, text }), 400);
+  }
+
+  /** 发送消息后清空草稿（立刻推送，避免别的设备短暂看到旧草稿）。 */
+  clearDraft(paneId: string): void {
+    clearTimeout(this.draftTimer);
+    this.drafts.set(paneId, { text: "", at: Date.now() });
+    this.send({ op: "draft", paneId, text: "" });
   }
 
   watch(paneId: string): () => void {
