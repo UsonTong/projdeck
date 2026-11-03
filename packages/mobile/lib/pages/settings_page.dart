@@ -20,11 +20,31 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   bool? _notify;
   bool _busy = false;
+  String? _version;
 
   @override
   void initState() {
     super.initState();
     Native.notificationsEnabled().then((v) => mounted ? setState(() => _notify = v) : null);
+    Native.appVersion().then((v) => mounted ? setState(() => _version = v['name'] as String?) : null);
+  }
+
+  /// 检查更新：服务器上发布了更新的版本就下载安装包（下载完成后点通知安装）。
+  Future<void> _checkUpdate() async {
+    final app = AppScope.read(context);
+    try {
+      final server = await app.api.androidApp();
+      final mine = await Native.appVersion();
+      if (server == null) return toast(context, '还没有发布新版本');
+      final latest = int.tryParse(server['version'].toString().split('+').last) ?? 0;
+      final current = (mine['code'] as num?)?.toInt() ?? 0;
+      final name = server['version'].toString().split('+').first;
+      if (latest <= current) return toast(context, '已经是最新版本');
+      await Native.download(Uri.parse('${app.conn.base}/app/projdeck.apk'), 'projdeck.apk', app.conn);
+      if (context.mounted) toast(context, '正在下载 $name，完成后点通知安装');
+    } catch (e) {
+      if (context.mounted) toast(context, '检查更新失败：$e', error: true);
+    }
   }
 
   Future<void> _setNotify(bool on) async {
@@ -81,6 +101,14 @@ class _SettingsPageState extends State<SettingsPage> {
             subtitle: Text('让公司电脑上的 adb 连到这台手机', style: TextStyle(color: p.mutedFg, fontSize: 12)),
             trailing: Icon(Icons.chevron_right_rounded, color: p.mutedFg),
             onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RemoteAdbPage())),
+          ),
+          _Section('版本'),
+          ListTile(
+            leading: const Icon(Icons.system_update_rounded),
+            title: const Text('检查更新'),
+            subtitle: Text(_version == null ? '当前版本读取中…' : '当前 $_version', style: TextStyle(color: p.mutedFg, fontSize: 12)),
+            trailing: Icon(Icons.refresh_rounded, color: p.mutedFg),
+            onTap: _checkUpdate,
           ),
           _Section('连接'),
           ListTile(

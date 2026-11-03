@@ -126,6 +126,12 @@ class Api {
   Future<void> prompt(String paneId, String text, List<String> files) => post('${pane(paneId)}/prompt', {'text': text, 'files': files});
   Future<void> keys(String paneId, List<String> keys) => post('${pane(paneId)}/keys', {'keys': keys});
 
+  /// 服务器上发布的安卓 App 版本（没有发布过返回 null）。
+  Future<Map<String, dynamic>?> androidApp() async {
+    final v = await get('/api/app');
+    return v is Map ? v.cast<String, dynamic>() : null;
+  }
+
   Future<void> updateProject(String id, Map<String, Object?> body) => patch('/api/projects/$id', body);
   Future<void> reorderProjects(List<String> ids) => post('/api/projects/order', {'ids': ids});
   Future<String> restore(String archiveId) async => (await post('/api/archive/$archiveId/restore'))['paneId'];

@@ -61,6 +61,12 @@ class MainActivity : FlutterActivity() {
                 // ---- 远程调试 ----
                 // 状态不能和配对、切 TCP、启动独立进程这些耗时的 adb 操作排同一个队，否则它们执行的那几秒页面拿不到状态，
                 // 三个步骤会全显示成「没完成」
+                "appVersion" -> {
+                    val info = packageManager.getPackageInfo(packageName, 0)
+                    @Suppress("DEPRECATION")
+                    val code = if (android.os.Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
+                    result.success(mapOf("name" to info.versionName, "code" to code))
+                }
                 "adbStatus" -> Thread {
                     val r = runCatching { RemoteAdb.status(this) }
                     runOnUiThread { r.fold({ result.success(it) }, { result.error("adb", it.message, null) }) }

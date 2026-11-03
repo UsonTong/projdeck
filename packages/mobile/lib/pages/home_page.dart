@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 
 import '../api/models.dart';
+import '../native.dart';
 import '../sort.dart';
 import '../state.dart';
 import '../theme.dart';
@@ -23,19 +26,52 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin {
+class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final TabController _tabs = TabController(length: 3, vsync: this);
   // 电脑上装了 CC Switch 才显示它的入口
   bool _ccswitch = false;
+  // 服务器上发布了更新的版本时，这里放着新版本号；关掉后本次不再提示
+  String? _newVersion;
+  bool _updateDismissed = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     AppScope.read(context).api.ccStatus().then((s) => mounted && s.installed ? setState(() => _ccswitch = true) : null, onError: (_) {});
+    _checkUpdate();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _checkUpdate();
+  }
+
+  /// 电脑上的 projdeck 发布了新的安卓版本就提示一下（版本号是「2.4.4+441178」这种，后面是 build 号）。
+  Future<void> _checkUpdate() async {
+    try {
+      final server = await AppScope.read(context).api.androidApp();
+      if (server == null) return;
+      final mine = await Native.appVersion();
+      final latest = int.tryParse(server['version'].toString().split('+').last) ?? 0;
+      final current = (mine['code'] as num?)?.toInt() ?? 0;
+      if (latest > current && mounted && !_updateDismissed) setState(() => _newVersion = server['version'].toString().split('+').first);
+    } catch (_) {
+      // 连不上就下次再说
+    }
+  }
+
+  Future<void> _downloadUpdate() async {
+    final app = AppScope.read(context);
+    final conn = app.conn;
+    if (!mounted) return;
+    await Native.download(Uri.parse('${conn.base}/app/projdeck.apk'), 'projdeck.apk', conn);
+    if (mounted) toast(context, '正在下载，完成后点通知安装');
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _tabs.dispose();
     super.dispose();
   }
@@ -118,6 +154,15 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                   ],
                 ),
               ),
+              if (_newVersion != null)
+                _UpdateBanner(
+                  version: _newVersion!,
+                  onUpdate: _downloadUpdate,
+                  onDismiss: () => setState(() {
+                    _updateDismissed = true;
+                    _newVersion = null;
+                  }),
+                ),
               if (!app.connected || (o != null && !o.herdrOnline)) _Banner(overview: o, connected: app.connected),
               Expanded(
                 child: o == null
@@ -167,6 +212,33 @@ class _TabLabel extends StatelessWidget {
 }
 
 /// 连不上电脑、或 herdr 没在运行。
+/// 有新版本：一条可以关掉的提示，点「更新」下载安装包（下载完成后点通知安装）。
+class _UpdateBanner extends StatelessWidget {
+  final String version;
+  final VoidCallback onUpdate;
+  final VoidCallback onDismiss;
+  const _UpdateBanner({required this.version, required this.onUpdate, required this.onDismiss});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+      padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+      decoration: BoxDecoration(color: p.done.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
+      child: Row(
+        children: [
+          Icon(Icons.system_update_rounded, size: 18, color: p.done),
+          const SizedBox(width: 8),
+          Expanded(child: Text('有新版本 $version', style: TextStyle(fontSize: 13, color: p.done))),
+          TextButton(onPressed: onUpdate, child: const Text('更新')),
+          IconButton(onPressed: onDismiss, icon: Icon(Icons.close_rounded, size: 18, color: p.mutedFg), tooltip: '这次不提示'),
+        ],
+      ),
+    );
+  }
+}
+
 class _Banner extends StatelessWidget {
   final Overview? overview;
   final bool connected;

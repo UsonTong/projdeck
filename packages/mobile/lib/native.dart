@@ -38,6 +38,10 @@ class Native {
   static Future<void> adbRelaySet(bool on, Connection conn) =>
       _ch.invokeMethod('adbRelaySet', {'on': on, 'base': conn.base.toString().replaceAll(RegExp(r'/$'), ''), 'key': conn.key});
 
+  /// 这个 App 自己的版本号和 build 号（和服务器上发布的新版本比较）。
+  static Future<Map<String, dynamic>> appVersion() async =>
+      (await _ch.invokeMethod<Map>('appVersion'))?.cast<String, dynamic>() ?? const {};
+
   /// 打开系统的「自启动管理」（手机重启、App 更新后让远程连接自己恢复）。
   static Future<bool> openAutostartSettings() async => await _ch.invokeMethod<bool>('openAutostartSettings') ?? false;
 
