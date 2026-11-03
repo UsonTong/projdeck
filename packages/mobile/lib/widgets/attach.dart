@@ -6,7 +6,7 @@ import '../native.dart';
 import '../theme.dart';
 import 'common.dart';
 
-enum _Source { gallery, files, clipboard }
+enum _Source { media, files, clipboard }
 
 Future<List<LocalFile>> _picked(List<PlatformFile> files) async => [for (final f in files) await _local(f)];
 
@@ -17,7 +17,7 @@ Future<LocalFile> _local(PlatformFile f) async {
   return local.isImage && length < 20 * 1024 * 1024 ? LocalFile.bytes(f.name, await f.readAsBytes(), mime: local.mime) : local;
 }
 
-/// 添加附件：相册里的图片、手机里的文件、剪贴板里的图片或文件。取消时返回空列表。
+/// 添加附件：相册里的图片 / 视频、手机里的文件、剪贴板里的图片或文件。取消时返回空列表。
 Future<List<LocalFile>> pickAttachments(BuildContext context) async {
   final p = Palette.of(context);
   final source = await showModalBottomSheet<_Source>(
@@ -29,7 +29,7 @@ Future<List<LocalFile>> pickAttachments(BuildContext context) async {
         mainAxisSize: MainAxisSize.min,
         children: [
           for (final (s, icon, label) in [
-            (_Source.gallery, Icons.photo_library_outlined, '相册里的图片'),
+            (_Source.media, Icons.photo_library_outlined, '相册里的图片 / 视频'),
             (_Source.files, Icons.attach_file_rounded, '手机里的文件'),
             (_Source.clipboard, Icons.content_paste_rounded, '粘贴剪贴板里的图片 / 文件'),
           ])
@@ -45,8 +45,8 @@ Future<List<LocalFile>> pickAttachments(BuildContext context) async {
   switch (source) {
     case null:
       return const [];
-    case _Source.gallery:
-      return _picked(await FilePicker.pickFiles(type: FileType.image));
+    case _Source.media:
+      return _picked(await FilePicker.pickFiles(type: FileType.media));
     case _Source.files:
       return _picked(await FilePicker.pickFiles());
     case _Source.clipboard:

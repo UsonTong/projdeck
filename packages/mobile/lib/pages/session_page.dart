@@ -428,7 +428,11 @@ class _AttachmentChip extends StatelessWidget {
                       padding: const EdgeInsets.all(8),
                       child: Row(
                         children: [
-                          Icon(Icons.insert_drive_file_outlined, size: 20, color: p.mutedFg),
+                          Icon(
+                            a.file.isVideo ? Icons.play_circle_outline_rounded : Icons.insert_drive_file_outlined,
+                            size: 20,
+                            color: p.mutedFg,
+                          ),
                           const SizedBox(width: 6),
                           Expanded(
                             child: Text(a.file.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)),

@@ -26,6 +26,7 @@ class LocalFile {
   }
 
   bool get isImage => mime.startsWith('image/');
+  bool get isVideo => mime.startsWith('video/');
 }
 
 /// 上传后的文件：本地绝对路径（发给 agent 的消息里附上它）。

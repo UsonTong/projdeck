@@ -35,15 +35,16 @@ class _SettingsPageState extends State<SettingsPage> {
     try {
       final server = await app.api.androidApp();
       final mine = await Native.appVersion();
+      if (!mounted) return;
       if (server == null) return toast(context, '还没有发布新版本');
       final latest = int.tryParse(server['version'].toString().split('+').last) ?? 0;
       final current = (mine['code'] as num?)?.toInt() ?? 0;
       final name = server['version'].toString().split('+').first;
       if (latest <= current) return toast(context, '已经是最新版本');
       await Native.download(Uri.parse('${app.conn.base}/app/projdeck.apk'), 'projdeck.apk', app.conn);
-      if (context.mounted) toast(context, '正在下载 $name，完成后点通知安装');
+      if (mounted) toast(context, '正在下载 $name，完成后点通知安装');
     } catch (e) {
-      if (context.mounted) toast(context, '检查更新失败：$e', error: true);
+      if (mounted) toast(context, '检查更新失败：$e', error: true);
     }
   }
 
