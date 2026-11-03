@@ -1,8 +1,0 @@
-dev.projdeck.remote.remote-adb-pngs-0 /home/yl/Repositories/projdeck/packages/remote-adb/build/generated/res/pngs/release
-dev.projdeck.remote.remote-adb-updated_navigation_xml-1 /home/yl/Repositories/projdeck/packages/remote-adb/build/generated/updated_navigation_xml/release
-dev.projdeck.remote.remote-adb-mergeReleaseResources-2 /home/yl/Repositories/projdeck/packages/remote-adb/build/intermediates/incremental/release/mergeReleaseResources/merged.dir
-dev.projdeck.remote.remote-adb-mergeReleaseResources-3 /home/yl/Repositories/projdeck/packages/remote-adb/build/intermediates/incremental/release/mergeReleaseResources/stripped.dir
-dev.projdeck.remote.remote-adb-release-4 /home/yl/Repositories/projdeck/packages/remote-adb/build/intermediates/merged_res/release/mergeReleaseResources
-dev.projdeck.remote.remote-adb-release-5 /home/yl/Repositories/projdeck/packages/remote-adb/build/intermediates/packaged_res/release/packageReleaseResources
-dev.projdeck.remote.remote-adb-main-6 /home/yl/Repositories/projdeck/packages/remote-adb/src/main/res
-dev.projdeck.remote.remote-adb-release-7 /home/yl/Repositories/projdeck/packages/remote-adb/src/release/res

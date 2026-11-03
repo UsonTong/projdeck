@@ -1,5 +1,0 @@
-dev.projdeck.remote
-drawable ic_notification
-string pairing_accessibility_desc
-string pairing_accessibility_label
-xml pairing_accessibility
