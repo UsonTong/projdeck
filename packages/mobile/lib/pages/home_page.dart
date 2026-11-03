@@ -449,7 +449,7 @@ class _UnassignedTab extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 2, 4, 0),
       child: Row(
         children: [
-          Expanded(child: Text('在 ~ 里新开', style: TextStyle(fontSize: 12, color: p.mutedFg))),
+          const Spacer(),
           for (final k in agentKinds)
             _IconTap(tooltip: '新开 ${kindLabel[k]}（在主目录）', onTap: () => start(k), child: AgentIcon(kind: k, size: 24, plus: true)),
           _IconTap(

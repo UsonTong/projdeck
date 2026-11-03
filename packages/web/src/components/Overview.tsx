@@ -732,8 +732,7 @@ function UnassignedTab({ sessions, activePane }: { sessions: Session[]; activePa
   };
   // 新开会话：和项目一样直接点图标，在主目录里启动，不属于任何项目
   const starters = (
-    <div className="flex items-center justify-between gap-2 px-2 pb-1">
-      <span className="truncate text-xs text-muted-foreground">在 ~ 里新开</span>
+    <div className="flex items-center justify-end gap-2 px-2 pb-1">
       <div className="flex shrink-0 items-center">
         {AGENT_KINDS.map((k) => (
           <IconAction key={k} label={`新开 ${KIND_LABEL[k]}（在主目录）`} onClick={() => void start(k)}>
