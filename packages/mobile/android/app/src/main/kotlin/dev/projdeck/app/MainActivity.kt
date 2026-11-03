@@ -1,5 +1,11 @@
 package dev.projdeck.app
 
+import dev.projdeck.remote.AdbPairingService
+import dev.projdeck.remote.AdbRelayService
+import dev.projdeck.remote.Prefs
+import dev.projdeck.remote.RelayLog
+import dev.projdeck.remote.RemoteAdb
+
 import android.Manifest
 import android.app.DownloadManager
 import android.content.ClipboardManager

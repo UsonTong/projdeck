@@ -94,3 +94,19 @@ R8 会把没人引用的 `RelayMain` 删掉，要在 `proguard-rules.pro` 里 ke
 踩到的坑：libadb 的 `openStream("shell:…")` 按**字符数**而不是字节数算长度，命令里有中文就被截断、什么都不会执行；
 shell 没权限读 `/sys/class/power_supply`（SELinux），电量改用 `dumpsys battery`；
 独立进程崩溃的 3 秒空档里，App 内的备用转发不能立刻顶上（服务器上后连的顶掉先连的，两边会轮流把对方挤下线），所以等 12 秒。
+
+## 独立的被控端 App（2.5 / agent 1.0）
+
+被控端不再只是 projdeck App 里的一个功能：
+
+- `packages/remote-adb`：安卓库模块（包名 `dev.projdeck.remote`），装着配对、授权、TCP 模式、转发（App 内 + 独立进程）、
+  开机恢复、配对助手服务。清单、资源（通知图标、无障碍配置）、proguard 规则都在库里，两个 App 合并即可用。
+- `packages/agent`：独立的「projdeck 被控端」App（`dev.projdeck.agent`，无 Flutter，原生界面）。只有：服务器地址 + 访问密钥、
+  远程连接开关、三步设置、保活入口。`packages/agent/release.sh` 编译并发布到 `~/.cache/projdeck/android/projdeck-agent.apk`，
+  agentd 在 `/app/projdeck-agent.apk` 提供下载，网页「设备」页底部有入口。
+- projdeck App 仍然保留「远程 adb」页（老用户不用动），但两边是各自独立的开启/关闭，**同一台手机不要同时开**：
+  服务端一次只接一台手机，会互相顶掉。
+
+被控端 App 第一次使用时同样要配对一次（它是自己的 adb 密钥，和 projdeck App 的不是同一把）：
+打开无障碍里的「远程调试配对助手」→ 开始配对 → 无线调试里点「使用配对码配对」→ 授权 → TCP 模式。
+之后「远程连接」自己保持；手机重启后由开机广播（需要「自启动」权限）和 App 打开时（onResume）恢复。

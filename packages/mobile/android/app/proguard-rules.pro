@@ -6,6 +6,3 @@
 -dontwarn android.sun.security.**
 -dontwarn com.android.org.conscrypt.**
 -dontwarn javax.naming.**
-
-# 独立转发进程由 app_process 按类名启动
--keep class dev.projdeck.app.RelayMain { public static void main(java.lang.String[]); }

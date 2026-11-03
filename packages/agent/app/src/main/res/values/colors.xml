@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 与 projdeck 的深色背景一致 -->
+    <color name="background">#11100E</color>
+    <color name="surface">#1B1A17</color>
+    <color name="text">#EDEAE3</color>
+    <color name="muted">#9A958A</color>
+    <color name="ok">#5FBF7F</color>
+    <color name="warn">#D8A657</color>
+</resources>

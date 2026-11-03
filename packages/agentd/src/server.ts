@@ -295,6 +295,12 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
     void reply.header("Content-Type", "application/vnd.android.package-archive").header("Content-Disposition", 'attachment; filename="projdeck.apk"');
     return reply.sendFile("projdeck.apk", appDir, { maxAge: 0, cacheControl: false });
   });
+  // 独立的「被控端」App（packages/agent）：只负责被远程控制，不含 projdeck 的界面
+  app.get("/app/projdeck-agent.apk", async (_req, reply) => {
+    if (!existsSync(join(appDir, "projdeck-agent.apk"))) throw httpError(404, "还没有发布被控端 App");
+    void reply.header("Content-Type", "application/vnd.android.package-archive").header("Content-Disposition", 'attachment; filename="projdeck-agent.apk"');
+    return reply.sendFile("projdeck-agent.apk", appDir, { maxAge: 0, cacheControl: false });
+  });
 
   // 远程 adb：手机 App 连上 /ws/adb，电脑上 adb 连 127.0.0.1:<adbRelayPort>（见 adbRelay.ts、docs/REMOTE_ADB.md）
   const adbRelay = new AdbRelay(config.adbRelayPort, "127.0.0.1", (m) => app.log.info(m));

@@ -1,21 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
-    <!-- libadb-android 的清单没写 targetSdkVersion，合并时会被默认加上旧版本的权限，这些都用不到 -->
-    <uses-permission android:name="android.permission.READ_PHONE_STATE" tools:node="remove" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <!-- 远程调试：用 adb 授权一次之后，App 才能自己打开 / 关闭无线调试（重启后自动恢复） -->
-    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
-    <!-- 配对时用 mDNS 找手机的无线调试服务 -->
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
-    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <application
         android:label="projdeck"
         android:name="${applicationName}"
@@ -47,30 +33,13 @@
             android:name=".NotifyService"
             android:exported="false"
             android:foregroundServiceType="remoteMessaging" />
-        <!-- 配对助手：配对时读取设置里的配对码，用完自己关闭 -->
-        <service
-            android:name=".PairingAccessibilityService"
-            android:exported="true"
-            android:label="@string/pairing_accessibility_label"
-            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
-            <intent-filter>
-                <action android:name="android.accessibilityservice.AccessibilityService" />
-            </intent-filter>
-            <meta-data
-                android:name="android.accessibilityservice"
-                android:resource="@xml/pairing_accessibility" />
-        </service>
         <!-- 远程调试：与服务器保持 WebSocket，把电脑的 adb 连接转给手机本机的 adbd -->
         <service
             android:name=".AdbRelayService"
             android:exported="false"
             android:foregroundServiceType="remoteMessaging" />
-        <service
-            android:name=".AdbPairingService"
-            android:exported="false"
-            android:foregroundServiceType="remoteMessaging" />
         <receiver
-            android:name=".BootReceiver"
+            android:name=".NotifyBootReceiver"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

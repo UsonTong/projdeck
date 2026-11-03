@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pairing_accessibility_desc">只在配对远程调试时，读取系统设置里显示的配对码，自动完成配对，完成后自动关闭。不读取其他应用的内容。</string>
+    <string name="pairing_accessibility_label">远程调试配对助手</string>
+</resources>

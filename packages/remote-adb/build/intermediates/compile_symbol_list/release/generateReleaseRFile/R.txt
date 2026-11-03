@@ -1,0 +1,4 @@
+int drawable ic_notification 0x0
+int string pairing_accessibility_desc 0x0
+int string pairing_accessibility_label 0x0
+int xml pairing_accessibility 0x0

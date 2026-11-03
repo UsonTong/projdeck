@@ -1,5 +1,5 @@
 import type { DeviceView } from "@projdeck/shared";
-import { ArrowLeftIcon, BatteryChargingIcon, BatteryIcon, CopyIcon, ShieldCheckIcon, SignalIcon, SmartphoneIcon, WifiIcon, WifiOffIcon } from "lucide-react";
+import { ArrowLeftIcon, BatteryChargingIcon, BatteryIcon, CopyIcon, DownloadIcon, ShieldCheckIcon, SignalIcon, SmartphoneIcon, WifiIcon, WifiOffIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -123,11 +123,24 @@ export function DevicesPage() {
             <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
               还没有设备连进来。
               <br />
-              在手机的 projdeck App 里打开「设置 → 远程 adb」，打开「远程连接」开关，手机就会出现在这里。
+              在手机上安装「projdeck 被控端」，填服务器地址和访问密钥，打开「远程连接」，手机就会出现在这里。
             </div>
           ) : (
             devices.map((d) => <DeviceCard key={d.id} d={d} now={now} />)
           )}
+          <a
+            href="/app/projdeck-agent.apk"
+            className="flex items-center gap-3 rounded-xl border bg-card p-4 text-sm transition-colors hover:bg-accent/60"
+          >
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted ring-1 ring-border">
+              <DownloadIcon className="size-5" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-medium">projdeck 被控端</span>
+              <span className="block truncate text-xs text-muted-foreground">装在被远程控制的手机上。只需要这一个 App，不用装 projdeck。</span>
+            </span>
+            <span className="shrink-0 text-xs text-muted-foreground">下载</span>
+          </a>
         </div>
       </div>
     </div>

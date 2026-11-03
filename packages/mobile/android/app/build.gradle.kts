@@ -55,14 +55,8 @@ android {
 }
 
 dependencies {
-    // 远程调试：App 里的 adb 客户端（无线调试配对、TLS 连接）
-    implementation("com.github.MuntashirAkon:libadb-android:3.1.1")
-    // 生成连接 adbd 用的 X509 证书（库的 README 推荐）
-    implementation("com.github.MuntashirAkon:sun-security-android:1.1")
-    // TLS 1.3：系统自带的 Conscrypt 不能直接用，自带一份，库发现它就会自动使用
-    implementation("org.conscrypt:conscrypt-android:2.5.3")
-    // 远程调试的转发：与服务器之间的 WebSocket
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // 远程调试（配对、授权、转发）放在共用库里，被控端 App 用的是同一份
+    implementation(project(":remote-adb"))
 }
 
 kotlin {

@@ -1,0 +1,128 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    xmlns:tools="http://schemas.android.com/tools"
+4    package="dev.projdeck.remote" >
+5
+6    <uses-sdk android:minSdkVersion="30" />
+6-->INJECTED
+6-->INJECTED
+7    <!-- libadb-android 的清单没写 targetSdkVersion，合并时会被默认加上旧版本的权限，这些都用不到 -->
+8    <uses-permission
+8-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:4:5-95
+9        android:name="android.permission.READ_PHONE_STATE"
+9-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:4:22-72
+10        tools:node="remove" />
+10-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:4:73-92
+11    <uses-permission
+11-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:5:5-100
+12        android:name="android.permission.READ_EXTERNAL_STORAGE"
+12-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:5:22-77
+13        tools:node="remove" />
+13-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:5:78-97
+14    <uses-permission
+14-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:6:5-101
+15        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+15-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:6:22-78
+16        tools:node="remove" />
+16-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:6:79-98
+17    <uses-permission android:name="android.permission.INTERNET" />
+17-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:7:5-67
+17-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:7:22-64
+18    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+18-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:8:5-79
+18-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:8:22-76
+19    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+19-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:9:5-77
+19-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:9:22-74
+20    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+20-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:10:5-77
+20-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:10:22-74
+21    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING" />
+21-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:11:5-94
+21-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:11:22-91
+22    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+22-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:12:5-81
+22-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:12:22-78
+23    <!-- 用 adb 授权一次之后，才能自己打开 / 关闭无线调试（重启后自动恢复） -->
+24    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
+24-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:14:5-80
+24-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:14:22-77
+25    <uses-permission android:name="android.permission.WAKE_LOCK" />
+25-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:15:5-68
+25-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:15:22-65
+26    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+26-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:16:5-95
+26-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:16:22-92
+27    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+27-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:17:5-76
+27-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:17:22-73
+28    <!-- 配对时用 mDNS 找手机的无线调试服务 -->
+29    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+29-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:19:5-86
+29-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:19:22-83
+30
+31    <application>
+31-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:21:5-52:19
+32
+33        <!-- 配对助手：配对时读取设置里的配对码，用完自己关闭 -->
+34        <service
+34-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:23:9-34:19
+35            android:name="dev.projdeck.remote.PairingAccessibilityService"
+35-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:24:13-75
+36            android:exported="true"
+36-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:25:13-36
+37            android:label="@string/pairing_accessibility_label"
+37-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:26:13-64
+38            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" >
+38-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:27:13-79
+39            <intent-filter>
+39-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:28:13-30:29
+40                <action android:name="android.accessibilityservice.AccessibilityService" />
+40-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:29:17-92
+40-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:29:25-89
+41            </intent-filter>
+42
+43            <meta-data
+43-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:31:13-33:65
+44                android:name="android.accessibilityservice"
+44-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:32:17-60
+45                android:resource="@xml/pairing_accessibility" />
+45-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:33:17-62
+46        </service>
+47        <!-- 与服务器保持 WebSocket，把电脑的 adb 连接转给手机本机的 adbd -->
+48        <service
+48-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:36:9-39:63
+49            android:name="dev.projdeck.remote.AdbRelayService"
+49-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:37:13-63
+50            android:exported="false"
+50-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:38:13-37
+51            android:foregroundServiceType="remoteMessaging" />
+51-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:39:13-60
+52        <service
+52-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:40:9-43:63
+53            android:name="dev.projdeck.remote.AdbPairingService"
+53-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:41:13-65
+54            android:exported="false"
+54-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:42:13-37
+55            android:foregroundServiceType="remoteMessaging" />
+55-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:43:13-60
+56
+57        <receiver
+57-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:44:9-51:20
+58            android:name="dev.projdeck.remote.RelayBootReceiver"
+58-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:45:13-65
+59            android:exported="true" >
+59-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:46:13-36
+60            <intent-filter>
+60-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:47:13-50:29
+61                <action android:name="android.intent.action.BOOT_COMPLETED" />
+61-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:48:17-79
+61-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:48:25-76
+62                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+62-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:49:17-84
+62-->/home/yl/Repositories/projdeck/packages/remote-adb/src/main/AndroidManifest.xml:49:25-81
+63            </intent-filter>
+64        </receiver>
+65    </application>
+66
+67</manifest>

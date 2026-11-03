@@ -24,3 +24,5 @@ plugins {
 }
 
 include(":app")
+include(":remote-adb")
+project(":remote-adb").projectDir = file("../../remote-adb")

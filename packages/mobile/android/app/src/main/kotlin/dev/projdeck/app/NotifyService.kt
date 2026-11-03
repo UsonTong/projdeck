@@ -1,5 +1,7 @@
 package dev.projdeck.app
 
+import dev.projdeck.remote.Prefs
+
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
