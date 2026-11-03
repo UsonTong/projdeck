@@ -359,12 +359,12 @@ class _ProjectGroup extends StatelessWidget {
                     _IconTap(
                       tooltip: '新开 ${kindLabel[k]}',
                       onTap: () => _start(context, k),
-                      child: AgentIcon(kind: k, size: 24, plus: true),
+                      child: AgentIcon(kind: k, size: 24),
                     ),
                   _IconTap(
                     tooltip: '新开临时终端',
                     onTap: () => _start(context, SessionKind.shell),
-                    child: const AgentIcon(kind: SessionKind.shell, size: 24, plus: true),
+                    child: const AgentIcon(kind: SessionKind.shell, size: 24),
                   ),
                   _IconTap(
                     tooltip: '文件',
@@ -449,11 +449,11 @@ class _UnassignedTab extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
           for (final k in agentKinds)
-            _IconTap(tooltip: '新开 ${kindLabel[k]}（在主目录）', onTap: () => start(k), child: AgentIcon(kind: k, size: 24, plus: true)),
+            _IconTap(tooltip: '新开 ${kindLabel[k]}（在主目录）', onTap: () => start(k), child: AgentIcon(kind: k, size: 24)),
           _IconTap(
             tooltip: '新开终端（在主目录）',
             onTap: () => start(SessionKind.shell),
-            child: const AgentIcon(kind: SessionKind.shell, size: 24, plus: true),
+            child: const AgentIcon(kind: SessionKind.shell, size: 24),
           ),
       ],
     );

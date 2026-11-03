@@ -414,11 +414,11 @@ function ProjectGroup(props: {
             <div className="flex shrink-0 items-center">
               {starters.map((k) => (
                 <IconAction key={k} label={`新开 ${KIND_LABEL[k]}`} onClick={() => void start(k)}>
-                  <AgentIcon kind={k} size="xs" plus />
+                  <AgentIcon kind={k} size="xs" />
                 </IconAction>
               ))}
               <IconAction label="新开临时终端" onClick={() => void start("shell")}>
-                <AgentIcon kind="shell" size="xs" plus />
+                <AgentIcon kind="shell" size="xs" />
               </IconAction>
               <IconAction label="文件" onClick={() => openFiles(project.id)} className={props.filesOpen ? "bg-accent" : undefined}>
                 <FolderOpenIcon />
@@ -754,11 +754,11 @@ function UnassignedTab({ sessions, activePane }: { sessions: Session[]; activePa
     <div className="flex shrink-0 items-center">
       {AGENT_KINDS.map((k) => (
         <IconAction key={k} label={`新开 ${KIND_LABEL[k]}（在主目录）`} onClick={() => void start(k)}>
-          <AgentIcon kind={k} size="xs" plus />
+          <AgentIcon kind={k} size="xs" />
         </IconAction>
       ))}
       <IconAction label="新开终端（在主目录）" onClick={() => void start("shell")}>
-        <AgentIcon kind="shell" size="xs" plus />
+        <AgentIcon kind="shell" size="xs" />
       </IconAction>
     </div>
   );
