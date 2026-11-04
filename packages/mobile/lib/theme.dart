@@ -145,55 +145,9 @@ ThemeData buildTheme(Palette p) {
         borderSide: BorderSide(color: p.ring),
       ),
     ),
-    pageTransitionsTheme: const PageTransitionsTheme(builders: {TargetPlatform.android: ProjdeckPageTransitions()}),
+    // 用系统自带的预测式返回：手势拖到一半就能看到上一页（Android 13+ 且是手势导航）
+    pageTransitionsTheme: const PageTransitionsTheme(builders: {TargetPlatform.android: PredictiveBackPageTransitionsBuilder()}),
   );
 }
 
 
-/// 页面切换：新页面从右侧推进并淡入（先快后慢），后面的页面同时向左退一点、压暗一层。
-/// 返回时反过来。比系统默认的缩放淡入更直接，也不会出现预测式返回里那种「缩小的窗口后面空一块」的感觉。
-class ProjdeckPageTransitions extends PageTransitionsBuilder {
-  const ProjdeckPageTransitions();
-
-  @override
-  Duration get transitionDuration => const Duration(milliseconds: 320);
-
-  @override
-  Widget buildTransitions<T>(
-    PageRoute<T> route,
-    BuildContext context,
-    Animation<double> animation,
-    Animation<double> secondaryAnimation,
-    Widget child,
-  ) {
-    final forward = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic, reverseCurve: Curves.easeInCubic);
-    final behind = CurvedAnimation(parent: secondaryAnimation, curve: Curves.easeOutCubic, reverseCurve: Curves.easeInCubic);
-    return SlideTransition(
-      // 被盖住的那一页：往左退 22%，并压暗
-      position: Tween(begin: Offset.zero, end: const Offset(-0.22, 0)).animate(behind),
-      child: Stack(
-        fit: StackFit.passthrough,
-        children: [
-          child,
-          IgnorePointer(
-            child: FadeTransition(
-              opacity: Tween(begin: 0.0, end: 0.35).animate(behind),
-              child: ColoredBox(color: Colors.black),
-            ),
-          ),
-        ],
-      ),
-    ).let((behindPage) => SlideTransition(
-      // 新的页面：从右边推进来
-      position: Tween(begin: const Offset(1, 0), end: Offset.zero).animate(forward),
-      child: FadeTransition(
-        opacity: Tween(begin: 0.6, end: 1.0).animate(forward),
-        child: behindPage,
-      ),
-    ));
-  }
-}
-
-extension _Let<T> on T {
-  R let<R>(R Function(T) f) => f(this);
-}
