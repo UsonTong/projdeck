@@ -38,9 +38,10 @@ systemctl --user disable --now projdeck-harness.service
 
 1. 在运行 projdeck agentd 的电脑上运行 Harness（例如 `dsh web --no-open`），保留它原有的模型与 workspace 设置。
 2. 打开 projdeck 网页「设置 → DeepSeek Harness」，粘贴 dsh 打印的本机启动链接（含 `?token=...`），点「接入」。不要把这个链接发到聊天、截图或 Git。
-3. 网页点击总览顶部的 D 图标，或直接打开 `/#/harness`；安卓 2.5.1 的 D 入口打开原生 WebView。
-4. 会话由原版侧栏统一管理，projdeck 项目/未归属列表不重复绘制 Harness 会话。点击项目旁的 D 也只是打开原版，不会额外创建空会话。
-5. 模型选择、权限确认、工具展示、附件等交互直接由原版网页处理。网页独占内容区，不叠加 projdeck 的项目侧栏；顶部只保留返回、刷新和单独打开按钮。旧 Harness 通知/路由也会转到原版，不依赖未公开的会话深链接。
+3. 网页左侧保留 projdeck 的项目/会话列表，Harness 会话也在其中；点击后右侧显示对应的原版聊天。项目旁 D 图标创建该目录下的 Harness 会话，总览顶部 D 打开最近的原版会话。
+4. 原版导航列仅在嵌入模式隐藏，不重绘聊天。切换左侧 Harness 会话时复用 iframe，通过同源消息桥调用原版的 `uiWorkspace.openSession`，避免显示错误会话或反复下载前端。
+5. 模型选择、权限确认、工具展示、附件等交互仍由原版网页处理；右上角「单独打开」使用 `/harness/`，保留完整原版侧栏。Harness 没有伪造的终端选项。
+6. 安卓 2.5.2 的 Harness 会话在现有 `SessionPage` 内容区内嵌 Android WebView，使用 `/harness/?embed=1&session=<原会话ID>` 选择同一个会话；顶部 D 仍可独立打开完整原版。
 
 仅允许本机 loopback HTTP 地址（`localhost`、`127.0.0.1`、`[::1]`）。本次只支持一个 Harness Host，不支持把任意外部 URL 当代理。
 
@@ -50,7 +51,9 @@ systemctl --user disable --now projdeck-harness.service
 - 启动链接仅经已认证的 `PUT /api/harness` 请求体交给 agentd；状态与总览接口只返回 configured/online/脱敏错误，不返回 token。
 - 同源 `/harness/*` 代理必须通过 projdeck 主登录认证；被控端密钥不能访问它。主密钥不转发给 Harness。
 - 原版网页代理在后端使用启动 token 换取浏览器会话 Cookie，Cookie 仅在后端内存保存，不转发 Set-Cookie 给客户端。HTTP 与 WebSocket 都代理到同一个本机 Host，修改 Origin 为上游地址，保留 Host 自身的信任校验，不开放新公网端口。
-- 代理保留原始请求体与查询串（尤其 `/plugins/??...` 组合资源）；不重绘消息，不改原版资源，不自动同意权限。读请求认证失效可重试，写请求不自动重放。
+- 代理保留原始请求体与查询串（尤其 `/plugins/??...` 组合资源）；不重绘消息、不修改原版安装文件、不自动同意权限。仅 `embed=1` 的启动 HTML 添加导航适配脚本。读请求认证失效可重试，写请求不自动重放。
+- 只有带版本号的纯静态 JS/CSS/字体资源使用 private immutable 缓存；HTML、API、附件不缓存，手机切会话不必反复下载整个前端。
+- 嵌入消息桥仅接受同源父窗口发来的会话 ID 和序号，不传 token、不执行任意脚本。安卓不使用 JS bridge，直接读取 URL 中的非敏感会话 ID。适配当前 `0.2.1-rc.2` 客户端模块协议，升级 Harness 后须回归；不支持时显示错误并提供完整原版入口。
 - 安卓 WebView 不提供 JS bridge，禁止 file:// 与外站内嵌，密钥仅在受信任域的 HttpOnly Cookie 内设置。原版上传通过系统文件选择器返回 content URI。
 - 连接配置保存在 `PROJDECK_CONFIG_DIR/harness.json`，默认 `~/.config/projdeck/harness.json`，权限 0600，不能提交。
 - Harness 进程重启后，如果旧启动 token 不再有效，需要重新粘贴新的启动链接。projdeck 不会读取用户的 Harness `.credentials.yaml`、账号或模型密钥来绕过授权。
@@ -77,7 +80,9 @@ systemctl --user disable --now projdeck-harness.service
 
 - 原版代理测试覆盖主密钥隔离、匿名/被控端拒绝访问、原始 JSON/二进制上传透传、组合插件查询串、重定向与 WebSocket 双向通信。
 - 独立 DSH_HOME + 隔离 agentd + Chrome 实际验证原版前端加载成功、无资源 404，`/harness/api/remote.mux` 已连接，并查看截图确认原版侧栏和界面。没有调用模型；没有重启现有 Harness。
-- 安卓 Flutter 检查及 release 编译通过，真机 WebView 与文件选择尚未验证。
+- Chrome 实际点击左侧两条隔离测试会话，确认右侧原版精确选中相应 ID、左侧 projdeck 保留、原版左栏宽度为 0，iframe 复用。没有调用模型。
+- 导航桥单元测试覆盖 bootstrap/live 加载器切换、父窗口/Origin 校验、无效会话拒绝、安卓顶层 WebView 的 session 参数。
+- 安卓 Flutter 检查、中文 IME/内嵌组件测试和 Kotlin 编译通过；真机 WebView 与文件选择尚未验证。
 - 本地假 HTTP/WS Host 覆盖鉴权、Cookie、RPC、超时、拒绝凭据外流、历史分页、修订、partial assistant、断线补历史与关闭。
 - 服务层集成测试在 herdr 离线时验证 Harness 创建、消息、历史、停止、归档/恢复，不调用 PTY。
 - LiveHub 测试覆盖多客户端共享订阅、重新配置后订阅重建、取消后的资源释放。

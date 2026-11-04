@@ -171,10 +171,9 @@ function Shell() {
     </div>
   );
 
-  // 原版 Harness 自带侧栏，使用完整视口，避免两层侧栏挤在一起。
-  if (route.kind === "harness" || (route.kind === "session" && route.paneId.startsWith("harness:"))) {
-    return <div className="flex h-full min-h-0 flex-col"><HarnessPage /></div>;
-  }
+  // 左边始终保留 projdeck 导航；Harness 仅占用右侧内容区，切换其会话时保持同一个 iframe。
+  const harnessView = route.kind === "harness" || (route.kind === "session" && route.paneId.startsWith("harness:"));
+  const details = harnessView ? <HarnessPage sessionId={route.kind === "session" ? route.paneId.slice("harness:".length) : undefined} /> : page;
 
   if (wide) {
     return (
@@ -184,7 +183,7 @@ function Shell() {
           <OverviewPage activePane={activePane} activeFiles={activeFiles} />
         </aside>
         <main className="flex min-h-0 min-w-0 flex-col">
-          {page ?? <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">选择一个会话</div>}
+          {details ?? <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">选择一个会话</div>}
         </main>
       </div>
     );
@@ -192,7 +191,7 @@ function Shell() {
   return (
     <div className="flex h-full flex-col">
       <Banner />
-      {page ?? <OverviewPage key={enter} activePane={null} activeFiles={null} enter={enter === "motion-from-left" ? enter : undefined} />}
+      {details ?? <OverviewPage key={enter} activePane={null} activeFiles={null} enter={enter === "motion-from-left" ? enter : undefined} />}
     </div>
   );
 }

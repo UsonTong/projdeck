@@ -96,8 +96,7 @@ export function OverviewPage({ activePane, activeFiles, enter }: { activePane: s
     );
   }
 
-  // Harness 的会话统一由原版侧栏管理，不在这里再重绘一份。
-  const visible = (s: Session) => s.kind !== "harness" && (showHidden || !s.hidden);
+  const visible = (s: Session) => showHidden || !s.hidden;
   const hiddenCount = [...overview.projects.flatMap((p) => p.sessions), ...overview.unassigned].filter((s) => s.hidden).length;
   const unassigned = overview.unassigned.filter(visible);
   const archivedCount = overview.archived.length + overview.projects.filter((p) => p.archived).length;
@@ -377,7 +376,6 @@ function ProjectGroup(props: {
   const [editingNote, setEditingNote] = useState(false);
 
   const start = async (kind: SessionKind) => {
-    if (kind === "harness") return openHarness();
     try {
       const { paneId } = await api.startSession(project.id, kind);
       if (kind !== "shell") markLaunching(paneId);
@@ -754,7 +752,6 @@ function UnassignedTab({ sessions, activePane }: { sessions: Session[]; activePa
   };
 
   const start = async (kind: SessionKind) => {
-    if (kind === "harness") return openHarness();
     try {
       const { paneId } = await api.startUnassignedSession(kind);
       if (kind !== "shell") markLaunching(paneId);

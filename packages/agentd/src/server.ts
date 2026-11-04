@@ -415,6 +415,10 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
   });
 
   // 独立的 Harness 后端。启动链接含凭据，只通过请求体接收，不返回、不写请求 URL 日志。
+  app.get("/api/harness/embed.js", async (_req, reply) => {
+    return reply.type("text/javascript; charset=utf-8").header("Cache-Control", "private, no-store")
+      .send(readFileSync(new URL("./harness/embed.js", import.meta.url), "utf8"));
+  });
   app.get("/api/harness", async () => service.harness.status());
   app.put<{ Body: { connectionUrl?: string } }>("/api/harness", async (req) => {
     if (typeof req.body?.connectionUrl !== "string") throw httpError(400, "请粘贴本机 Harness 的启动链接");

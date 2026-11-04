@@ -111,7 +111,12 @@ export class HarnessWebProxy {
     if (typeof csp === "string") out["content-security-policy"] = csp.replace(/frame-ancestors\s+[^;]+;?/gi, "") + "; frame-ancestors 'self'";
     out["x-frame-options"] = "SAMEORIGIN";
     out["referrer-policy"] = "no-referrer";
-    out["cache-control"] = "private, no-store";
+    // 原版版本化的纯静态资源可缓存，手机再次进入会话不必重下整套前端；HTML/接口/附件始终不缓存。
+    const asset = url.pathname.startsWith(new URL("assets/", t.base).pathname) && /-[\w-]{6,}\.[\w]+$/.test(url.pathname);
+    const plugin = url.pathname.startsWith(new URL("plugins/", t.base).pathname) && url.searchParams.has("rev");
+    const staticType = /javascript|text\/css|^font\/|^image\//i.test(String(res.headers["content-type"]));
+    out["cache-control"] = req.method === "GET" && res.statusCode === 200 && staticType && (asset || plugin)
+      ? "private, max-age=31536000, immutable" : "private, no-store";
     if (res.headers.location) {
       const location = new URL(res.headers.location, url);
       const base = new URL(t.base);
@@ -121,8 +126,21 @@ export class HarnessWebProxy {
       }
       out.location = PREFIX + location.pathname.slice(base.pathname.length) + location.search + location.hash;
     }
+    let embedded: Buffer | undefined;
+    if (req.method === "GET" && url.pathname === new URL(t.base).pathname && url.searchParams.get("embed") === "1" && /^text\/html/i.test(String(res.headers["content-type"]))) {
+      const chunks: Buffer[] = [];
+      let size = 0;
+      for await (const chunk of res) {
+        size += chunk.length;
+        if (size > 8 * 1024 * 1024) throw error(502, "Harness 启动页面过大");
+        chunks.push(Buffer.from(chunk));
+      }
+      embedded = Buffer.from(Buffer.concat(chunks).toString("utf8").replace(/<head(?:\s[^>]*)?>/i, (head) => `${head}<script src="/api/harness/embed.js"></script>`));
+      delete out["content-length"];
+    }
     reply.hijack();
     reply.raw.writeHead(res.statusCode ?? 502, out);
+    if (embedded) { reply.raw.end(embedded); return; }
     const abort = () => res.destroy();
     reply.raw.once("close", abort);
     res.once("error", () => reply.raw.destroy());

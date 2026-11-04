@@ -36,6 +36,10 @@ async function fixture() {
       if (url.pathname === "/redirect") { res.writeHead(302, { location: "/assets/app.js" }).end(); return; }
       if (url.pathname === "/escape") { res.writeHead(302, { location: "http://example.invalid/" }).end(); return; }
       res.setHeader("set-cookie", "should-not-leak=test");
+      if (url.pathname === "/assets/app-abc12345.js") {
+        res.setHeader("content-type", "text/javascript");
+        res.end("window.bundleLoaded = true;"); return;
+      }
       res.setHeader("content-type", url.pathname === "/" ? "text/html" : "application/json");
       res.end(url.pathname === "/" ? '<html><head><base href="./"></head><body>Original Harness</body></html>' : JSON.stringify({ body, range: req.headers.range }));
     });
@@ -73,12 +77,20 @@ test("原版代理：主密钥保护页面、API 和 WS；HTML/JSON/文件 body 
     const html = await f.app.inject({ url: "/harness/", headers });
     assert.equal(html.statusCode, 200);
     assert.match(html.body, /Original Harness/);
+    assert.ok(!html.body.includes("/api/harness/embed.js"), "单独打开原版时不修改布局");
+    const embedded = await f.app.inject({ url: "/harness/?embed=1", headers });
+    assert.match(embedded.body, /<script src="\/api\/harness\/embed.js"><\/script>/);
+    assert.equal((await f.app.inject("/api/harness/embed.js")).statusCode, 401);
+    assert.equal((await f.app.inject({ url: "/api/harness/embed.js", headers })).statusCode, 200);
     assert.equal(html.headers["set-cookie"], undefined);
     assert.ok(!html.body.includes(token));
     assert.equal(f.seen[0]!.cookie, "harness_owner=test-cookie");
     const combo = "/plugins/??a/client.js,b/client.js&rev=123";
     await f.app.inject({ url: "/harness" + combo, headers });
     assert.equal(f.seen.at(-1)!.path, combo, "原版插件组合资源的查询串不能重编码");
+    const staticAsset = await f.app.inject({ url: "/harness/assets/app-abc12345.js", headers });
+    assert.match(String(staticAsset.headers["cache-control"]), /private.*immutable/);
+    assert.match(String(html.headers["cache-control"]), /no-store/);
     const payload = '{"message":"原版发送：你好"}';
     const posted = await f.app.inject({ method: "POST", url: "/harness/api/session/prompt", payload,
       headers: { ...headers, "content-type": "application/json", origin: f.url } });

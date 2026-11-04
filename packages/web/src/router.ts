@@ -43,7 +43,6 @@ export function openHarness(): void {
 }
 
 export function openSession(paneId: string | null): void {
-  if (paneId?.startsWith("harness:")) return openHarness();
   location.hash = paneId ? `#/s/${encodeURIComponent(paneId)}` : "#/";
 }
 
