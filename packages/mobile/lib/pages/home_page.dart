@@ -81,7 +81,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     final app = AppScope.of(context);
     final p = Palette.of(context);
     final o = app.overview;
-    bool visible(Session s) => !s.isHarness && (app.showHidden || !s.hidden);
+    bool visible(Session s) => app.showHidden || !s.hidden;
     final hiddenCount = o == null ? 0 : [...o.projects.expand((p) => p.sessions), ...o.unassigned].where((s) => s.hidden).length;
     final unassigned = o?.unassigned.where(visible).toList() ?? [];
     final archivedCount = (o?.archived.length ?? 0) + (o?.projects.where((p) => p.archived).length ?? 0);
@@ -349,10 +349,6 @@ class _ProjectGroup extends StatelessWidget {
 
   Future<void> _start(BuildContext context, SessionKind kind) async {
     final app = AppScope.read(context);
-    if (kind == SessionKind.harness) {
-      await openHarnessWeb(context);
-      return;
-    }
     HapticFeedback.lightImpact();
     final paneId = await run(context, () => app.api.startSession(project.id, kind));
     if (paneId != null && context.mounted) openSession(context, paneId);
@@ -546,10 +542,6 @@ class _UnassignedTab extends StatelessWidget {
     final sort = app.unassignedSort;
     final sorted = sortUnassigned(sessions, sort);
     Future<void> start(SessionKind kind) async {
-      if (kind == SessionKind.harness) {
-        await openHarnessWeb(context);
-        return;
-      }
       HapticFeedback.lightImpact();
       final paneId = await run(context, () => app.api.startUnassignedSession(kind));
       if (paneId != null && context.mounted) openSession(context, paneId);

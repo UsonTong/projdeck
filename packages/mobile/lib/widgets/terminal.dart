@@ -11,6 +11,7 @@ import '../state.dart';
 import '../theme.dart';
 import 'attach.dart';
 import 'common.dart';
+import 'terminal_input.dart';
 
 /// 原生终端：xterm.dart 渲染，通过 /ws/term 连接电脑上 herdr 的这个 pane（与网页终端同一个接口）。
 /// 手势与网页一致：单指上下滑滚动历史（转成滚轮事件交给 herdr）、双指捏合调字号、轻点弹出键盘。
@@ -26,6 +27,7 @@ class TerminalPaneState extends State<TerminalPane> with WidgetsBindingObserver 
   final terminal = xt.Terminal(maxLines: 2000);
   final controller = xt.TerminalController();
   final focus = FocusNode();
+  final _inputKey = GlobalKey<TerminalInputState>();
   IOWebSocketChannel? _ws;
   StreamSubscription? _sub;
   String _status = 'connecting';
@@ -242,26 +244,22 @@ class TerminalPaneState extends State<TerminalPane> with WidgetsBindingObserver 
           AnimatedOpacity(
             opacity: _painted ? 1 : 0,
             duration: const Duration(milliseconds: 200),
-            child: xt.TerminalView(
-              terminal,
+            child: TerminalInput(
+              key: _inputKey,
+              terminal: terminal,
               controller: controller,
               focusNode: focus,
               theme: theme,
               padding: const EdgeInsets.all(4),
               textStyle: xt.TerminalStyle(fontSize: _fontSize, fontFamily: 'monospace'),
-              keyboardType: TextInputType.text,
               keyboardAppearance: p.dark ? Brightness.dark : Brightness.light,
-              deleteDetection: true,
             ),
           ),
           // 手势层盖在终端上：滚动、捏合、轻点
           Positioned.fill(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: () {
-                focus.requestFocus();
-                SystemChannels.textInput.invokeMethod('TextInput.show');
-              },
+              onTap: () => _inputKey.currentState?.requestKeyboard(),
               onScaleStart: _onScaleStart,
               onScaleUpdate: _onScaleUpdate,
               onScaleEnd: _onScaleEnd,

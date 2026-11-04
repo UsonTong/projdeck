@@ -8,6 +8,7 @@ import '../api/models.dart';
 import '../native.dart';
 import '../widgets/attach.dart';
 import '../widgets/image_viewer.dart';
+import '../widgets/harness_chat.dart';
 import '../sort.dart';
 import '../state.dart';
 import '../theme.dart';
@@ -32,7 +33,6 @@ class _SessionPageState extends State<SessionPage> {
   SessionView? _view;
   double _dragX = 0;
   bool _dragFromEdge = false;
-  bool _openingHarness = false;
 
   @override
   void initState() {
@@ -53,11 +53,6 @@ class _SessionPageState extends State<SessionPage> {
 
   /// 换到相邻的会话：新页面从滑动的方向进来。
   void _go(String paneId, bool forward) {
-    final session = AppScope.read(context).overview?.find(paneId)?.$1;
-    if (paneId.startsWith('harness:') || session?.isHarness == true) {
-      openHarnessWeb(context);
-      return;
-    }
     HapticFeedback.selectionClick();
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
@@ -78,21 +73,6 @@ class _SessionPageState extends State<SessionPage> {
     final p = Palette.of(context);
     final found = app.overview?.find(widget.paneId);
     if (app.overview == null) return const Scaffold(body: Center(child: CircularProgressIndicator(strokeWidth: 2)));
-    if (widget.paneId.startsWith('harness:') || found?.$1.isHarness == true) {
-      // 通知 / 路由直接进入的兜底；不构建旧的 Harness 聊天，也不猜会话深链接。
-      if (!_openingHarness) {
-        _openingHarness = true;
-        WidgetsBinding.instance.addPostFrameCallback((_) async {
-          if (!context.mounted) return;
-          await openHarnessWeb(context);
-          if (context.mounted) Navigator.of(context).maybePop();
-        });
-      }
-      return Scaffold(
-        appBar: AppBar(title: const Text('DeepSeek Harness')),
-        body: Center(child: TextButton(onPressed: () => openHarnessWeb(context), child: const Text('打开原版 Harness'))),
-      );
-    }
     if (found == null) {
       return Scaffold(
         appBar: AppBar(),
@@ -182,7 +162,9 @@ class _SessionPageState extends State<SessionPage> {
               ),
             ),
             Expanded(
-              child: AnimatedSwitcher(
+              child: s.isHarness
+                  ? HarnessChat(connection: app.conn, sessionId: harnessSessionId(s))
+                  : AnimatedSwitcher(
                 duration: const Duration(milliseconds: 220),
                 child: s.restoreError != null
                     ? _RestoreError(session: s)

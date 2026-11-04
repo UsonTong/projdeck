@@ -28,9 +28,13 @@ class MainActivity : FlutterActivity() {
     private var channel: MethodChannel? = null
     private var pendingPermission: MethodChannel.Result? = null
     private var pendingConfig: Pair<String, String>? = null
+    private var harnessViews: HarnessWebViewFactory? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        val views = HarnessWebViewFactory(this)
+        harnessViews = views
+        flutterEngine.platformViewsController.registry.registerViewFactory("projdeck/harness", views)
         val ch = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "projdeck/native")
         channel = ch
         ch.setMethodCallHandler { call, result ->
@@ -213,6 +217,12 @@ class MainActivity : FlutterActivity() {
         Prefs.setConnection(this, config.first, config.second)
         Prefs.setNotifications(this, true)
         NotifyService.start(this)
+    }
+
+    @Deprecated("System document picker callback")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (harnessViews?.onActivityResult(requestCode, resultCode, data) == true) return
+        super.onActivityResult(requestCode, resultCode, data)
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {

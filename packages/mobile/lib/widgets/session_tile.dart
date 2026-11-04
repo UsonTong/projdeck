@@ -24,11 +24,6 @@ Future<void> openHarnessWeb(BuildContext context) async {
 }
 
 void openSession(BuildContext context, String paneId) {
-  final session = AppScope.read(context).overview?.find(paneId)?.$1;
-  if (paneId.startsWith('harness:') || session?.isHarness == true) {
-    openHarnessWeb(context);
-    return;
-  }
   Navigator.of(context).push(MaterialPageRoute(builder: (_) => SessionPage(paneId: paneId)));
 }
 
