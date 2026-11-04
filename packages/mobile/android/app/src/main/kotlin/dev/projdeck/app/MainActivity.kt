@@ -35,6 +35,12 @@ class MainActivity : FlutterActivity() {
         channel = ch
         ch.setMethodCallHandler { call, result ->
             when (call.method) {
+                "openHarnessWeb" -> HarnessWebActivity.open(
+                    this, call.argument<String>("base"), call.argument<String>("key"),
+                ) { ok ->
+                    if (ok) result.success(null)
+                    else result.error("harness", "无法打开 Harness，请检查连接地址与系统 WebView", null)
+                }
                 "notificationsEnabled" -> result.success(Prefs.notificationsEnabled(this))
                 "setNotifications" -> {
                     val on = call.argument<Boolean>("on") == true

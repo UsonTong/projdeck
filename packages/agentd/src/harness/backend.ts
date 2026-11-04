@@ -20,6 +20,8 @@ export interface HarnessBackend {
   rename(id: string, title: string): Promise<void>;
   transcript(id: string, cursor: number): Promise<TranscriptPage>;
   watch?(id: string, onPage: (page: TranscriptPage) => void): () => void;
+  /** 仅供后端原版网页代理使用，绝不从状态接口返回。 */
+  webTarget?(): { base: string; token: string };
 }
 
 export const harnessKey = (id: string): string => `harness:${id}`;

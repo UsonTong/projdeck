@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 
 import '../api/models.dart';
+import '../native.dart';
 import '../pages/files_page.dart';
 import '../pages/session_page.dart';
 import '../state.dart';
@@ -13,7 +14,21 @@ import 'common.dart';
 const kindLabel = {SessionKind.claude: 'Claude', SessionKind.codex: 'Codex', SessionKind.pi: 'Pi', SessionKind.shell: '终端', SessionKind.harness: 'DeepSeek'};
 const statusLabel = {SessionStatus.working: '工作中', SessionStatus.blocked: '需处理', SessionStatus.done: '已完成'};
 
+Future<void> openHarnessWeb(BuildContext context) async {
+  final app = AppScope.read(context);
+  if (app.overview?.harness?.configured != true) {
+    toast(context, '请先在网页设置中配置 DeepSeek 接入');
+    return;
+  }
+  await run(context, () => Native.openHarnessWeb(app.conn));
+}
+
 void openSession(BuildContext context, String paneId) {
+  final session = AppScope.read(context).overview?.find(paneId)?.$1;
+  if (paneId.startsWith('harness:') || session?.isHarness == true) {
+    openHarnessWeb(context);
+    return;
+  }
   Navigator.of(context).push(MaterialPageRoute(builder: (_) => SessionPage(paneId: paneId)));
 }
 

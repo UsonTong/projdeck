@@ -46,6 +46,7 @@ import { CcSwitch } from "./ccswitch.ts";
 import { NotifyStream } from "./notifyStream.ts";
 import { CcSwitchBridge, type CcSwitchEvent } from "./ccswitchBridge.ts";
 import { readUsage } from "./ccswitchUsage.ts";
+import { registerHarnessWeb } from "./harness/webProxy.ts";
 
 /** 解析 Origin 头的 host；格式异常（如 "null"）时返回 null，按跨站处理。 */
 function originHost(origin: string): string | null {
@@ -100,8 +101,9 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
   // 除登录外所有 /api 与 /ws 都需要登录
   app.addHook("onRequest", async (req, reply) => {
     const url = req.url.split("?")[0]!;
-    const isWs = url === "/ws" || url === "/ws/term" || url === "/ws/adb";
-    if (!url.startsWith("/api/") && !isWs) return;
+    const harnessWeb = url === "/harness" || url.startsWith("/harness/");
+    const isWs = url === "/ws" || url === "/ws/term" || url === "/ws/adb" || (harnessWeb && req.headers.upgrade?.toLowerCase() === "websocket");
+    if (!url.startsWith("/api/") && !isWs && !harnessWeb) return;
     if (url === "/api/auth/login" || url === "/api/auth/status") return;
     // 被控端只允许连转发通道；它的密钥对别的接口一概无效
     const agentOnly = url === "/ws/adb" && agentKeys.valid(req.cookies[AGENT_COOKIE]);
@@ -112,6 +114,8 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
       if (origin && originHost(origin) !== req.headers.host) return reply.status(403).send({ error: "来源不被允许" });
     }
   });
+
+  const harnessWebProxy = await registerHarnessWeb(app, service.harness);
 
   // ---- 认证 ----
 
@@ -417,6 +421,7 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
     try {
       await service.configureHarness(req.body.connectionUrl);
     } finally {
+      harnessWebProxy.reset();
       live.reconnectHarness();
     }
     return service.harness.status();

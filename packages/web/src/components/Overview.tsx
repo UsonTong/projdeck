@@ -57,7 +57,7 @@ import { cn } from "@/lib/utils";
 import { api } from "../api.ts";
 import { useLive } from "../live.ts";
 import { useFlip } from "../lib/flip.ts";
-import { openCcSwitch, openDevices, openFiles, openSession } from "../router.ts";
+import { openCcSwitch, openDevices, openFiles, openHarness, openSession } from "../router.ts";
 import { AddProjectDialog } from "./AddProject.tsx";
 import { InlineInput } from "./InlineInput.tsx";
 import { AgentIcon } from "./AgentIcon.tsx";
@@ -96,7 +96,8 @@ export function OverviewPage({ activePane, activeFiles, enter }: { activePane: s
     );
   }
 
-  const visible = (s: Session) => showHidden || !s.hidden;
+  // Harness 的会话统一由原版侧栏管理，不在这里再重绘一份。
+  const visible = (s: Session) => s.kind !== "harness" && (showHidden || !s.hidden);
   const hiddenCount = [...overview.projects.flatMap((p) => p.sessions), ...overview.unassigned].filter((s) => s.hidden).length;
   const unassigned = overview.unassigned.filter(visible);
   const archivedCount = overview.archived.length + overview.projects.filter((p) => p.archived).length;
@@ -129,6 +130,9 @@ export function OverviewPage({ activePane, activeFiles, enter }: { activePane: s
               <ArrowRightLeftIcon />
             </IconAction>
           )}
+          <IconAction label="DeepSeek Harness 原版" onClick={openHarness}>
+            <AgentIcon kind="harness" size="xs" />
+          </IconAction>
           <IconAction label="设备：连进来的手机" onClick={() => openDevices()}>
             <SmartphoneIcon />
           </IconAction>
@@ -373,6 +377,7 @@ function ProjectGroup(props: {
   const [editingNote, setEditingNote] = useState(false);
 
   const start = async (kind: SessionKind) => {
+    if (kind === "harness") return openHarness();
     try {
       const { paneId } = await api.startSession(project.id, kind);
       if (kind !== "shell") markLaunching(paneId);
@@ -749,6 +754,7 @@ function UnassignedTab({ sessions, activePane }: { sessions: Session[]; activePa
   };
 
   const start = async (kind: SessionKind) => {
+    if (kind === "harness") return openHarness();
     try {
       const { paneId } = await api.startUnassignedSession(kind);
       if (kind !== "shell") markLaunching(paneId);

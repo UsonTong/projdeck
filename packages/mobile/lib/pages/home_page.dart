@@ -81,7 +81,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     final app = AppScope.of(context);
     final p = Palette.of(context);
     final o = app.overview;
-    bool visible(Session s) => app.showHidden || !s.hidden;
+    bool visible(Session s) => !s.isHarness && (app.showHidden || !s.hidden);
     final hiddenCount = o == null ? 0 : [...o.projects.expand((p) => p.sessions), ...o.unassigned].where((s) => s.hidden).length;
     final unassigned = o?.unassigned.where(visible).toList() ?? [];
     final archivedCount = (o?.archived.length ?? 0) + (o?.projects.where((p) => p.archived).length ?? 0);
@@ -135,6 +135,12 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                           ),
                         ),
                         onPressed: () => app.showHidden = !app.showHidden,
+                      ),
+                    if (o?.harness?.configured == true)
+                      IconButton(
+                        tooltip: 'DeepSeek Harness 原版网页',
+                        icon: const AgentIcon(kind: SessionKind.harness, size: 22),
+                        onPressed: () => openHarnessWeb(context),
                       ),
                     if (_ccswitch)
                       IconButton(
@@ -343,8 +349,8 @@ class _ProjectGroup extends StatelessWidget {
 
   Future<void> _start(BuildContext context, SessionKind kind) async {
     final app = AppScope.read(context);
-    if (kind == SessionKind.harness && app.overview?.harness?.configured != true) {
-      toast(context, '请先在网页设置中配置 DeepSeek 接入');
+    if (kind == SessionKind.harness) {
+      await openHarnessWeb(context);
       return;
     }
     HapticFeedback.lightImpact();
@@ -540,8 +546,8 @@ class _UnassignedTab extends StatelessWidget {
     final sort = app.unassignedSort;
     final sorted = sortUnassigned(sessions, sort);
     Future<void> start(SessionKind kind) async {
-      if (kind == SessionKind.harness && app.overview?.harness?.configured != true) {
-        toast(context, '请先在网页设置中配置 DeepSeek 接入');
+      if (kind == SessionKind.harness) {
+        await openHarnessWeb(context);
         return;
       }
       HapticFeedback.lightImpact();

@@ -145,6 +145,11 @@ export class HarnessClient implements HarnessBackend {
       ...(this.#error ? { error: this.#error } : {}) };
   }
 
+  webTarget(): { base: string; token: string } {
+    if (!this.#config) throw fail("Harness 尚未配置，请先在设置里接入");
+    return { ...this.#config };
+  }
+
   async configure(connectionUrl: string): Promise<void> {
     const config = connection(connectionUrl);
     const previous = this.#config;

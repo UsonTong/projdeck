@@ -13,6 +13,10 @@ class Native {
       await _ch.invokeMethod<bool>('setNotifications', {'on': on, 'base': conn.base.toString().replaceAll(RegExp(r'/$'), ''), 'key': conn.key}) ??
       false;
 
+  /// 打开同源 /harness/ 原版网页；主密钥仅由原生层写入 Cookie。
+  static Future<void> openHarnessWeb(Connection conn) =>
+      _ch.invokeMethod<void>('openHarnessWeb', {'base': conn.base.toString(), 'key': conn.key});
+
   /// 点通知启动 App 时要打开的页面（如 `/#/s/<paneId>`）。
   static Future<String?> initialPath() => _ch.invokeMethod<String>('initialPath');
 

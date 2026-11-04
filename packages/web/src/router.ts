@@ -13,7 +13,8 @@ export type Route =
   | { kind: "session"; paneId: string }
   | { kind: "files"; projectId: string; path: string }
   | { kind: "ccswitch"; section: string }
-  | { kind: "devices" };
+  | { kind: "devices" }
+  | { kind: "harness" };
 
 function parse(): Route {
   const s = /^#\/s\/(.+)$/.exec(location.hash);
@@ -22,6 +23,7 @@ function parse(): Route {
   if (f) return { kind: "files", projectId: decodeURIComponent(f[1]!), path: f[2] ? decodeURIComponent(f[2]) : "" };
   const c = /^#\/ccs\/?(.*)$/.exec(location.hash);
   if (c) return { kind: "ccswitch", section: decodeURIComponent(c[1] || "usage") };
+  if (location.hash === "#/harness") return { kind: "harness" };
   if (location.hash === "#/devices") return { kind: "devices" };
   return { kind: "overview" };
 }
@@ -36,7 +38,12 @@ export function useRoute(): Route {
   return route;
 }
 
+export function openHarness(): void {
+  location.hash = "#/harness";
+}
+
 export function openSession(paneId: string | null): void {
+  if (paneId?.startsWith("harness:")) return openHarness();
   location.hash = paneId ? `#/s/${encodeURIComponent(paneId)}` : "#/";
 }
 

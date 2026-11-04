@@ -13,6 +13,7 @@ import { Login } from "./components/Login.tsx";
 import { OverviewPage } from "./components/Overview.tsx";
 import { CcSwitchPage } from "./components/CcSwitchPage.tsx";
 import { DevicesPage } from "./components/DevicesPage.tsx";
+import { HarnessPage } from "./components/HarnessPage.tsx";
 import { FilesPage } from "./components/FilesPage.tsx";
 import { SessionPage } from "./components/Session.tsx";
 import { live, useLive, useWide } from "./live.ts";
@@ -169,6 +170,11 @@ function Shell() {
       {content}
     </div>
   );
+
+  // 原版 Harness 自带侧栏，使用完整视口，避免两层侧栏挤在一起。
+  if (route.kind === "harness" || (route.kind === "session" && route.paneId.startsWith("harness:"))) {
+    return <div className="flex h-full min-h-0 flex-col"><HarnessPage /></div>;
+  }
 
   if (wide) {
     return (
