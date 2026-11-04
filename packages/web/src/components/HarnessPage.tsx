@@ -9,19 +9,21 @@ import { HarnessSettings } from "./HarnessSettings.tsx";
 export function HarnessPage() {
   const { overview } = useLive();
   const frame = useRef<HTMLIFrameElement>(null);
+  const state = overview?.harness;
+  const ready = state?.configured && (state.online || !state.error);
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <header className="flex shrink-0 items-center gap-2 border-b px-2 pt-[calc(0.4rem+env(safe-area-inset-top))] pb-1.5">
         <Button variant="ghost" size="icon-sm" aria-label="返回 projdeck" onClick={() => openSession(null)}><ArrowLeftIcon /></Button>
         <span className="flex-1 text-sm font-medium">DeepSeek Harness</span>
         <Button variant="ghost" size="icon-sm" aria-label="刷新 Harness" onClick={() => frame.current?.contentWindow?.location.reload()}><RotateCwIcon /></Button>
-        {overview?.harness?.configured && (
+        {ready && (
           <Button variant="ghost" size="icon-sm" aria-label="单独打开 Harness" asChild>
             <a href="/harness/" target="_blank" rel="noreferrer"><ExternalLinkIcon /></a>
           </Button>
         )}
       </header>
-      {overview?.harness?.configured ? (
+      {ready ? (
         <iframe ref={frame} src="/harness/" title="DeepSeek Harness 原版网页" allow="clipboard-read; clipboard-write; fullscreen" className="min-h-0 w-full flex-1 border-0 bg-background" />
       ) : (
         <div className="mx-auto w-full max-w-lg p-4"><HarnessSettings /></div>
