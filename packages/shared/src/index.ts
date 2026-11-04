@@ -1,6 +1,6 @@
 // projdeck 前后端共享的 API 契约。只放类型，运行时为空。
 
-export type AgentKind = "claude" | "codex" | "pi";
+export type AgentKind = "claude" | "codex" | "pi" | "harness";
 export type SessionKind = AgentKind | "shell";
 export type SessionStatus = "working" | "idle" | "blocked" | "done" | "unknown";
 
@@ -20,9 +20,12 @@ export interface Project {
   order?: number;
 }
 
-/** 一个 herdr pane，在 projdeck 中称为「会话」。 */
+/** 统一会话：herdr pane 或独立服务的会话。paneId 保留兼容旧路由；Harness 为 harness:<sessionId>。 */
 export interface Session {
+  /** 稳定路由标识；并非所有会话都对应 herdr pane。 */
   paneId: string;
+  backend?: "herdr" | "harness";
+  capabilities?: { terminal: boolean; chat: boolean; keys: boolean };
   terminalId: string;
   workspaceId: string;
   kind: SessionKind;
@@ -65,8 +68,16 @@ export interface Settings {
   autoTrust: boolean;
 }
 
+export interface HarnessStatus {
+  configured: boolean;
+  online: boolean;
+  error?: string;
+}
+
 export interface Overview {
   herdr: { online: boolean; error?: string };
+  /** Harness 是独立后端，herdr 离线不影响它。凭据不发到客户端。 */
+  harness?: HarnessStatus;
   projects: ProjectView[];
   unassigned: Session[];
   archived: ArchivedSession[];
@@ -91,7 +102,7 @@ export interface TranscriptPage {
   /** 会话记录不可用时为 null，前端回退到终端视图。 */
   conversationId: string | null;
   entries: TranscriptEntry[];
-  /** 下次增量读取的游标（字节偏移）。 */
+  /** 后端自己的增量游标（herdr 对话为字节偏移，Harness 为事件修订游标）。 */
   cursor: number;
   /** cursor 超出文件（被截断或换了文件）时为 true，前端应丢弃旧数据。 */
   reset: boolean;

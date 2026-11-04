@@ -126,6 +126,7 @@ class Api {
   Future<void> moveBefore(String paneId, String? beforePaneId) => post('${pane(paneId)}/move-before', {'beforePaneId': beforePaneId});
   Future<void> prompt(String paneId, String text, List<String> files) => post('${pane(paneId)}/prompt', {'text': text, 'files': files});
   Future<void> keys(String paneId, List<String> keys) => post('${pane(paneId)}/keys', {'keys': keys});
+  Future<void> cancel(String paneId) => post('${pane(paneId)}/cancel');
 
   /// 服务器上发布的安卓 App 版本（没有发布过返回 null）。
   Future<Map<String, dynamic>?> androidApp() async {

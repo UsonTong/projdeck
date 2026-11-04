@@ -13,6 +13,8 @@ interface State {
   codexOverrides: Record<string, string>;
   /** 「已完成」已在网页上看过的 terminal；状态离开 done 后移除。 */
   seenDone: string[];
+  /** 从 projdeck 的归档记录删除的 Harness 会话，不删除 Harness 原始历史，也不重新导入。 */
+  harnessDismissed: string[];
 }
 
 export const defaultArgs: Record<AgentKind, string[]> = {
@@ -20,6 +22,8 @@ export const defaultArgs: Record<AgentKind, string[]> = {
   codex: ["--yolo"],
   // pi 的工具本来就不需要逐个确认（相当于 yolo），唯一的确认是「信任项目里的本地文件」，--approve 直接信任
   pi: ["--approve"],
+  // 独立后端，不通过终端启动，不使用 CLI 参数。
+  harness: [],
 };
 
 /** projdeck 自己持有的全部数据：项目登记、归档、隐藏、归属记忆。 */
@@ -45,6 +49,7 @@ export class ProjectStore {
       hideUnassigned: false,
       codexOverrides: {},
       seenDone: [],
+      harnessDismissed: [],
       ...readJson<Partial<State>>(this.stateFile, {}),
     };
   }
@@ -116,6 +121,10 @@ export class ProjectStore {
 
   /** 清理已不存在的 terminal 的记录，防止 state.json 无限增长。 */
   pruneTerminals(alive: Set<string>): void {
+    // herdr 的 pane.list 不包含 Harness；不能据此删除另一后端的隐藏/归属/已读记录。
+    for (const key of [...Object.keys(this.state.sticky), ...this.state.hiddenTerminals, ...this.state.seenDone]) {
+      if (key.startsWith("harness:")) alive.add(key);
+    }
     const before = JSON.stringify(this.state);
     for (const key of Object.keys(this.state.sticky)) if (!alive.has(key)) delete this.state.sticky[key];
     for (const key of Object.keys(this.state.codexOverrides)) if (!alive.has(key)) delete this.state.codexOverrides[key];

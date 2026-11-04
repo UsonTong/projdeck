@@ -88,7 +88,11 @@ class _SessionPageState extends State<SessionPage> {
       );
     }
     final (s, project) = found;
-    final view = s.kind == SessionKind.shell ? SessionView.terminal : (_view ?? SessionView.terminal);
+    final view = !s.supportsTerminal
+        ? SessionView.chat
+        : !s.supportsChat
+        ? SessionView.terminal
+        : (_view ?? SessionView.terminal);
     final order = navigationOrder(app.overview!, app.projectSort, app.unassignedSort);
     final i = order.indexWhere((x) => x.paneId == s.paneId);
     final prev = i > 0 ? order[i - 1].paneId : null;
@@ -149,7 +153,7 @@ class _SessionPageState extends State<SessionPage> {
                         ),
                       ),
                     ),
-                    if (s.kind != SessionKind.shell)
+                    if (s.supportsTerminal && s.supportsChat)
                       SegmentedSwitch(value: view, options: const {SessionView.terminal: '终端', SessionView.chat: '对话'}, onChanged: _setView),
                     IconButton(icon: const Icon(Icons.more_vert_rounded), onPressed: () => sessionMenu(context, s, project)),
                   ],
@@ -168,10 +172,15 @@ class _SessionPageState extends State<SessionPage> {
                           Expanded(
                             child: TerminalPane(key: _term, paneId: s.paneId),
                           ),
-                          KeyBar(term: _term, paneId: s.paneId),
+                          if (s.supportsKeys) KeyBar(term: _term, paneId: s.paneId),
                         ],
                       )
-                    : _ChatView(key: const ValueKey('chat'), session: s, projectId: project?.id, onTerminal: () => _setView(SessionView.terminal)),
+                    : _ChatView(
+                        key: const ValueKey('chat'),
+                        session: s,
+                        projectId: project?.id,
+                        onTerminal: s.supportsTerminal ? () => _setView(SessionView.terminal) : null,
+                      ),
               ),
             ),
           ],
@@ -219,7 +228,7 @@ class _ChatView extends StatefulWidget {
 
   /// 所在的项目：对话里的图片只能显示项目内的。
   final String? projectId;
-  final VoidCallback onTerminal;
+  final VoidCallback? onTerminal;
   const _ChatView({super.key, required this.session, required this.projectId, required this.onTerminal});
 
   @override
@@ -238,9 +247,14 @@ class _ChatViewState extends State<_ChatView> {
   final _input = TextEditingController();
   late final AppState _app;
   bool _sending = false;
+  bool _cancelling = false;
   final List<_Attachment> _attachments = [];
 
   void _add(List<LocalFile> files) {
+    if (widget.session.isHarness) {
+      if (files.isNotEmpty) toast(context, 'Harness 附件上传尚未接入，请先发送文本消息');
+      return;
+    }
     for (final f in files) {
       final a = _Attachment(f);
       setState(() => _attachments.add(a));
@@ -279,11 +293,19 @@ class _ChatViewState extends State<_ChatView> {
   }
 
   bool get _uploading => _attachments.any((a) => a.uploaded == null && a.error == null);
+  bool get _generating => widget.session.isHarness && widget.session.status == SessionStatus.working;
+
+  Future<void> _cancel() async {
+    if (_cancelling) return;
+    setState(() => _cancelling = true);
+    await run(context, () => _app.api.cancel(widget.session.paneId));
+    if (mounted) setState(() => _cancelling = false);
+  }
 
   Future<void> _send() async {
     final text = _input.text.trim();
     final files = [for (final a in _attachments) ?a.uploaded?.path];
-    if ((text.isEmpty && files.isEmpty) || _sending || _uploading) return;
+    if ((text.isEmpty && files.isEmpty) || _sending || _uploading || _generating || _cancelling || !widget.session.supportsChat) return;
     setState(() => _sending = true);
     final ok = await run(context, () => _app.api.prompt(widget.session.paneId, text, files).then((_) => true));
     if (!mounted) return;
@@ -327,7 +349,15 @@ class _ChatViewState extends State<_ChatView> {
                   itemBuilder: (context, i) => _Bubble(entry: entries[entries.length - 1 - i], projectId: widget.projectId),
                 ),
         ),
-        if (widget.session.status == SessionStatus.blocked)
+        if (widget.session.isHarness && (app.overview?.harness?.online == false || widget.session.status == SessionStatus.blocked))
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Text(
+              app.overview?.harness?.online == false ? 'Harness 连接中断，历史保留，恢复后会重新同步。' : 'Harness 正在等待确认，请在原版 Harness 界面处理。',
+              style: TextStyle(fontSize: 12, color: p.blocked),
+            ),
+          ),
+        if (widget.session.status == SessionStatus.blocked && widget.onTerminal != null)
           Material(
             color: p.blocked.withValues(alpha: 0.12),
             child: InkWell(
@@ -371,7 +401,7 @@ class _ChatViewState extends State<_ChatView> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  IconButton(
+                  if (!widget.session.isHarness) IconButton(
                     tooltip: '添加图片或文件',
                     icon: const Icon(Icons.add_circle_outline_rounded),
                     onPressed: () async => _add(await pickAttachments(context)),
@@ -413,10 +443,13 @@ class _ChatViewState extends State<_ChatView> {
                   ),
                   const SizedBox(width: 6),
                   IconButton.filled(
-                    onPressed: _sending || _uploading ? null : _send,
-                    icon: _sending
+                    tooltip: _generating ? '停止生成' : '发送',
+                    onPressed: _generating
+                        ? (_cancelling ? null : _cancel)
+                        : (_sending || _uploading || _cancelling || !widget.session.supportsChat ? null : _send),
+                    icon: _cancelling || (_sending && !_generating)
                         ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.arrow_upward_rounded),
+                        : Icon(_generating ? Icons.stop_rounded : Icons.arrow_upward_rounded),
                   ),
                 ],
               ),

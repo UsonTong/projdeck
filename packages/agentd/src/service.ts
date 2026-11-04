@@ -26,6 +26,8 @@ import { listCodexRollouts, matchCodexRollouts, parseCodexRecords, type CodexRol
 import { findPiSession, parsePiRecords, piSessionId } from "./transcript/pi.ts";
 import { readJsonl } from "./transcript/jsonl.ts";
 import { acceptTrustPrompt } from "./trust.ts";
+import { HarnessClient } from "./harness/client.ts";
+import { harnessKey, isHarnessKey, type HarnessBackend, type HarnessSession } from "./harness/backend.ts";
 
 export function httpError(statusCode: number, message: string): Error {
   return Object.assign(new Error(message), { statusCode });
@@ -71,6 +73,9 @@ export class ProjdeckService {
   private readonly store: ProjectStore;
   private snapshot: Snapshot | undefined;
   private codexCache: { at: number; rollouts: CodexRollout[] } | undefined;
+  readonly harness: HarnessBackend;
+  /** 断线时保留最后的列表，避免临时网络故障让正在看的会话消失。 */
+  private harnessSessions: HarnessSession[] = [];
   /** 正在网页上查看的会话：terminalId → 查看者数量（终端视图、对话视图各算一个）。 */
   private readonly viewers = new Map<string, number>();
   /** 当前处于 done 状态的 terminal。 */
@@ -78,10 +83,57 @@ export class ProjdeckService {
   /** 看过一个「已完成」的会话后调用，用于推送新的总览。 */
   onSeen?: () => void;
 
-  constructor(config: Config, herdr: HerdrClient, store: ProjectStore) {
+  constructor(config: Config, herdr: HerdrClient, store: ProjectStore, harness: HarnessBackend = new HarnessClient()) {
     this.config = config;
     this.herdr = herdr;
     this.store = store;
+    this.harness = harness;
+  }
+
+  async configureHarness(connectionUrl: string): Promise<void> {
+    await this.harness.configure(connectionUrl);
+    this.harnessSessions = [];
+    this.snapshot = undefined;
+  }
+
+  /** 添加的是独立服务的真实会话，不创建 herdr pane。 */
+  private async addHarness(overview: Overview, sessions: Snapshot["sessions"]): Promise<void> {
+    if (!this.harness.status().configured) {
+      overview.harness = this.harness.status();
+      return;
+    }
+    try {
+      this.harnessSessions = await this.harness.list();
+    } catch {
+      // 适配器的 status 给出脱敏的离线原因；另一后端仍可继续使用。
+    }
+    overview.harness = this.harness.status();
+    const archived = new Set(this.store.archive.filter((a) => a.kind === "harness").map((a) => a.conversationId));
+    for (const [index, h] of this.harnessSessions.entries()) {
+      if (archived.has(h.id) || this.store.state.harnessDismissed.includes(h.id)) continue;
+      const id = harnessKey(h.id);
+      const sticky = overview.projects.find((p) => p.id === this.store.state.sticky[id]);
+      const project = sticky ?? overview.projects.filter((p) => isWithin(h.cwd, p.path)).sort((a, b) => b.path.length - a.path.length)[0];
+      const session: Session = {
+        paneId: id,
+        // 兼容原有身份/已读存储；不是终端地址，terminalIdOf 会拒绝对此做终端操作。
+        terminalId: id,
+        workspaceId: "",
+        backend: "harness",
+        capabilities: { terminal: false, chat: true, keys: false },
+        kind: "harness",
+        status: overview.harness.online ? this.seenStatus(id, h.status) : "unknown",
+        title: h.title || "DeepSeek 对话",
+        cwd: h.cwd,
+        conversationId: h.id,
+        hidden: this.store.isHidden(id, id),
+        order: 1_000_000 + index,
+        activeAt: h.activeAt,
+      };
+      sessions.set(id, { session, projectId: project?.id ?? null });
+      if (project) project.sessions.push(session);
+      else overview.unassigned.push(session);
+    }
   }
 
   // ---- 总览 ----
@@ -118,6 +170,7 @@ export class ProjdeckService {
       [panes, agents, workspaces] = await Promise.all([this.herdr.listPanes(), this.herdr.listAgents(), this.herdr.listWorkspaces()]);
     } catch (err) {
       overview.herdr = { online: false, error: (err as Error).message };
+      await this.addHarness(overview, sessions);
       this.snapshot = { at: Date.now(), overview, sessions };
       return this.snapshot;
     }
@@ -175,6 +228,7 @@ export class ProjdeckService {
       else overview.unassigned.push(session);
     }
 
+    await this.addHarness(overview, sessions);
     this.snapshot = { at: Date.now(), overview, sessions };
     return this.snapshot;
   }
@@ -211,7 +265,7 @@ export class ProjdeckService {
 
   /** 网页开始查看一个会话（终端或对话视图）。返回结束查看的函数。 */
   async beginView(paneId: string): Promise<() => void> {
-    const terminalId = await this.terminalIdOf(paneId);
+    const terminalId = (await this.lookup(paneId)).session.terminalId;
     const seen = () => {
       if (this.doneTerminals.has(terminalId) && this.store.markDoneSeen(terminalId, true)) this.onSeen?.();
     };
@@ -364,7 +418,7 @@ export class ProjdeckService {
   private async openPane(project: Project | null, cwd = project?.path ?? homedir()): Promise<string> {
     if (project) {
       const snap = await this.refresh();
-      const workspaceId = snap.overview.projects.find((p) => p.id === project.id)?.sessions[0]?.workspaceId;
+      const workspaceId = snap.overview.projects.find((p) => p.id === project.id)?.sessions.find((s) => s.backend !== "harness")?.workspaceId;
       if (workspaceId) return (await this.herdr.createTab(workspaceId, cwd)).paneId;
     }
     return (await this.herdr.createWorkspace(cwd, project?.name ?? basename(cwd))).paneId;
@@ -383,6 +437,7 @@ export class ProjdeckService {
    * 网页 attach 时用这个尺寸，pane 就不会被改成网页的尺寸，电脑上的显示不受影响。
    */
   async desktopSize(paneId: string): Promise<{ cols: number; rows: number } | null> {
+    if (isHarnessKey(paneId)) return null;
     const rect = await this.herdr.paneRect(paneId);
     return rect && rect.width > 20 && rect.height > 5 ? { cols: rect.width - 1, rows: rect.height } : null;
   }
@@ -395,11 +450,22 @@ export class ProjdeckService {
 
   /** 网页终端 attach 的目标。 */
   async terminalIdOf(paneId: string): Promise<string> {
-    return (await this.lookup(paneId)).session.terminalId;
+    const { session } = await this.lookup(paneId);
+    if (session.backend === "harness") throw httpError(400, "DeepSeek Harness 会话没有 herdr 终端，请使用对话视图");
+    return session.terminalId;
+  }
+
+  private async startHarness(project: Project | null): Promise<{ paneId: string }> {
+    const id = await this.harness.create(project?.path ?? homedir());
+    const paneId = harnessKey(id);
+    if (project) this.store.setSticky(paneId, project.id);
+    this.snapshot = undefined;
+    return { paneId };
   }
 
   async startSession(projectId: string, kind: SessionKind): Promise<{ paneId: string }> {
     const project = this.store.getProject(projectId);
+    if (kind === "harness") return this.startHarness(project);
     const paneId = await this.openPane(project);
     if (kind !== "shell") await this.launchAgent(paneId, project, kind, []);
     this.snapshot = undefined;
@@ -408,6 +474,7 @@ export class ProjdeckService {
 
   /** 不属于任何项目的会话：在用户主目录里新开（未归属页的按钮）。 */
   async startUnassignedSession(kind: SessionKind): Promise<{ paneId: string }> {
+    if (kind === "harness") return this.startHarness(null);
     const paneId = await this.openPane(null, homedir());
     if (kind !== "shell") await this.launchAgent(paneId, null, kind, []);
     this.snapshot = undefined;
@@ -415,7 +482,7 @@ export class ProjdeckService {
   }
 
   async output(paneId: string, lines?: number): Promise<string> {
-    await this.lookup(paneId);
+    await this.terminalIdOf(paneId);
     return this.herdr.readPane(paneId, lines);
   }
 
@@ -424,6 +491,10 @@ export class ProjdeckService {
     for (const f of files) if (!isAbsolute(f)) throw httpError(400, `文件路径无效：${f}`);
     const full = [text.trim(), files.join(" ")].filter(Boolean).join("\n\n");
     if (!full) throw httpError(400, "消息为空");
+    if (session.kind === "harness") {
+      if (files.length) throw httpError(400, "Harness 附件上传尚未接入，请先发送文本消息");
+      return this.harness.prompt(session.conversationId!, text);
+    }
     if (session.kind === "shell") await this.herdr.sendInput(paneId, full, ["enter"]);
     else {
       try {
@@ -437,8 +508,14 @@ export class ProjdeckService {
     }
   }
 
+  async cancel(paneId: string): Promise<void> {
+    const { session } = await this.lookup(paneId);
+    if (session.kind === "harness") return this.harness.cancel(session.conversationId!);
+    await this.keys(paneId, ["ctrl+c"]);
+  }
+
   async keys(paneId: string, keys: string[]): Promise<void> {
-    await this.lookup(paneId);
+    await this.terminalIdOf(paneId);
     const bad = keys.find((k) => !ALLOWED_KEYS.has(k));
     if (bad || keys.length === 0 || keys.length > 16) throw httpError(400, `不支持的按键：${bad ?? "(空)"}`);
     await this.herdr.sendKeys(paneId, keys);
@@ -446,21 +523,23 @@ export class ProjdeckService {
 
   async setHidden(paneId: string, hidden: boolean): Promise<void> {
     const { session } = await this.lookup(paneId);
-    this.store.setHidden(session.terminalId, session.conversationId, hidden);
+    this.store.setHidden(session.terminalId, session.kind === "harness" ? session.paneId : session.conversationId, hidden);
     this.snapshot = undefined;
   }
 
   /** 重命名会话（herdr 的 pane 名字，电脑上同步显示）；空名字恢复自动标题。 */
   async rename(paneId: string, label: string | null): Promise<void> {
-    await this.lookup(paneId);
+    const { session } = await this.lookup(paneId);
     const name = label?.trim().slice(0, 200) || null;
-    await this.herdr.renamePane(paneId, name);
+    if (session.kind === "harness") await this.harness.rename(session.conversationId!, name ?? "DeepSeek 对话");
+    else await this.herdr.renamePane(paneId, name);
     this.snapshot = undefined;
   }
 
   /** 把会话所在的 herdr 工作区移到另一个会话的工作区之前（null = 移到最后），用于拖动排序，herdr 侧栏同步变化。 */
   async moveBefore(paneId: string, beforePaneId: string | null): Promise<void> {
     const { session } = await this.lookup(paneId);
+    if (session.backend === "harness" || (beforePaneId && isHarnessKey(beforePaneId))) throw httpError(400, "Harness 会话不属于 herdr 工作区，不能拖动 herdr 排序");
     const before = beforePaneId ? (await this.lookup(beforePaneId)).session.workspaceId : null;
     if (before === session.workspaceId) return;
     await this.herdr.moveWorkspaces([session.workspaceId], before);
@@ -512,16 +591,19 @@ export class ProjdeckService {
       cwd: session.cwd,
       archivedAt: new Date().toISOString(),
     };
+    // Harness 归档只影响 projdeck，不删除其持久历史；先停止本次任务，失败时不隐藏会话。
+    if (session.kind === "harness") {
+      if (session.status === "working") await this.harness.cancel(session.conversationId!);
+    } else await this.herdr.closePane(paneId);
     this.store.archive.unshift(item);
     this.store.saveArchive();
-    await this.herdr.closePane(paneId);
     this.snapshot = undefined;
     return item;
   }
 
   /** 直接关闭 pane（临时终端用；agent 会话应归档以便恢复）。 */
   async close(paneId: string): Promise<void> {
-    await this.lookup(paneId);
+    await this.terminalIdOf(paneId);
     await this.herdr.closePane(paneId);
     this.snapshot = undefined;
   }
@@ -529,6 +611,13 @@ export class ProjdeckService {
   async restore(archiveId: string): Promise<{ paneId: string }> {
     const item = this.store.archive.find((a) => a.id === archiveId);
     if (!item) throw httpError(404, "归档记录不存在");
+    if (item.kind === "harness") {
+      if (!(await this.harness.list()).some((s) => s.id === item.conversationId)) throw httpError(404, "Harness 中的原会话已不存在，未创建替代对话");
+      this.store.archive = this.store.archive.filter((a) => a.id !== archiveId);
+      this.store.saveArchive();
+      this.snapshot = undefined;
+      return { paneId: harnessKey(item.conversationId) };
+    }
     // 项目可能已取消登记，那就按未归属恢复
     const project = this.store.projects.find((p) => p.id === item.projectId) ?? null;
     // 在原来的目录里恢复：Claude 按启动目录保存对话，换了目录 --resume 找不到。
@@ -545,6 +634,11 @@ export class ProjdeckService {
   }
 
   deleteArchive(archiveId: string): void {
+    const item = this.store.archive.find((a) => a.id === archiveId);
+    if (item?.kind === "harness") {
+      this.store.state.harnessDismissed.push(item.conversationId);
+      this.store.saveState();
+    }
     this.store.archive = this.store.archive.filter((a) => a.id !== archiveId);
     this.store.saveArchive();
   }
@@ -555,6 +649,7 @@ export class ProjdeckService {
     const { session, rollout } = await this.lookup(paneId);
     const empty: TranscriptPage = { conversationId: null, entries: [], cursor: -1, reset: false };
     if (!session.conversationId) return empty;
+    if (session.kind === "harness") return this.harness.transcript(session.conversationId, cursor);
 
     let file: string | null = null;
     if (session.kind === "claude") file = findClaudeTranscript(session.cwd, session.conversationId);
@@ -570,6 +665,12 @@ export class ProjdeckService {
           ? parsePiRecords(chunk.records)
           : parseCodexRecords(chunk.records, chunk.cursor);
     return { conversationId: session.conversationId, entries, cursor: chunk.cursor, reset: chunk.reset };
+  }
+
+  /** 独立后端有原生事件订阅时优先用它；herdr 仍使用现有 JSONL 轮询。 */
+  watchTranscript(paneId: string, onPage: (page: TranscriptPage) => void): (() => void) | null {
+    if (!isHarnessKey(paneId) || !this.harness.watch) return null;
+    return this.harness.watch(paneId.slice("harness:".length), onPage);
   }
 
   projectFor(paneId: string): Promise<string | null> {

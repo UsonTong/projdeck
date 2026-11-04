@@ -123,10 +123,12 @@ export function SessionPage({ paneId }: { paneId: string }) {
   }
 
   const { session, project } = found;
+  const hasTerminal = session.capabilities?.terminal ?? session.kind !== "harness";
   // 临时终端没有对话视图；不属于项目的会话没有文件视图
   let view: View = chosenView ?? openedView.current ?? preferredView;
   if (view === "bubbles" && session.kind === "shell") view = "terminal";
   if (view === "files" && !project) view = "terminal";
+  if (!hasTerminal && view === "terminal") view = "bubbles";
   if (session.kind !== "shell") doneLaunching(paneId);
   if (!isLaunching(paneId)) openedView.current ??= view;
   // 文件视图默认打开会话的工作目录（在项目内时）
@@ -187,10 +189,10 @@ export function SessionPage({ paneId }: { paneId: string }) {
             onValueChange={(v) => v && chooseView(v as View)}
             aria-label="视图"
           >
-            <ToggleGroupItem value="terminal" aria-label="终端">
+            {hasTerminal && <ToggleGroupItem value="terminal" aria-label="终端">
               <SquareTerminalIcon />
               <span className="max-sm:sr-only">终端</span>
-            </ToggleGroupItem>
+            </ToggleGroupItem>}
             {session.kind !== "shell" && (
               <ToggleGroupItem value="bubbles" aria-label="对话">
                 <MessagesSquareIcon />
@@ -214,6 +216,12 @@ export function SessionPage({ paneId }: { paneId: string }) {
         />
       </header>
 
+      {session.kind === "harness" && overview.harness?.online === false && (
+        <p role="status" className="border-b px-3 py-2 text-sm text-destructive">Harness 连接中断，历史保留，恢复后会重新同步。</p>
+      )}
+      {session.kind === "harness" && session.status === "blocked" && (
+        <p role="status" className="border-b px-3 py-2 text-sm text-amber-500">Harness 正在等待确认，请在原版 Harness 界面处理。</p>
+      )}
       <div className="flex min-h-0 flex-1 flex-col">
         {view === "terminal" && session.restoreError ? (
           <Empty className="flex-1">
@@ -272,7 +280,7 @@ export function SessionPage({ paneId }: { paneId: string }) {
         )}
       </div>
 
-      {view === "bubbles" && session.status === "blocked" && (
+      {view === "bubbles" && hasTerminal && session.status === "blocked" && (
         <button
           className="flex items-center gap-2 border-t border-destructive/40 bg-destructive/10 px-3 py-2 text-left text-sm text-destructive"
           onClick={() => chooseView("terminal")}

@@ -1,16 +1,29 @@
 // 与 packages/shared/src/index.ts 对应的数据结构（只取 App 用到的字段）。
 
-enum SessionKind { claude, codex, pi, shell }
+enum SessionKind { claude, codex, pi, shell, harness }
 
 enum SessionStatus { working, idle, blocked, done, unknown }
 
 SessionKind _kind(String? s) => SessionKind.values.firstWhere((k) => k.name == s, orElse: () => SessionKind.shell);
 SessionStatus _status(String? s) => SessionStatus.values.firstWhere((k) => k.name == s, orElse: () => SessionStatus.unknown);
 
+class SessionCapabilities {
+  final bool terminal;
+  final bool chat;
+  final bool keys;
+
+  SessionCapabilities.fromJson(Map<String, dynamic> j)
+    : terminal = j['terminal'] == true,
+      chat = j['chat'] == true,
+      keys = j['keys'] == true;
+}
+
 class Session {
   final String paneId;
   final String terminalId;
   final String workspaceId;
+  final String backend;
+  final SessionCapabilities? capabilities;
   final SessionKind kind;
   final SessionStatus status;
   final String title;
@@ -26,6 +39,8 @@ class Session {
     : paneId = j['paneId'],
       terminalId = j['terminalId'] ?? '',
       workspaceId = j['workspaceId'] ?? '',
+      backend = j['backend'] ?? (j['kind'] == 'harness' ? 'harness' : 'herdr'),
+      capabilities = j['capabilities'] is Map<String, dynamic> ? SessionCapabilities.fromJson(j['capabilities']) : null,
       kind = _kind(j['kind']),
       status = _status(j['status']),
       title = j['title'] ?? '',
@@ -36,6 +51,11 @@ class Session {
       activeAt = (j['activeAt'] as num?)?.toInt(),
       renamed = j['renamed'] == true,
       restoreError = j['restoreError'];
+
+  bool get isHarness => backend == 'harness' || kind == SessionKind.harness || paneId.startsWith('harness:');
+  bool get supportsTerminal => !isHarness && (capabilities?.terminal ?? true);
+  bool get supportsChat => capabilities?.chat ?? (kind != SessionKind.shell);
+  bool get supportsKeys => supportsTerminal && (capabilities?.keys ?? true);
 }
 
 class Project {
@@ -78,7 +98,19 @@ class ArchivedSession {
       archivedAt = j['archivedAt'] ?? '';
 }
 
+class HarnessStatus {
+  final bool configured;
+  final bool online;
+  final String? error;
+
+  HarnessStatus.fromJson(Map<String, dynamic> j)
+    : configured = j['configured'] == true,
+      online = j['online'] == true,
+      error = j['error'];
+}
+
 class Overview {
+  final HarnessStatus? harness;
   final bool herdrOnline;
   final String? herdrError;
   final List<Project> projects;
@@ -88,7 +120,8 @@ class Overview {
   final bool autoTrust;
 
   Overview.fromJson(Map<String, dynamic> j)
-    : herdrOnline = j['herdr']?['online'] == true,
+    : harness = j['harness'] is Map<String, dynamic> ? HarnessStatus.fromJson(j['harness']) : null,
+      herdrOnline = j['herdr']?['online'] == true,
       herdrError = j['herdr']?['error'],
       projects = [for (final p in (j['projects'] as List? ?? [])) Project.fromJson(p)],
       unassigned = [for (final s in (j['unassigned'] as List? ?? [])) Session.fromJson(s)],

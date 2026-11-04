@@ -8,6 +8,7 @@ import type {
   DeviceView,
   DirListing,
   FolderListing,
+  HarnessStatus,
   Overview,
   Project,
   ProjectSuggestion,
@@ -51,6 +52,9 @@ export const api = {
   login: (password: string) => request("POST", "/api/auth/login", { password }),
   logout: () => request("POST", "/api/auth/logout"),
 
+  harness: () => request<HarnessStatus>("GET", "/api/harness"),
+  connectHarness: (connectionUrl: string) => request<HarnessStatus>("PUT", "/api/harness", { connectionUrl }),
+  cancel: (paneId: string) => request("POST", `${pane(paneId)}/cancel`),
   overview: () => request<Overview>("GET", "/api/overview"),
   // 推送通知
   pushKey: () => request<{ publicKey: string }>("GET", "/api/push/key"),

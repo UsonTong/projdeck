@@ -1,5 +1,5 @@
 import type { Session } from "@projdeck/shared";
-import { AArrowDownIcon, AArrowUpIcon, ArchiveIcon, CheckIcon, EllipsisIcon, EyeIcon, EyeOffIcon, HistoryIcon, PencilIcon, type LucideIcon } from "lucide-react";
+import { AArrowDownIcon, AArrowUpIcon, ArchiveIcon, CheckIcon, EllipsisIcon, EyeIcon, EyeOffIcon, HistoryIcon, PencilIcon, SquareIcon, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -71,9 +71,12 @@ export function SessionActions(props: {
     icon: session.hidden ? EyeIcon : EyeOffIcon,
     run: () => void api.setHidden(session.paneId, !session.hidden).catch(fail),
   });
+  if (session.kind === "harness" && session.status === "working") {
+    actions.push({ key: "cancel", label: "停止生成", icon: SquareIcon, run: () => void api.cancel(session.paneId).catch(fail) });
+  }
   if (session.kind === "codex") actions.push({ key: "codex", label: "选择对话记录", icon: HistoryIcon, run: () => setCodexPicker(true) });
   if (session.kind !== "shell") {
-    actions.push({ key: "archive", label: "归档（关闭 pane，保留对话）", icon: ArchiveIcon, run: () => void archive() });
+    actions.push({ key: "archive", label: session.kind === "harness" ? "归档（保留 Harness 对话）" : "归档（关闭 pane，保留对话）", icon: ArchiveIcon, run: () => void archive() });
   }
 
   return (

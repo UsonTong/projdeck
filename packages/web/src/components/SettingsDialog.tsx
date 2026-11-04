@@ -15,6 +15,7 @@ import { allTimeZones, COMMON_TIME_ZONES, deviceTimeZone, formatDateTime, utcOff
 import { cn } from "@/lib/utils";
 import { api } from "../api.ts";
 import { useLive } from "../live.ts";
+import { HarnessSettings } from "./HarnessSettings.tsx";
 
 interface Option {
   /** null = 跟随设备。 */
@@ -106,6 +107,7 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
           <DialogTitle>设置</DialogTitle>
           <DialogDescription>保存在你的电脑上，所有设备共享，改了立即生效。</DialogDescription>
         </DialogHeader>
+        <HarnessSettings />
         <div className="flex min-w-0 flex-col gap-2">
           <div className="text-sm font-medium">通知（这台设备）</div>
           <p className="text-xs text-muted-foreground">

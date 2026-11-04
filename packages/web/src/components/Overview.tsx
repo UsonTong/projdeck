@@ -365,6 +365,8 @@ function ProjectGroup(props: {
   drag?: DragHandle;
 }) {
   const { project, sessions, activePane, drag } = props;
+  const { overview } = useLive();
+  const availableAgents = AGENT_KINDS.filter((k) => k !== "harness" || overview?.harness?.configured);
   const rowsRef = useRef<HTMLDivElement>(null);
   useFlip(rowsRef);
   const [settings, setSettings] = useState(false);
@@ -381,7 +383,9 @@ function ProjectGroup(props: {
   };
 
   const sorted = sortProjectSessions(sessions, props.sort);
-  const starters: AgentKind[] = [project.defaultAgent, ...AGENT_KINDS.filter((k) => k !== project.defaultAgent)];
+  const starters: AgentKind[] = availableAgents.includes(project.defaultAgent)
+    ? [project.defaultAgent, ...availableAgents.filter((k) => k !== project.defaultAgent)]
+    : availableAgents;
 
   return (
     <section data-flip={project.id}>
@@ -712,6 +716,7 @@ function SortableRow(props: { session: Session; active: boolean; draggedRef: Rea
 
 function UnassignedTab({ sessions, activePane }: { sessions: Session[]; activePane: string | null }) {
   const sort = useUnassignedSort();
+  const { overview } = useLive();
   const [touch] = useState(isTouchDevice);
   // 拖动后先按新顺序显示，等 herdr 的新顺序推送过来再以它为准
   const [optimistic, setOptimistic] = useState<string[] | null>(null);
@@ -732,9 +737,10 @@ function UnassignedTab({ sessions, activePane }: { sessions: Session[]; activePa
   const onDragEnd = ({ active, over }: DragEndEvent) => {
     setTimeout(() => (draggedRef.current = false), 0);
     if (!over || active.id === over.id) return;
-    const ids = shown.map((s) => s.paneId);
+    const ids = shown.filter((s) => s.backend !== "harness").map((s) => s.paneId);
+    if (!ids.includes(String(active.id)) || !ids.includes(String(over.id))) return;
     const next = arrayMove(ids, ids.indexOf(String(active.id)), ids.indexOf(String(over.id)));
-    setOptimistic(next);
+    setOptimistic([...next, ...shown.filter((s) => s.backend === "harness").map((s) => s.paneId)]);
     const index = next.indexOf(String(active.id));
     void api.moveBefore(String(active.id), next[index + 1] ?? null).catch((err) => {
       setOptimistic(null);
@@ -754,7 +760,7 @@ function UnassignedTab({ sessions, activePane }: { sessions: Session[]; activePa
   // 新开会话：和项目一样直接点图标，在主目录里启动，不属于任何项目
   const starters = (
     <div className="flex shrink-0 items-center">
-      {AGENT_KINDS.map((k) => (
+      {AGENT_KINDS.filter((k) => k !== "harness" || overview?.harness?.configured).map((k) => (
         <IconAction key={k} label={`新开 ${KIND_LABEL[k]}（在主目录）`} onClick={() => void start(k)}>
           <AgentIcon kind={k} size="xs" />
         </IconAction>
@@ -780,8 +786,10 @@ function UnassignedTab({ sessions, activePane }: { sessions: Session[]; activePa
       </SortSwitch>
       {sort === "herdr" ? (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={() => (draggedRef.current = true)} onDragEnd={onDragEnd}>
-          <SortableContext items={shown.map((s) => s.paneId)} strategy={verticalListSortingStrategy}>
-            {shown.map((s) => (
+          <SortableContext items={shown.filter((s) => s.backend !== "harness").map((s) => s.paneId)} strategy={verticalListSortingStrategy}>
+            {shown.map((s) => s.backend === "harness" ? (
+              <SessionRow key={s.paneId} session={s} project={null} active={s.paneId === activePane} />
+            ) : (
               <SortableRow key={s.paneId} session={s} active={s.paneId === activePane} draggedRef={draggedRef} touch={touch} />
             ))}
           </SortableContext>

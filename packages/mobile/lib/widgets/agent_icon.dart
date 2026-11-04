@@ -14,7 +14,12 @@ const _pi = ['PPP.', 'B.P.', 'BB.Y', 'B..Y'];
 const _piColors = {'P': Color(0xfff09082), 'B': Color(0xff4d9abf), 'Y': Color(0xfff1be58)};
 
 /// 能新开的 agent，按默认顺序。
-const agentKinds = [SessionKind.claude, SessionKind.codex, SessionKind.pi];
+const agentKinds = [SessionKind.claude, SessionKind.codex, SessionKind.pi, SessionKind.harness];
+
+List<SessionKind> availableAgentKinds(Overview? overview) => [
+  for (final k in agentKinds)
+    if (k != SessionKind.harness || overview?.harness?.configured == true) k,
+];
 
 const claudeColor = Color(0xffd97757);
 const codexColor = Colors.white;
@@ -119,6 +124,7 @@ class AgentIcon extends StatelessWidget {
       SessionKind.codex => (_codexBg, codexColor, Colors.white.withValues(alpha: 0.10)),
       SessionKind.pi => (const Color(0xff151c26), piColor, Colors.white.withValues(alpha: 0.10)),
       SessionKind.shell => (p.muted, p.mutedFg, p.border),
+      SessionKind.harness => (p.secondary, p.fg, p.border),
     };
     final dot = switch (status) {
       SessionStatus.working => p.working,
@@ -140,6 +146,8 @@ class AgentIcon extends StatelessWidget {
             alignment: Alignment.center,
             child: kind == SessionKind.shell
                 ? Icon(Icons.terminal_rounded, size: size * 0.55, color: fg)
+                : kind == SessionKind.harness
+                ? Text('D', style: TextStyle(fontSize: size * 0.6, fontWeight: FontWeight.w700, color: fg, height: 1))
                 : SizedBox(
                     width: size * (kind == SessionKind.claude ? 0.78 : kind == SessionKind.pi ? 0.5 : 0.7),
                     height: kind == SessionKind.claude ? size * 0.7 : kind == SessionKind.pi ? size * 0.5 : size * 0.7,

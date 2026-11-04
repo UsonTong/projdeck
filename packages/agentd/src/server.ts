@@ -72,6 +72,7 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
   if (accessKey.enabled) app.log.info("已启用访问 key：带有效 key 的请求无需密码");
   const limiter = new LoginLimiter();
   const live = new LiveHub(service, herdr);
+  app.addHook("onClose", async () => service.harness.close());
   service.onSeen = () => live.scheduleOverview();
   const stopThemeWatch = watchGhosttyTheme(() => live.broadcast({ type: "theme" }));
   app.addHook("onClose", async () => stopThemeWatch());
@@ -409,6 +410,18 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
     return result;
   });
 
+  // 独立的 Harness 后端。启动链接含凭据，只通过请求体接收，不返回、不写请求 URL 日志。
+  app.get("/api/harness", async () => service.harness.status());
+  app.put<{ Body: { connectionUrl?: string } }>("/api/harness", async (req) => {
+    if (typeof req.body?.connectionUrl !== "string") throw httpError(400, "请粘贴本机 Harness 的启动链接");
+    try {
+      await service.configureHarness(req.body.connectionUrl);
+    } finally {
+      live.reconnectHarness();
+    }
+    return service.harness.status();
+  });
+
   // ---- 会话 ----
 
   type PaneParams = { Params: { paneId: string } };
@@ -423,6 +436,12 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
 
   app.post<PaneParams & { Body: PromptBody }>("/api/sessions/:paneId/prompt", async (req) => {
     await service.prompt(req.params.paneId, req.body.text ?? "", req.body.files);
+    live.scheduleOverview();
+    return { ok: true };
+  });
+
+  app.post<PaneParams>("/api/sessions/:paneId/cancel", async (req) => {
+    await service.cancel(req.params.paneId);
     live.scheduleOverview();
     return { ok: true };
   });

@@ -71,6 +71,10 @@ export function Composer(props: {
 
   const addFiles = (files: File[]) => {
     if (!files.length) return;
+    if (kind === "harness") {
+      toast.error("Harness 附件上传尚未接入，请先发送文本消息");
+      return;
+    }
     for (const file of files) {
       const id = nextId++;
       const preview = file.type.startsWith("image/") ? URL.createObjectURL(file) : null;
@@ -145,7 +149,7 @@ export function Composer(props: {
         )}
         <InputGroupTextarea
           value={text}
-          placeholder={kind === "shell" ? "输入命令" : dragging ? "松开以上传" : "输入消息，可粘贴或拖入图片和文件"}
+          placeholder={kind === "shell" ? "输入命令" : kind === "harness" ? "输入消息" : dragging ? "松开以上传" : "输入消息，可粘贴或拖入图片和文件"}
           onChange={(e) => setText(e.target.value)}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
@@ -164,7 +168,7 @@ export function Composer(props: {
           className="max-h-[33vh] min-h-11 text-base md:text-sm"
         />
         <InputGroupAddon align="block-end">
-          {kind !== "shell" && (
+          {kind !== "shell" && kind !== "harness" && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <InputGroupButton size="icon-sm" variant="ghost" aria-label="添加附件" onClick={() => fileInput.current?.click()}>

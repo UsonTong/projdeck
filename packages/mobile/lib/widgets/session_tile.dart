@@ -10,7 +10,7 @@ import '../theme.dart';
 import 'agent_icon.dart';
 import 'common.dart';
 
-const kindLabel = {SessionKind.claude: 'Claude', SessionKind.codex: 'Codex', SessionKind.pi: 'Pi', SessionKind.shell: '终端'};
+const kindLabel = {SessionKind.claude: 'Claude', SessionKind.codex: 'Codex', SessionKind.pi: 'Pi', SessionKind.shell: '终端', SessionKind.harness: 'DeepSeek'};
 const statusLabel = {SessionStatus.working: '工作中', SessionStatus.blocked: '需处理', SessionStatus.done: '已完成'};
 
 void openSession(BuildContext context, String paneId) {
@@ -125,7 +125,7 @@ class SessionTile extends StatelessWidget {
 
 Future<void> archiveSession(BuildContext context, Session s) async {
   if (s.status == SessionStatus.working &&
-      !await confirm(context, title: '归档正在工作的会话？', body: '归档会立即关闭这个 pane，正在进行的任务会被中断。对话可以之后恢复。', action: '归档', destructive: true)) {
+      !await confirm(context, title: '归档正在工作的会话？', body: '归档会结束这个会话，正在进行的任务会被中断。对话可以之后恢复。', action: '归档', destructive: true)) {
     return;
   }
   if (context.mounted) await run(context, () => AppScope.read(context).api.archive(s.paneId), success: '已归档');
@@ -157,19 +157,20 @@ void sessionMenu(BuildContext context, Session s, Project? project) {
         Clipboard.setData(ClipboardData(text: s.cwd));
         toast(context, '已复制');
       }),
-      SheetAction(Icons.drive_file_move_outline, project == null ? '移到项目…' : '移到其他项目…', () => moveToProject(context, s, project)),
+      if (!s.isHarness) SheetAction(Icons.drive_file_move_outline, project == null ? '移到项目…' : '移到其他项目…', () => moveToProject(context, s, project)),
       SheetAction(
         s.hidden ? Icons.visibility_outlined : Icons.visibility_off_outlined,
         s.hidden ? '取消隐藏' : '隐藏',
         () => run(context, () => app.api.setHidden(s.paneId, !s.hidden)),
       ),
-      if (s.kind != SessionKind.shell) SheetAction(Icons.archive_outlined, '归档（关闭 pane，保留对话）', () => archiveSession(context, s)),
+      if (s.kind != SessionKind.shell) SheetAction(Icons.archive_outlined, s.isHarness ? '归档（保留对话）' : '归档（关闭 pane，保留对话）', () => archiveSession(context, s)),
       if (s.kind == SessionKind.shell) SheetAction(Icons.close_rounded, '关闭终端', () => closeSession(context, s), destructive: true),
     ],
   );
 }
 
 Future<void> moveToProject(BuildContext context, Session s, Project? current) async {
+  if (s.isHarness) return;
   final app = AppScope.read(context);
   final projects = (app.overview?.projects ?? []).where((p) => !p.archived && p.id != current?.id).toList();
   if (projects.isEmpty) {

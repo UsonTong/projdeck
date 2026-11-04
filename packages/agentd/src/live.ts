@@ -57,6 +57,7 @@ interface Watch {
   transcriptTimer?: NodeJS.Timeout;
   /** 有人在看对话视图期间，这个会话的「已完成」算已读。 */
   endView?: () => void;
+  endStream?: () => void;
 }
 
 /**
@@ -121,6 +122,20 @@ export class LiveHub {
     for (const ws of this.clients) ws.send(text);
   }
 
+  /** 更换 Harness 的 API peer 后，旧订阅已失效；按仍在查看的页面重新订阅。 */
+  reconnectHarness(): void {
+    for (const [paneId, w] of [...this.watches]) {
+      if (!paneId.startsWith("harness:")) continue;
+      const clients = [...w.clients];
+      clearTimeout(w.transcriptTimer);
+      w.endStream?.();
+      w.endView?.();
+      this.watches.delete(paneId);
+      for (const client of clients) void this.watch(client, paneId);
+    }
+    this.scheduleOverview();
+  }
+
   /** 状态可能已变化（例如刚执行完操作），尽快推送一次总览。 */
   scheduleOverview(): void {
     clearTimeout(this.debounce);
@@ -157,13 +172,24 @@ export class LiveHub {
     // 新加入的客户端先拿到完整的会话记录
     try {
       const page = await this.service.transcript(paneId, -1);
+      if (this.watches.get(paneId) !== w || !w.clients.has(ws)) return;
       if (fresh || w.cursor < 0) w.cursor = page.cursor;
       send(ws, { type: "transcript", paneId, page: { ...page, reset: true } });
     } catch {
       // 会话可能刚被关闭，总览推送会让前端离开这个页面
     }
     // 等待期间可能已 unwatch 又重新 watch（React StrictMode 会这样），只给仍然生效的那次 watch 启动轮询
-    if (fresh && this.watches.get(paneId) === w) this.pollTranscript(paneId, w);
+    if (fresh && this.watches.get(paneId) === w) {
+      const watch = w;
+      const end = this.service.watchTranscript?.(paneId, (page) => {
+        if (this.watches.get(paneId) !== watch) return;
+        watch.cursor = page.cursor;
+        for (const client of watch.clients) send(client, { type: "transcript", paneId, page });
+        this.scheduleOverview();
+      });
+      if (end) w.endStream = end;
+      else this.pollTranscript(paneId, w);
+    }
   }
 
   private unwatch(ws: WebSocket, paneId: string): void {
@@ -173,6 +199,7 @@ export class LiveHub {
     if (w.clients.size === 0) {
       clearTimeout(w.transcriptTimer);
       w.endView?.();
+      w.endStream?.();
       this.watches.delete(paneId);
     }
   }
