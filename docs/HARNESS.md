@@ -4,7 +4,37 @@ Harness 不经过 herdr。默认入口现在直接显示现有 `dsh web` 的完�
 
 原先重绘对话的结构化适配器保留用于旧 API 兼容与测试，但不再作为默认界面。
 
-## 使用
+## 推荐：自启动并自动连接
+
+本机已安装用户服务 `projdeck-harness.service`：
+
+- 登录/开机由 systemd user 启动，崩溃后 5 秒自动重启。
+- 使用现有 `~/.dsh` 的 web profile、模型配置和历史，不迁移数据。
+- 只监听 `127.0.0.1:3081`，避免占用原来手动运行的 3080 实例；不开放额外公网端口。
+- `deploy/harness/managed.mjs` 从 `dsh web:` 就绪行在内存接收启动链接，不把 token 写进 journal；自动原子更新 `harness.json`（0600），再通过本机管理接口让正在运行的 projdeck 切换连接。
+- projdeck 尚未启动时每 15 秒重试；重新启动 Harness 后自动更新新 token，不再需要反复粘贴。
+- `Wants=projdeck-agentd.service`、`After=projdeck-agentd.service` 保证启动顺序。`Linger=yes` 时不登录桌面也能运行，本机已开启。
+- 管理器仅在内存读取 projdeck 的本机访问密钥，连接目标限制为 loopback HTTP，不读取 Harness 的账号或模型密钥文件。
+
+安装（仓库默认位于 `~/Repositories/projdeck`）：
+
+```sh
+cp deploy/projdeck-harness.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now projdeck-harness.service
+```
+
+查看/停止/重启：
+
+```sh
+systemctl --user status projdeck-harness.service
+systemctl --user restart projdeck-harness.service
+systemctl --user disable --now projdeck-harness.service
+```
+
+验证：`node --test deploy/harness/managed.test.mjs`。测试使用假 CLI 与临时管理接口，不调用模型；本机另已验证托管服务重启后 token 变更、projdeck 自动接入以及原版网页恢复 200。没有重启整台电脑，没有停止原有手动 Harness 进程。
+
+## 手动连接（不使用托管服务时）
 
 1. 在运行 projdeck agentd 的电脑上运行 Harness（例如 `dsh web --no-open`），保留它原有的模型与 workspace 设置。
 2. 打开 projdeck 网页「设置 → DeepSeek Harness」，粘贴 dsh 打印的本机启动链接（含 `?token=...`），点「接入」。不要把这个链接发到聊天、截图或 Git。

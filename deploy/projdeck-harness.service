@@ -1,0 +1,26 @@
+# Harness 自启动，不经过 herdr。启动器拦截启动 token 并自动更新 projdeck 的本机连接。
+# 安装：cp deploy/projdeck-harness.service ~/.config/systemd/user/
+#       systemctl --user daemon-reload && systemctl --user enable --now projdeck-harness.service
+# 未登录桌面也运行需 loginctl enable-linger "$USER"。
+[Unit]
+Description=DeepSeek Harness for projdeck（原版网页与自动连接）
+Wants=projdeck-agentd.service
+After=network-online.target projdeck-agentd.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=%h
+ExecStart=/usr/bin/node %h/Repositories/projdeck/deploy/harness/managed.mjs
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=DSH_HOME=%h/.dsh
+Environment=PROJDECK_HARNESS_PORT=3081
+Environment=NODE_ENV=production
+Restart=always
+RestartSec=5
+TimeoutStopSec=15
+KillMode=control-group
+UMask=0077
+
+[Install]
+WantedBy=default.target
