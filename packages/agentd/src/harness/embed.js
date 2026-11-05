@@ -64,9 +64,9 @@
       const unlist = sessions.list.subscribe(apply);
       const unselected = workspace.selection.subscribe(selected);
       window.addEventListener('message', message);
-      // 只隐藏原版的导航列，原版聊天、工具、设置浮层和右侧面板均保留。
+      // 保留导航列的 grid item，不能用 display:none：原版中心/右列是自动排位，移除首项会把聊天挤进 0px 轨道。
       const style = document.createElement('style');
-      style.textContent = '[data-projdeck-harness-frame]>div:first-of-type{display:none!important}[data-projdeck-harness-frame] [data-side="left"]{display:none!important}';
+      style.textContent = '[data-projdeck-harness-frame]>div:first-of-type{visibility:hidden!important;pointer-events:none!important;overflow:hidden!important;min-width:0!important;width:0!important;box-sizing:border-box!important;border:0!important;padding:0!important}[data-projdeck-harness-frame] [data-side="left"]{display:none!important}';
       document.head.append(style);
       const compact = () => {
         const frame = document.querySelector('[data-rightbar-collapsed], [data-rightbar-fullscreen], [data-sidebar-collapsed]');
