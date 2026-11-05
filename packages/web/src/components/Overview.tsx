@@ -58,7 +58,7 @@ import { cn } from "@/lib/utils";
 import { api } from "../api.ts";
 import { useLive } from "../live.ts";
 import { useFlip } from "../lib/flip.ts";
-import { openCcSwitch, openDevices, openFiles, openHarness, openSession } from "../router.ts";
+import { openCcSwitch, openDeepSeek, openDevices, openFiles, openHarness, openSession } from "../router.ts";
 import { AddProjectDialog } from "./AddProject.tsx";
 import { InlineInput } from "./InlineInput.tsx";
 import { AgentIcon } from "./AgentIcon.tsx";
@@ -130,7 +130,7 @@ export function OverviewPage({ activePane, activeFiles, enter }: { activePane: s
               <ArrowRightLeftIcon />
             </IconAction>
           )}
-          <IconAction label="DeepSeek Harness 原版" onClick={openHarness}>
+          <IconAction label="DeepSeek 对话" onClick={openDeepSeek}>
             <AgentIcon kind="harness" size="xs" />
           </IconAction>
           <IconAction label="设备：连进来的手机" onClick={() => openDevices()}>

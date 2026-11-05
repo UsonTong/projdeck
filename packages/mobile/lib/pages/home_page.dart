@@ -15,6 +15,7 @@ import '../widgets/common.dart';
 import '../widgets/session_tile.dart';
 import '../api/ccswitch.dart';
 import 'ccswitch_page.dart';
+import 'deepseek_page.dart';
 import 'devices_page.dart';
 import 'files_page.dart';
 import 'settings_page.dart';
@@ -137,9 +138,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                       ),
                     if (o?.harness?.configured == true)
                       IconButton(
-                        tooltip: 'DeepSeek Harness 原版网页',
+                        tooltip: 'DeepSeek 对话',
                         icon: const AgentIcon(kind: SessionKind.harness, size: 22),
-                        onPressed: () => openHarnessWeb(context),
+                        onPressed: () => DeepSeekPage.open(context),
                       ),
                     if (_ccswitch)
                       IconButton(

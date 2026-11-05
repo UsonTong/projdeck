@@ -13,6 +13,7 @@ import { Login } from "./components/Login.tsx";
 import { OverviewPage } from "./components/Overview.tsx";
 import { CcSwitchPage } from "./components/CcSwitchPage.tsx";
 import { DevicesPage } from "./components/DevicesPage.tsx";
+import { DeepSeekPage } from "./components/DeepSeekPage.tsx";
 import { HarnessPage } from "./components/HarnessPage.tsx";
 import { FilesPage } from "./components/FilesPage.tsx";
 import { SessionPage } from "./components/Session.tsx";
@@ -164,6 +165,8 @@ function Shell() {
       <CcSwitchPage section={route.section} />
     ) : route.kind === "devices" ? (
       <DevicesPage />
+    ) : route.kind === "deepseek" ? (
+      <DeepSeekPage />
     ) : null;
   const page = content && (
     <div key={pageKey} className={`flex min-h-0 min-w-0 flex-1 flex-col ${enter}`}>

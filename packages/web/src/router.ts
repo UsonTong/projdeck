@@ -14,7 +14,8 @@ export type Route =
   | { kind: "files"; projectId: string; path: string }
   | { kind: "ccswitch"; section: string }
   | { kind: "devices" }
-  | { kind: "harness" };
+  | { kind: "harness" }
+  | { kind: "deepseek" };
 
 function parse(): Route {
   const s = /^#\/s\/(.+)$/.exec(location.hash);
@@ -24,6 +25,7 @@ function parse(): Route {
   const c = /^#\/ccs\/?(.*)$/.exec(location.hash);
   if (c) return { kind: "ccswitch", section: decodeURIComponent(c[1] || "usage") };
   if (location.hash === "#/harness") return { kind: "harness" };
+  if (location.hash === "#/ds") return { kind: "deepseek" };
   if (location.hash === "#/devices") return { kind: "devices" };
   return { kind: "overview" };
 }
@@ -36,6 +38,10 @@ export function useRoute(): Route {
     return () => removeEventListener("hashchange", on);
   }, []);
   return route;
+}
+
+export function openDeepSeek(): void {
+  location.hash = "#/ds";
 }
 
 export function openHarness(): void {
