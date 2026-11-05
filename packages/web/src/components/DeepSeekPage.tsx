@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { formatDateTime, useTimeZone } from "@/lib/time";
 import { useLive } from "../live.ts";
-import { openHarness, openSession } from "../router.ts";
+import { openSession } from "../router.ts";
 import { AgentIcon } from "./AgentIcon.tsx";
 import { HarnessSettings } from "./HarnessSettings.tsx";
 
@@ -33,9 +33,11 @@ export function DeepSeekPage() {
           <div className="truncate text-xs text-muted-foreground">{sessions.length} 个会话</div>
         </div>
         {overview?.harness?.configured && (
-          <Button variant="outline" size="sm" onClick={openHarness}>
-            <ExternalLinkIcon data-icon="inline-start" />
-            原版 Harness
+          <Button variant="outline" size="sm" asChild>
+            <a href="/harness/" target="_blank" rel="noreferrer" title="在新标签页打开完整的 DeepSeek Harness（含原版侧栏）">
+              <ExternalLinkIcon data-icon="inline-start" />
+              完整 DSH
+            </a>
           </Button>
         )}
       </header>

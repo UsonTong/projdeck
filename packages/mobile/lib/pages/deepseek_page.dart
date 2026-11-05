@@ -37,9 +37,9 @@ class DeepSeekPage extends StatelessWidget {
         actions: [
           if (o?.harness?.configured == true)
             IconButton(
-              tooltip: '打开原版 Harness 网页',
+              tooltip: '完整 DSH（原版侧栏）',
               icon: const Icon(Icons.open_in_new_rounded),
-              onPressed: () => Native.openHarnessWeb(app.conn),
+              onPressed: () => Native.openHarnessWeb(app.conn, full: true),
             ),
         ],
       ),

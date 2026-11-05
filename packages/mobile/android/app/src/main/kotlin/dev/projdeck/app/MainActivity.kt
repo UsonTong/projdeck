@@ -45,7 +45,7 @@ class MainActivity : FlutterActivity() {
         ch.setMethodCallHandler { call, result ->
             when (call.method) {
                 "openHarnessWeb" -> HarnessWebActivity.open(
-                    this, call.argument<String>("base"), call.argument<String>("key"),
+                    this, call.argument<String>("base"), call.argument<String>("key"), call.argument<Boolean>("full") == true,
                 ) { ok ->
                     if (ok) result.success(null)
                     else result.error("harness", "无法打开 Harness，请检查连接地址与系统 WebView", null)

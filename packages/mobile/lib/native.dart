@@ -15,8 +15,9 @@ class Native {
       false;
 
   /// 打开同源 /harness/ 原版网页；主密钥仅由原生层写入 Cookie。
-  static Future<void> openHarnessWeb(Connection conn) =>
-      _ch.invokeMethod<void>('openHarnessWeb', {'base': conn.base.toString(), 'key': conn.key});
+  /// [full] 为 true 时打开完整原版（含侧栏），否则打开只含聊天的嵌入模式。
+  static Future<void> openHarnessWeb(Connection conn, {bool full = false}) =>
+      _ch.invokeMethod<void>('openHarnessWeb', {'base': conn.base.toString(), 'key': conn.key, 'full': full});
 
   /// 点通知启动 App 时要打开的页面（如 `/#/s/<paneId>`）。
   static Future<String?> initialPath() => _ch.invokeMethod<String>('initialPath');

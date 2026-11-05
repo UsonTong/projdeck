@@ -71,7 +71,8 @@ class HarnessWebActivity : Activity() {
         }
         if (savedInstanceState == null || web.restoreState(savedInstanceState) == null) {
             // 手机屏幕放不下原版 280px 侧栏；单独的入口也使用嵌入模式，只显示聊天。
-            web.loadUrl("$base/harness/?embed=1")
+            // 完整模式保留原版侧栏；嵌入/手机聊天模式只显示聊天。
+            web.loadUrl("$base/harness/" + if (intent.getBooleanExtra(EXTRA_FULL, false)) "" else "?embed=1")
         }
     }
 
@@ -119,6 +120,7 @@ class HarnessWebActivity : Activity() {
 
     companion object {
         private const val EXTRA_ORIGIN = "harness_origin"
+        private const val EXTRA_FULL = "harness_full"
         private const val REQ_FILES = 41
 
         private fun effectivePort(uri: Uri) = if (uri.port != -1) uri.port else if (uri.scheme == "https") 443 else 80
@@ -233,13 +235,13 @@ class HarnessWebActivity : Activity() {
             }
         }
 
-        fun open(activity: Activity, base: String?, key: String?, done: (Boolean) -> Unit) {
+        fun open(activity: Activity, base: String?, key: String?, full: Boolean = false, done: (Boolean) -> Unit) {
             authenticate(activity, base, key) { origin ->
                 if (origin == null) {
                     done(false)
                 } else {
                     try {
-                        activity.startActivity(Intent(activity, HarnessWebActivity::class.java).putExtra(EXTRA_ORIGIN, origin))
+                        activity.startActivity(Intent(activity, HarnessWebActivity::class.java).putExtra(EXTRA_ORIGIN, origin).putExtra(EXTRA_FULL, full))
                         done(true)
                     } catch (_: Exception) {
                         done(false)
