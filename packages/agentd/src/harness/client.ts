@@ -216,7 +216,8 @@ export class HarnessClient implements HarnessBackend {
           : typeof row.cwd === "string" ? row.cwd : "",
         status: blocked ? "blocked" : row.running === true ? "working"
           : row.agentAvailable === true ? "idle" : "unknown",
-        activeAt: typeof row.updatedAt === "number" && Number.isFinite(row.updatedAt) ? row.updatedAt : null };
+        activeAt: typeof row.updatedAt === "number" && Number.isFinite(row.updatedAt) ? row.updatedAt : null,
+        blank: row.blank === true };
     });
   }
 

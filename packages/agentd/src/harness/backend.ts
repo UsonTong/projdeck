@@ -7,6 +7,8 @@ export interface HarnessSession {
   cwd: string;
   status: SessionStatus;
   activeAt: number | null;
+  /** 还没有开始对话：UI 上标成空会话，排在真实对话后面。 */
+  blank?: boolean;
 }
 
 export interface HarnessBackend {

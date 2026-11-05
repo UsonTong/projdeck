@@ -103,7 +103,9 @@ export class ProjdeckService {
       return;
     }
     try {
-      this.harnessSessions = await this.harness.list();
+      // 有对话的排在前面，空会话放最后，避免一堆「DeepSeek 对话」把真正聊过的埋掉。
+      this.harnessSessions = (await this.harness.list()).sort((a, b) =>
+        Number(a.blank === true) - Number(b.blank === true) || (b.activeAt ?? 0) - (a.activeAt ?? 0));
     } catch {
       // 适配器的 status 给出脱敏的离线原因；另一后端仍可继续使用。
     }
@@ -123,7 +125,7 @@ export class ProjdeckService {
         capabilities: { terminal: false, chat: true, keys: false },
         kind: "harness",
         status: overview.harness.online ? this.seenStatus(id, h.status) : "unknown",
-        title: h.title || "DeepSeek 对话",
+        title: h.title || (h.blank ? "空会话（未开始）" : "DeepSeek 对话"),
         cwd: h.cwd,
         conversationId: h.id,
         hidden: this.store.isHidden(id, id),

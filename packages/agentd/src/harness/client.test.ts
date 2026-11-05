@@ -199,9 +199,9 @@ test("配置、API peer Cookie、官方 RPC 参数和会话映射；list 缓存�
   assert.equal(f.exchanges, 1);
   assert.equal(f.requests.filter((r) => r.message?.method === "session/list").length, 1);
   assert.deepEqual(lists[0], [
-    { id: "s1", title: "标题", cwd: "/current", status: "working", activeAt: 1700000000000 },
-    { id: "cold", title: "", cwd: "", status: "unknown", activeAt: 0 },
-    { id: "ask", title: "", cwd: "", status: "blocked", activeAt: 1 },
+    { id: "s1", title: "标题", cwd: "/current", status: "working", activeAt: 1700000000000, blank: false },
+    { id: "cold", title: "", cwd: "", status: "unknown", activeAt: 0, blank: false },
+    { id: "ask", title: "", cwd: "", status: "blocked", activeAt: 1, blank: false },
   ]);
   lists[0]![0]!.title = "不要污染缓存";
   assert.equal((await f.client.list())[0]!.title, "标题");
