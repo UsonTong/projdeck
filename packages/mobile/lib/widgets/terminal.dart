@@ -251,7 +251,7 @@ class TerminalPaneState extends State<TerminalPane> with WidgetsBindingObserver 
               focusNode: focus,
               theme: theme,
               padding: const EdgeInsets.all(4),
-              textStyle: xt.TerminalStyle(fontSize: _fontSize, fontFamily: 'monospace'),
+              textStyle: xt.TerminalStyle(fontSize: _fontSize, height: 1.28, fontFamily: 'JetBrainsMono', fontFamilyFallback: const ['Noto Sans Mono CJK SC', 'monospace']),
               keyboardAppearance: p.dark ? Brightness.dark : Brightness.light,
             ),
           ),
