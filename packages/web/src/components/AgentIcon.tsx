@@ -113,7 +113,7 @@ export function AgentIcon({
         kind === "claude" && "bg-[#d97757]/12 text-[#d97757] ring-[#d97757]/25",
         kind === "codex" && "bg-[#0b0c10] ring-white/10",
         kind === "pi" && "bg-[#151c26] ring-white/10",
-        kind === "harness" && "bg-[#4d6bfe] ring-[#4d6bfe]/40",
+        kind === "harness" && "bg-[#4d6bfe]/12 ring-[#4d6bfe]/25",
         kind === "shell" && "bg-muted text-muted-foreground ring-border",
         className,
       )}

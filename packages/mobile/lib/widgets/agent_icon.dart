@@ -124,7 +124,7 @@ class AgentIcon extends StatelessWidget {
       SessionKind.codex => (_codexBg, codexColor, Colors.white.withValues(alpha: 0.10)),
       SessionKind.pi => (const Color(0xff151c26), piColor, Colors.white.withValues(alpha: 0.10)),
       SessionKind.shell => (p.muted, p.mutedFg, p.border),
-      SessionKind.harness => (const Color(0xff4d6bfe), Colors.white, const Color(0xff4d6bfe)),
+      SessionKind.harness => (const Color(0xff4d6bfe).withValues(alpha: 0.12), const Color(0xff4d6bfe), const Color(0xff4d6bfe).withValues(alpha: 0.25)),
     };
     final dot = switch (status) {
       SessionStatus.working => p.working,
