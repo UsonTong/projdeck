@@ -4,6 +4,7 @@ import { mkdir, open, rename, rm } from "node:fs/promises";
 import { request, type IncomingHttpHeaders } from "node:http";
 import { createRequire } from "node:module";
 import { configDir } from "../config.ts";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import type { WebSocket as Socket, RawData } from "ws";
@@ -215,12 +216,66 @@ export class HarnessClient implements HarnessBackend {
           : typeof row.cwd === "string" ? row.cwd : "",
         status: blocked ? "blocked" : row.running === true ? "working"
           : row.agentAvailable === true ? "idle" : "unknown",
-        activeAt: typeof row.updatedAt === "number" && Number.isFinite(row.updatedAt) ? row.updatedAt : null };
+        activeAt: typeof row.updatedAt === "number" && Number.isFinite(row.updatedAt) ? row.updatedAt : null,
+        blank: row.blank === true };
     });
   }
 
-  async create(cwd: string): Promise<string> {
-    return string(object(await this.#rpc("create", { cwd })).sessionId);
+  /**
+   * 创建会话时先登记/复用对应目录的 Harness 工作区，再让会话加入它。
+   * 只传 cwd 的原版客户端会让用户再选一次工作区；加入工作区后原版侧也能直接继续。
+   */
+  async create(cwd: string | null): Promise<string> {
+    return this.#createIn(await this.#workspaceFor(cwd ?? homedir()));
+  }
+
+  /** 未归属会话：使用 Harness 的默认工作区，没有时才退回主目录。 */
+  async createDefault(): Promise<string> {
+    const workspaceId = await this.#defaultWorkspace();
+    return this.#createIn(workspaceId);
+  }
+
+  #bound = new Set<string>();
+
+  /**
+   * 把尚未开始对话的空白会话重新加入对应工作区。原版就是通过 session/create
+   * 复用空白 sessionId；已经开始过的会话没有公开的迁移接口，保持原样。
+   */
+  async bindSession(id: string, cwd: string | null, blank: boolean): Promise<void> {
+    if (!blank || !cwd || this.#bound.has(id)) return;
+    this.#bound.add(id);
+    try {
+      const workspaceId = await this.#workspaceFor(cwd);
+      await this.#rpc("create", { workspaceId, sessionId: id });
+    } catch {
+      // 目录不匹配或已被占用时保持原会话，下次打开再试。
+      this.#bound.delete(id);
+    }
+  }
+
+  async #createIn(workspaceId: string | undefined): Promise<string> {
+    const value = object(await this.#rpc("create", workspaceId ? { workspaceId } : { cwd: homedir() }));
+    return string(value.sessionId);
+  }
+
+  #workspaces = new Map<string, string>();
+  #default?: string;
+
+  async #workspaceFor(path: string): Promise<string> {
+    const cached = this.#workspaces.get(path);
+    if (cached) return cached;
+    const value = object(await this.#rpc("create", { path }, undefined, "request", "workspace"));
+    const id = string(object(value.workspace).workspaceId);
+    this.#workspaces.set(path, id);
+    return id;
+  }
+
+  async #defaultWorkspace(): Promise<string | undefined> {
+    if (this.#default) return this.#default;
+    const value = await this.#rpc("initializeDefault", undefined, undefined, "request", "workspace");
+    if (value === undefined || value === null) return undefined;
+    this.#default = string(object(object(value).workspace).workspaceId);
+    return this.#default;
   }
   async prompt(id: string, text: string, files?: string[]): Promise<void> {
     if (files?.length) throw fail("Harness 客户端暂不支持附件；请移除附件后重试");
@@ -373,7 +428,7 @@ export class HarnessClient implements HarnessBackend {
   }
   #cookies = new WeakMap<Socket, string>();
 
-  async #rpc(method: string, requestValue: unknown, signal?: AbortSignal, parameter = "request"): Promise<unknown> {
+  async #rpc(method: string, requestValue: unknown, signal?: AbortSignal, parameter = "request", namespace = "session"): Promise<unknown> {
     const lifetime = this.#lifetime;
     await this.#ensureConnection();
     lifetime.signal.throwIfAborted();
@@ -383,9 +438,9 @@ export class HarnessClient implements HarnessBackend {
     const rpcId = randomUUID();
     let response;
     try {
-      response = await this.#http(endpoint(config, `api/session/${method}`), combined, this.#cookies.get(ws),
-        JSON.stringify({ type: "client-request", rpcId, method: `session/${method}`,
-          payload: { args: { [parameter]: requestValue } } }));
+      response = await this.#http(endpoint(config, `api/${namespace}/${method}`), combined, this.#cookies.get(ws),
+        JSON.stringify({ type: "client-request", rpcId, method: `${namespace}/${method}`,
+          payload: { args: requestValue === undefined ? {} : { [parameter]: requestValue } } }));
     } catch (error) {
       if (!combined.aborted && this.#socket === ws) this.#disconnect(fail("Harness HTTP 连接失败或超时"));
       throw error;
@@ -399,7 +454,7 @@ export class HarnessClient implements HarnessBackend {
     const envelope = parse(response.body);
     if (envelope.type !== "server-response" || envelope.rpcId !== rpcId) throw fail();
     const result = object(envelope.result);
-    if (result.ok === true && method !== "list" && method !== "page") this.#listCache = undefined;
+    if (result.ok === true && namespace === "session" && method !== "list" && method !== "page") this.#listCache = undefined;
     if (result.ok === false) throw fail("Harness RPC 业务失败（请求未被确认为成功）");
     if (result.ok !== true) throw fail();
     return result.value;

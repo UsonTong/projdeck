@@ -7,6 +7,8 @@ export interface HarnessSession {
   cwd: string;
   status: SessionStatus;
   activeAt: number | null;
+  /** 还没有开始任何轮次：可以重新加入工作区而不新建对话。 */
+  blank?: boolean;
 }
 
 export interface HarnessBackend {
@@ -14,7 +16,12 @@ export interface HarnessBackend {
   configure(connectionUrl: string): Promise<void>;
   close(): void;
   list(): Promise<HarnessSession[]>;
-  create(cwd: string): Promise<string>;
+  /** 在对应目录的 Harness 工作区里新建会话；传 null 表示未归属。 */
+  create(cwd: string | null): Promise<string>;
+  /** 未归属会话优先在 Harness 默认工作区里创建。 */
+  createDefault?(): Promise<string>;
+  /** 把已有会话加入它工作目录对应的 Harness 工作区（原版界面就不会再要求选择工作区）。 */
+  bindSession?(id: string, cwd: string | null, blank: boolean): Promise<void>;
   prompt(id: string, text: string, files?: string[]): Promise<void>;
   cancel(id: string): Promise<void>;
   rename(id: string, title: string): Promise<void>;

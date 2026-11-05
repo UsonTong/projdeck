@@ -419,6 +419,10 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
     return reply.type("text/javascript; charset=utf-8").header("Cache-Control", "private, no-store")
       .send(readFileSync(new URL("./harness/embed.js", import.meta.url), "utf8"));
   });
+  app.post<{ Params: { id: string } }>("/api/harness/sessions/:id/bind", async (req) => {
+    await service.bindHarnessSession(req.params.id);
+    return { ok: true };
+  });
   app.get("/api/harness", async () => service.harness.status());
   app.put<{ Body: { connectionUrl?: string } }>("/api/harness", async (req) => {
     if (typeof req.body?.connectionUrl !== "string") throw httpError(400, "请粘贴本机 Harness 的启动链接");

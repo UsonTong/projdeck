@@ -70,7 +70,8 @@ class HarnessWebActivity : Activity() {
             onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT) { goBackOrClose() }
         }
         if (savedInstanceState == null || web.restoreState(savedInstanceState) == null) {
-            web.loadUrl("$base/harness/")
+            // 手机屏幕放不下原版 280px 侧栏；单独的入口也使用嵌入模式，只显示聊天。
+            web.loadUrl("$base/harness/?embed=1")
         }
     }
 

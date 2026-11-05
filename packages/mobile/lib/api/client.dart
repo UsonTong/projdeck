@@ -129,6 +129,9 @@ class Api {
   Future<void> cancel(String paneId) => post('${pane(paneId)}/cancel');
 
   /// 服务器上发布的安卓 App 版本（没有发布过返回 null）。
+  /// 打开已有 Harness 会话前，确保它属于对应目录的工作区。
+  Future<void> bindHarness(String id) async => post('/api/harness/sessions/${Uri.encodeComponent(id)}/bind');
+
   Future<Map<String, dynamic>?> androidApp() async {
     final v = await get('/api/app');
     return v is Map ? v.cast<String, dynamic>() : null;

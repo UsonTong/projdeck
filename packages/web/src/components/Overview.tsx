@@ -2,6 +2,7 @@ import type { AgentKind, ArchivedSession, CcSwitchStatus, Overview, ProjectView,
 import {
   ArchiveIcon,
   ArchiveRestoreIcon,
+  ChevronDownIcon,
   ArrowRightLeftIcon,
   SmartphoneIcon,
   FolderInputIcon,
@@ -386,7 +387,9 @@ function ProjectGroup(props: {
   };
 
   const sorted = sortProjectSessions(sessions, props.sort);
-  const starters: AgentKind[] = availableAgents.includes(project.defaultAgent)
+  // 行内只留默认 agent 和 DeepSeek，其余在右键菜单里，避免一排七八个图标。
+  const starters = availableAgents.filter((k) => k === project.defaultAgent || k === "harness");
+  const menuStarters: AgentKind[] = availableAgents.includes(project.defaultAgent)
     ? [project.defaultAgent, ...availableAgents.filter((k) => k !== project.defaultAgent)]
     : availableAgents;
 
@@ -446,7 +449,7 @@ function ProjectGroup(props: {
         <ContextMenuContent className="w-52" onCloseAutoFocus={(e) => editingNote && e.preventDefault()}>
           <ContextMenuItem onSelect={() => setEditingNote(true)}>{project.note ? "修改备注" : "添加备注"}</ContextMenuItem>
           <ContextMenuSeparator />
-          {starters.map((k) => (
+          {menuStarters.map((k) => (
             <ContextMenuItem key={k} onSelect={() => void start(k)}>
               新开 {KIND_LABEL[k]}
             </ContextMenuItem>
@@ -463,13 +466,40 @@ function ProjectGroup(props: {
         <p className="px-3 py-2 text-xs text-muted-foreground">没有运行中的会话，点上方图标新开一个</p>
       ) : (
         <div ref={rowsRef} className="flex flex-col gap-0.5">
-          {sorted.map((s) => (
+          {sorted.filter((s) => s.kind !== "harness").map((s) => (
             <SessionRow key={s.paneId} session={s} project={project} active={s.paneId === activePane} />
           ))}
+          <HarnessGroup sessions={sorted.filter((s) => s.kind === "harness")} project={project} activePane={activePane} />
         </div>
       )}
       <ProjectSettingsDialog project={project} open={settings} onOpenChange={setSettings} />
     </section>
+  );
+}
+
+/** DeepSeek 会话多时折成一组，默认收起；当前正在看的那条会自动展开。 */
+function HarnessGroup({ sessions, project, activePane }: { sessions: Session[]; project: ProjectView | null; activePane: string | null }) {
+  const containsActive = sessions.some((s) => s.paneId === activePane);
+  const [open, setOpen] = useState<boolean | null>(null);
+  const expanded = open ?? containsActive;
+  if (sessions.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-0.5">
+      <button
+        type="button"
+        onClick={() => setOpen(!expanded)}
+        aria-expanded={expanded}
+        className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent/60"
+      >
+        <AgentIcon kind="harness" size="xs" />
+        <span className="flex-1 truncate text-sm">DeepSeek</span>
+        <span className="text-xs text-muted-foreground">{sessions.length} 个会话</span>
+        <ChevronDownIcon className={cn("size-4 text-muted-foreground transition-transform", expanded && "rotate-180")} />
+      </button>
+      {expanded && sessions.map((s) => (
+        <SessionRow key={s.paneId} session={s} project={project} active={s.paneId === activePane} />
+      ))}
+    </div>
   );
 }
 
@@ -790,16 +820,15 @@ function UnassignedTab({ sessions, activePane }: { sessions: Session[]; activePa
       {sort === "herdr" ? (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={() => (draggedRef.current = true)} onDragEnd={onDragEnd}>
           <SortableContext items={shown.filter((s) => s.backend !== "harness").map((s) => s.paneId)} strategy={verticalListSortingStrategy}>
-            {shown.map((s) => s.backend === "harness" ? (
-              <SessionRow key={s.paneId} session={s} project={null} active={s.paneId === activePane} />
-            ) : (
+            {shown.filter((s) => s.backend !== "harness").map((s) => (
               <SortableRow key={s.paneId} session={s} active={s.paneId === activePane} draggedRef={draggedRef} touch={touch} />
             ))}
           </SortableContext>
         </DndContext>
       ) : (
-        shown.map((s) => <SessionRow key={s.paneId} session={s} project={null} active={s.paneId === activePane} />)
+        shown.filter((s) => s.backend !== "harness").map((s) => <SessionRow key={s.paneId} session={s} project={null} active={s.paneId === activePane} />)
       )}
+      <HarnessGroup sessions={shown.filter((s) => s.backend === "harness" || s.kind === "harness")} project={null} activePane={activePane} />
     </div>
   );
 }

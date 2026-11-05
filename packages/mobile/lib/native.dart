@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'api/client.dart';
@@ -27,9 +28,20 @@ class Native {
     return LocalFile.bytes(r['name'] as String, r['bytes'] as Uint8List, mime: r['mime'] as String);
   }
 
-  /// 用系统的下载管理器下载（带上访问 key），保存到「下载」文件夹。
+  /// 用系统的下载管理器下载普通文件（带上访问 key），保存到「下载」文件夹。
   static Future<void> download(Uri url, String name, Connection conn) =>
       _ch.invokeMethod('download', {'url': url.toString(), 'name': name, 'cookie': conn.headers['Cookie']});
+
+  /// App 内更新：原生下载安装包并直接拉起系统安装器，进度写入 [updateProgress]，
+  /// 失败写入 [updateError]。不再让用户去通知栏找下载完成的文件。
+  static final updateProgress = ValueNotifier<int?>(null);
+  static final updateError = ValueNotifier<String?>(null);
+
+  static Future<void> downloadAndInstallUpdate(Uri url, Connection conn) async {
+    updateProgress.value = 0;
+    updateError.value = null;
+    await _ch.invokeMethod('downloadAndInstall', {'url': url.toString(), 'cookie': conn.headers['Cookie']});
+  }
 
   // ---- 远程调试（App 里的 adb 客户端，见 docs/REMOTE_ADB.md） ----
 
@@ -71,6 +83,8 @@ class Native {
   static void onOpen(void Function(String path) handler) {
     _ch.setMethodCallHandler((call) async {
       if (call.method == 'open') handler(call.arguments as String);
+      if (call.method == 'updateProgress') updateProgress.value = (call.arguments as num?)?.toInt();
+      if (call.method == 'updateError') updateError.value = call.arguments as String?;
     });
   }
 }

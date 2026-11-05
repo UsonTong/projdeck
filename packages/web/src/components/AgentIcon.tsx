@@ -113,7 +113,7 @@ export function AgentIcon({
         kind === "claude" && "bg-[#d97757]/12 text-[#d97757] ring-[#d97757]/25",
         kind === "codex" && "bg-[#0b0c10] ring-white/10",
         kind === "pi" && "bg-[#151c26] ring-white/10",
-        kind === "harness" && "bg-blue-500/10 text-blue-400 ring-blue-500/25",
+        kind === "harness" && "bg-[#4d6bfe] ring-[#4d6bfe]/40",
         kind === "shell" && "bg-muted text-muted-foreground ring-border",
         className,
       )}
@@ -121,7 +121,7 @@ export function AgentIcon({
       {kind === "claude" && <PixelArt rows={CRAB} title="Claude" className="w-[78%]" />}
       {kind === "codex" && <CodexLogo className="w-[78%]" />}
       {kind === "pi" && <PiLogo className="w-[52%]" />}
-      {kind === "harness" && <span className="font-semibold leading-none" aria-label="DeepSeek">D</span>}
+      {kind === "harness" && <img src="/deepseek.svg" alt="DeepSeek" draggable={false} className="w-[62%]" />}
       {kind === "shell" && <SquareTerminalIcon className="size-[55%]" />}
       {plus && (
         <span className="absolute -right-1 -bottom-1 flex size-3 items-center justify-center rounded-full bg-foreground text-background ring-2 ring-background">

@@ -167,7 +167,7 @@ void sessionMenu(BuildContext context, Session s, Project? project) {
         Clipboard.setData(ClipboardData(text: s.cwd));
         toast(context, '已复制');
       }),
-      if (!s.isHarness) SheetAction(Icons.drive_file_move_outline, project == null ? '移到项目…' : '移到其他项目…', () => moveToProject(context, s, project)),
+      SheetAction(Icons.drive_file_move_outline, project == null ? '移到项目…' : '移到其他项目…', () => moveToProject(context, s, project)),
       SheetAction(
         s.hidden ? Icons.visibility_outlined : Icons.visibility_off_outlined,
         s.hidden ? '取消隐藏' : '隐藏',

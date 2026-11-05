@@ -57,6 +57,8 @@ android {
 dependencies {
     // 远程调试（配对、授权、转发）放在共用库里，被控端 App 用的是同一份
     implementation(project(":remote-adb"))
+    // 更新安装用的 FileProvider
+    implementation("androidx.core:core:1.13.1")
 }
 
 kotlin {

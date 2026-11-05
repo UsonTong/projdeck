@@ -54,6 +54,7 @@ export const api = {
 
   harness: () => request<HarnessStatus>("GET", "/api/harness"),
   connectHarness: (connectionUrl: string) => request<HarnessStatus>("PUT", "/api/harness", { connectionUrl }),
+  bindHarnessSession: (id: string) => request("POST", `/api/harness/sessions/${encodeURIComponent(id)}/bind`),
   cancel: (paneId: string) => request("POST", `${pane(paneId)}/cancel`),
   overview: () => request<Overview>("GET", "/api/overview"),
   // 推送通知

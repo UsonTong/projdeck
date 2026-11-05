@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../native.dart';
 import '../state.dart';
 import '../theme.dart';
+import '../widgets/app_update.dart';
 import '../widgets/common.dart';
 import 'devices_page.dart';
 import 'remote_adb_page.dart';
@@ -29,7 +30,7 @@ class _SettingsPageState extends State<SettingsPage> {
     Native.appVersion().then((v) => mounted ? setState(() => _version = v['name'] as String?) : null);
   }
 
-  /// 检查更新：服务器上发布了更新的版本就下载安装包（下载完成后点通知安装）。
+  /// 检查更新：服务器上发布了更新的版本就在 App 内下载并直接打开安装界面。
   Future<void> _checkUpdate() async {
     final app = AppScope.read(context);
     try {
@@ -41,8 +42,8 @@ class _SettingsPageState extends State<SettingsPage> {
       final current = (mine['code'] as num?)?.toInt() ?? 0;
       final name = server['version'].toString().split('+').first;
       if (latest <= current) return toast(context, '已经是最新版本');
-      await Native.download(Uri.parse('${app.conn.base}/app/projdeck.apk'), 'projdeck.apk', app.conn);
-      if (mounted) toast(context, '正在下载 $name，完成后点通知安装');
+      if (mounted) toast(context, '正在下载 $name');
+      if (mounted) await installAppUpdate(context, app.conn);
     } catch (e) {
       if (mounted) toast(context, '检查更新失败：$e', error: true);
     }

@@ -62,6 +62,8 @@ async function fixture(t: TestContext, host = "127.0.0.1") {
         projections: { values: { userQuestions: { active: [{ state: "open" }] } } } },
     ] }, create: { sessionId: "new-session" }, prompt: { accepted: true }, cancel: { accepted: true },
     rename: { title: "新标题", seq: 5 }, page: { records: [], hasMore: false },
+    "workspace/create": { workspace: { workspaceId: "ws-work" }, created: true },
+    "workspace/insertSessionBefore": { workspace: { workspaceId: "ws-work" } },
   };
   const wss = new WebSocketServer({ noServer: true });
   const server = createServer(async (req, res) => {
@@ -81,19 +83,20 @@ async function fixture(t: TestContext, host = "127.0.0.1") {
         ...(settings.cookie ? { "set-cookie": `${cookie}; Path=/; HttpOnly; SameSite=Strict` } : {}) }).end();
       return;
     }
-    if (!url.pathname.startsWith("/api/session/")) { res.writeHead(404).end(); return; }
+    const route = /^\/api\/(session|workspace)\/(.+)$/.exec(url.pathname);
+    if (!route) { res.writeHead(404).end(); return; }
     if (!peers.get(req.headers.cookie ?? "")?.connected) { res.writeHead(401).end(); return; }
     const message = await body(req);
     log.message = message;
-    const method = url.pathname.slice("/api/session/".length);
+    const [, namespace, method] = route as unknown as [string, string, string];
     assert.equal(message.type, "client-request");
-    assert.equal(message.method, `session/${method}`);
+    assert.equal(message.method, `${namespace}/${method}`);
     assert.equal(typeof message.rpcId, "string");
     assert.deepEqual(Object.keys(message.payload), ["args"]);
     assert.deepEqual(Object.keys(message.payload.args), [method === "list" ? "_request" : "request"]);
     if (settings.hang) return;
     if (settings.rpcStatus !== 200) { res.writeHead(settings.rpcStatus, { location: "http://example.invalid/" }).end(); return; }
-    const value = replies[method];
+    const value = replies[`${namespace}/${method}`] ?? replies[method];
     assert.notEqual(value, undefined, `意外的 RPC ${method}`);
     res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({
       type: "server-response", rpcId: settings.wrongId ? "wrong" : message.rpcId,
@@ -196,9 +199,9 @@ test("配置、API peer Cookie、官方 RPC 参数和会话映射；list 缓存�
   assert.equal(f.exchanges, 1);
   assert.equal(f.requests.filter((r) => r.message?.method === "session/list").length, 1);
   assert.deepEqual(lists[0], [
-    { id: "s1", title: "标题", cwd: "/current", status: "working", activeAt: 1700000000000 },
-    { id: "cold", title: "", cwd: "", status: "unknown", activeAt: 0 },
-    { id: "ask", title: "", cwd: "", status: "blocked", activeAt: 1 },
+    { id: "s1", title: "标题", cwd: "/current", status: "working", activeAt: 1700000000000, blank: false },
+    { id: "cold", title: "", cwd: "", status: "unknown", activeAt: 0, blank: false },
+    { id: "ask", title: "", cwd: "", status: "blocked", activeAt: 1, blank: false },
   ]);
   lists[0]![0]!.title = "不要污染缓存";
   assert.equal((await f.client.list())[0]!.title, "标题");
@@ -420,7 +423,7 @@ test("close 取消订阅与待处理操作；不再自动重连", async (t) => {
   await until(() => watching.pages.length > 0);
   f.settings.hang = true;
   const pending = f.client.create("/fake");
-  await until(() => f.requests.some((r) => r.message?.method === "session/create"));
+  await until(() => f.requests.some((r) => r.message?.method === "workspace/create"));
   f.client.close();
   await assert.rejects(pending, /取消/);
   assert.equal(f.client.status().online, false);

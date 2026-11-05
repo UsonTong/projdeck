@@ -2,6 +2,7 @@ import { ArrowLeftIcon, ExternalLinkIcon, RotateCwIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { api } from "../api.ts";
 import { useLive } from "../live.ts";
 import { openSession } from "../router.ts";
 import { HarnessSettings } from "./HarnessSettings.tsx";
@@ -20,6 +21,15 @@ export function HarnessPage({ sessionId }: { sessionId?: string }) {
   const [error, setError] = useState("");
   const state = overview?.harness;
   const ready = state?.configured && (state.online || !state.error);
+  // 已有会话先加入它目录对应的 Harness 工作区，原版输入框就不会再让你选工作区。
+  const [bound, setBound] = useState(!sessionId);
+  useEffect(() => {
+    if (!sessionId || !ready) return;
+    let alive = true;
+    setBound(false);
+    void api.bindHarnessSession(sessionId).catch(() => undefined).finally(() => { if (alive) setBound(true); });
+    return () => { alive = false; };
+  }, [sessionId, ready]);
   const selected = [...(overview?.projects.flatMap((p) => p.sessions) ?? []), ...(overview?.unassigned ?? [])]
     .find((s) => s.kind === "harness" && s.conversationId === sessionId);
 
@@ -78,7 +88,7 @@ export function HarnessPage({ sessionId }: { sessionId?: string }) {
           </Button>
         )}
       </header>
-      {ready ? (
+      {ready && bound ? (
         <div className="relative flex min-h-0 flex-1 flex-col">
           <iframe ref={frame} src="/harness/?embed=1" onLoad={loaded} title="DeepSeek Harness 原版聊天" allow="clipboard-read; clipboard-write; fullscreen" className="min-h-0 w-full flex-1 border-0 bg-background" />
           {(opening || error) && (
@@ -87,6 +97,8 @@ export function HarnessPage({ sessionId }: { sessionId?: string }) {
             </div>
           )}
         </div>
+      ) : ready ? (
+        <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground"><Spinner />正在准备 Harness 会话…</div>
       ) : (
         <div className="mx-auto w-full max-w-lg p-4"><HarnessSettings /></div>
       )}

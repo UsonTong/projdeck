@@ -68,10 +68,12 @@ void main() {
             child: HarnessChat(
               connection: connection,
               sessionId: 'original:chat?one=1',
+              prepare: () async {},
             ),
           ),
         ),
       );
+      await tester.pump();
       await tester.pump();
       final view = tester.widget<AndroidView>(find.byType(AndroidView));
       expect(view.viewType, 'projdeck/harness');

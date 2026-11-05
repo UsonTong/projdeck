@@ -9,6 +9,7 @@ import '../native.dart';
 import '../sort.dart';
 import '../state.dart';
 import '../theme.dart';
+import '../widgets/app_update.dart';
 import '../widgets/agent_icon.dart';
 import '../widgets/common.dart';
 import '../widgets/session_tile.dart';
@@ -63,10 +64,8 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
 
   Future<void> _downloadUpdate() async {
     final app = AppScope.read(context);
-    final conn = app.conn;
     if (!mounted) return;
-    await Native.download(Uri.parse('${conn.base}/app/projdeck.apk'), 'projdeck.apk', conn);
-    if (mounted) toast(context, '正在下载，完成后点通知安装');
+    await installAppUpdate(context, app.conn);
   }
 
   @override
@@ -394,11 +393,15 @@ class _ProjectGroup extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     final sorted = sortProjectSessions(sessions, sort);
+    final regular = sorted.where((s) => !s.isHarness).toList();
+    final harness = sorted.where((s) => s.isHarness).toList();
     final available = availableAgentKinds(AppScope.read(context).overview);
     final starters = [
       if (available.contains(project.defaultAgent)) project.defaultAgent,
       ...available.where((k) => k != project.defaultAgent),
     ];
+    // 行内只留默认 agent 和 DeepSeek，其余仍在长按菜单里。
+    final inlineStarters = starters.where((k) => k == project.defaultAgent || k == SessionKind.harness).toList();
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 6, 4, 10),
       child: Column(
@@ -477,7 +480,7 @@ class _ProjectGroup extends StatelessWidget {
             padding: const EdgeInsets.only(left: 6),
             child: Wrap(
               children: [
-                for (final k in starters)
+                for (final k in inlineStarters)
                   _IconTap(
                     tooltip: '新开 ${kindLabel[k]}',
                     onTap: () => _start(context, k),
@@ -501,11 +504,57 @@ class _ProjectGroup extends StatelessWidget {
                     child: Text('没有运行中的会话，点上方图标新开一个', style: TextStyle(fontSize: 12, color: p.mutedFg)),
                   )
                 : Column(
-                    children: [for (final s in sorted) SessionTile(key: ValueKey(s.paneId), session: s, project: project)],
+                    children: [
+                      for (final s in regular) SessionTile(key: ValueKey(s.paneId), session: s, project: project),
+                      _HarnessGroup(sessions: harness, project: project),
+                    ],
                   ),
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 项目 / 未归属里的 DeepSeek 会话折成一组，默认收起；点一下展开。
+class _HarnessGroup extends StatefulWidget {
+  final List<Session> sessions;
+  final Project? project;
+  const _HarnessGroup({required this.sessions, this.project});
+
+  @override
+  State<_HarnessGroup> createState() => _HarnessGroupState();
+}
+
+class _HarnessGroupState extends State<_HarnessGroup> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.sessions.isEmpty) return const SizedBox.shrink();
+    final p = Palette.of(context);
+    return Column(
+      children: [
+        InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => setState(() => _open = !_open),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+            child: Row(
+              children: [
+                const AgentIcon(kind: SessionKind.harness, size: 22),
+                const SizedBox(width: 10),
+                const Expanded(child: Text('DeepSeek', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500))),
+                Text('${widget.sessions.length} 个会话', style: TextStyle(fontSize: 12, color: p.mutedFg)),
+                const SizedBox(width: 4),
+                Icon(_open ? Icons.expand_less_rounded : Icons.expand_more_rounded, size: 20, color: p.mutedFg),
+              ],
+            ),
+          ),
+        ),
+        if (_open)
+          for (final s in widget.sessions) SessionTile(key: ValueKey(s.paneId), session: s, project: widget.project),
+      ],
     );
   }
 }
@@ -541,6 +590,8 @@ class _UnassignedTab extends StatelessWidget {
     final p = Palette.of(context);
     final sort = app.unassignedSort;
     final sorted = sortUnassigned(sessions, sort);
+    final regular = sorted.where((s) => !s.isHarness).toList();
+    final harness = sorted.where((s) => s.isHarness).toList();
     Future<void> start(SessionKind kind) async {
       HapticFeedback.lightImpact();
       final paneId = await run(context, () => app.api.startUnassignedSession(kind));
@@ -587,7 +638,8 @@ class _UnassignedTab extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(4, 0, 4, 32),
         children: [
           header,
-          for (final s in sorted) SessionTile(key: ValueKey(s.paneId), session: s),
+          for (final s in regular) SessionTile(key: ValueKey(s.paneId), session: s),
+          _HarnessGroup(sessions: harness),
         ],
       );
     }
@@ -596,10 +648,11 @@ class _UnassignedTab extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(4, 0, 4, 32),
       header: header,
       buildDefaultDragHandles: false,
-      itemCount: sorted.length,
+      itemCount: regular.length,
+      footer: _HarnessGroup(sessions: harness),
       proxyDecorator: (child, _, _) => Material(color: p.card, elevation: 6, borderRadius: BorderRadius.circular(12), child: child),
       onReorderItem: (from, to) {
-        final list = [...sorted];
+        final list = [...regular];
         final moved = list.removeAt(from);
         if (moved.isHarness) return;
         list.insert(to, moved);
@@ -608,17 +661,15 @@ class _UnassignedTab extends StatelessWidget {
         run(context, () => app.api.moveBefore(moved.paneId, before?.paneId));
       },
       itemBuilder: (context, i) => SessionTile(
-        key: ValueKey(sorted[i].paneId),
-        session: sorted[i],
-        handle: sorted[i].isHarness
-            ? null
-            : ReorderableDragStartListener(
-                index: i,
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 8),
-                  child: Icon(Icons.drag_indicator_rounded, size: 20, color: p.mutedFg),
-                ),
-              ),
+        key: ValueKey(regular[i].paneId),
+        session: regular[i],
+        handle: ReorderableDragStartListener(
+          index: i,
+          child: Padding(
+            padding: const EdgeInsets.only(left: 8),
+            child: Icon(Icons.drag_indicator_rounded, size: 20, color: p.mutedFg),
+          ),
+        ),
       ),
     );
   }

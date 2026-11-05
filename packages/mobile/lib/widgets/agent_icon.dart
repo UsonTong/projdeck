@@ -124,7 +124,7 @@ class AgentIcon extends StatelessWidget {
       SessionKind.codex => (_codexBg, codexColor, Colors.white.withValues(alpha: 0.10)),
       SessionKind.pi => (const Color(0xff151c26), piColor, Colors.white.withValues(alpha: 0.10)),
       SessionKind.shell => (p.muted, p.mutedFg, p.border),
-      SessionKind.harness => (p.secondary, p.fg, p.border),
+      SessionKind.harness => (const Color(0xff4d6bfe), Colors.white, const Color(0xff4d6bfe)),
     };
     final dot = switch (status) {
       SessionStatus.working => p.working,
@@ -147,7 +147,7 @@ class AgentIcon extends StatelessWidget {
             child: kind == SessionKind.shell
                 ? Icon(Icons.terminal_rounded, size: size * 0.55, color: fg)
                 : kind == SessionKind.harness
-                ? Text('D', style: TextStyle(fontSize: size * 0.6, fontWeight: FontWeight.w700, color: fg, height: 1))
+                ? Image.asset('assets/deepseek.png', width: size * 0.64, height: size * 0.64, fit: BoxFit.contain)
                 : SizedBox(
                     width: size * (kind == SessionKind.claude ? 0.78 : kind == SessionKind.pi ? 0.5 : 0.7),
                     height: kind == SessionKind.claude ? size * 0.7 : kind == SessionKind.pi ? size * 0.5 : size * 0.7,

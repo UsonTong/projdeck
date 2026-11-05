@@ -15,10 +15,15 @@ import android.os.Bundle
 import android.os.Environment
 import android.provider.Settings
 import android.provider.OpenableColumns
+import android.widget.Toast
+import androidx.core.content.FileProvider
 import android.content.pm.PackageManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 
 /**
  * Flutter 的宿主。通过 projdeck/native 通道给 Dart 提供：后台通知的开关（需要通知权限）、
@@ -113,6 +118,16 @@ class MainActivity : FlutterActivity() {
                 }
                 "adbGrantSelf" -> RemoteAdb.async({ RemoteAdb.grantSelf(this) }) { r -> reply(result, r) }
                 "adbEnableTcp" -> RemoteAdb.async({ RemoteAdb.enableTcp(this) }) { r -> reply(result, r) }
+                "downloadAndInstall" -> {
+                    val url = call.argument<String>("url")
+                    if (url == null) {
+                        result.error("update", "缺少更新地址", null)
+                    } else {
+                        val cookie = call.argument<String>("cookie") ?: ""
+                        result.success(true)
+                        Thread { downloadUpdate(url, cookie) }.start()
+                    }
+                }
                 "download" -> {
                     val req = DownloadManager.Request(Uri.parse(call.argument<String>("url")))
                         .addRequestHeader("Cookie", call.argument<String>("cookie"))
@@ -211,6 +226,68 @@ class MainActivity : FlutterActivity() {
             return mapOf("name" to name, "mime" to mime, "bytes" to bytes)
         }
         return null
+    }
+
+    /** App 内下载更新：进度回到 Flutter，下载完直接拉起系统安装器。 */
+    private fun downloadUpdate(url: String, cookie: String) {
+        try {
+            val dir = File(cacheDir, "updates").apply { mkdirs() }
+            val target = File(dir, "projdeck.apk")
+            val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 15_000
+                readTimeout = 60_000
+                setRequestProperty("Cookie", cookie)
+            }
+            try {
+                if (conn.responseCode !in 200..299) throw IllegalStateException("服务器返回 ${conn.responseCode}")
+                val total = conn.contentLengthLong
+                var read = 0L
+                var last = -1
+                conn.inputStream.use { input ->
+                    target.outputStream().use { out ->
+                        val buf = ByteArray(64 * 1024)
+                        while (true) {
+                            val n = input.read(buf)
+                            if (n < 0) break
+                            out.write(buf, 0, n)
+                            read += n
+                            if (total > 0) {
+                                val pct = ((read * 100) / total).toInt().coerceIn(0, 100)
+                                if (pct >= last + 2) {
+                                    last = pct
+                                    runOnUiThread { channel?.invokeMethod("updateProgress", pct) }
+                                }
+                            }
+                        }
+                    }
+                }
+            } finally {
+                conn.disconnect()
+            }
+            if (target.length() <= 0) throw IllegalStateException("下载的文件为空")
+            runOnUiThread {
+                channel?.invokeMethod("updateProgress", 100)
+                installApk(target)
+            }
+        } catch (e: Exception) {
+            runOnUiThread { channel?.invokeMethod("updateError", e.message ?: "下载失败") }
+        }
+    }
+
+    private fun installApk(file: File) {
+        try {
+            val uri = FileProvider.getUriForFile(this, "$packageName.files", file)
+            startActivity(
+                Intent(Intent.ACTION_VIEW)
+                    .setDataAndType(uri, "application/vnd.android.package-archive")
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        } catch (e: Exception) {
+            runCatching {
+                startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
+            }
+            Toast.makeText(this, "请允许安装未知应用，然后重试更新", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun enable(config: Pair<String, String>) {

@@ -23,18 +23,19 @@ function fixture(herdrOnline = false) {
     setSticky: (id: string, pid: string) => { state.sticky[id] = pid; },
     markDoneSeen: () => false,
   } as unknown as ProjectStore;
-  const rows: HarnessSession[] = [{ id: "one", title: "Harness 历史", cwd: "/tmp/demo/src", status: "working", activeAt: 100 }];
+  const rows: HarnessSession[] = [{ id: "one", title: "Harness 历史", cwd: "/tmp/demo/src", status: "working", activeAt: 100, blank: true }];
   let online = true;
   const page: TranscriptPage = { conversationId: "one", cursor: 1, reset: true, entries: [{ kind: "assistant", id: "reply", text: "历史保留" }] };
   const harness: HarnessBackend = {
     status: () => ({ configured: true, online }),
     configure: async () => {}, close: () => {},
     list: async () => { if (!online) throw Error("offline"); return rows; },
-    create: async (cwd) => { calls.push("harness.create"); rows.push({ ...rows[0]!, id: "new", cwd, status: "idle" }); return "new"; },
+    create: async (cwd) => { calls.push("harness.create"); rows.push({ ...rows[0]!, id: "new", cwd: cwd ?? "/tmp", status: "idle" }); return "new"; },
     prompt: async (id, text) => { calls.push(`prompt:${id}:${text}`); },
     cancel: async (id) => { calls.push(`cancel:${id}`); },
     rename: async (id, title) => { rows.find((r) => r.id === id)!.title = title; },
     transcript: async () => page,
+    bindSession: async (id, cwd, blank) => { calls.push(`bind:${id}:${cwd}:${blank}`); },
   };
   const herdr = Object.assign(new EventEmitter(), {
     listPanes: async () => { if (!herdrOnline) throw Error("herdr offline"); return []; },
@@ -71,6 +72,13 @@ test("创建/发消息/停止都直接走 Harness，不使用 agent.start 或 PT
   await service.prompt("harness:one", "继续");
   await service.cancel("harness:one");
   assert.deepEqual(calls, ["harness.create", "prompt:one:继续", "cancel:one"]);
+});
+
+test("打开已有 Harness 会话会加入它目录对应的工作区，原版不再要求选择", async () => {
+  const { service, calls } = fixture();
+  await service.bindHarnessSession("one");
+  assert.deepEqual(calls, ["bind:one:/tmp/demo/src:true"]);
+  await assert.rejects(service.bindHarnessSession("missing"), /不存在/);
 });
 
 test("Harness 本地归档/恢复保留原会话 ID，删除归档不会误重新导入", async () => {
