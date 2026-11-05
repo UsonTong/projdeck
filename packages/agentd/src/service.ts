@@ -668,14 +668,6 @@ export class ProjdeckService {
     return { conversationId: session.conversationId, entries, cursor: chunk.cursor, reset: chunk.reset };
   }
 
-  /** 打开已有 Harness 会话前，确保它属于对应目录的工作区，原版输入框就不会再要选工作区。 */
-  async bindHarnessSession(id: string): Promise<void> {
-    if (!this.harness.bindSession) return;
-    const known = this.harnessSessions.find((s) => s.id === id) ?? (await this.harness.list()).find((s) => s.id === id);
-    if (!known) throw httpError(404, "Harness 会话不存在");
-    await this.harness.bindSession(id, known.cwd || null, known.blank === true);
-  }
-
   /** 独立后端有原生事件订阅时优先用它；herdr 仍使用现有 JSONL 轮询。 */
   watchTranscript(paneId: string, onPage: (page: TranscriptPage) => void): (() => void) | null {
     if (!isHarnessKey(paneId) || !this.harness.watch) return null;

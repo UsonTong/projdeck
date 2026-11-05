@@ -38,7 +38,7 @@ systemctl --user disable --now projdeck-harness.service
 
 1. 在运行 projdeck agentd 的电脑上运行 Harness（例如 `dsh web --no-open`），保留它原有的模型与 workspace 设置。
 2. 打开 projdeck 网页「设置 → DeepSeek Harness」，粘贴 dsh 打印的本机启动链接（含 `?token=...`），点「接入」。不要把这个链接发到聊天、截图或 Git。
-3. 网页左侧保留 projdeck 的项目/会话列表，Harness 会话折成「DeepSeek · N 个会话」一组（默认收起）；点击后右侧显示对应的原版聊天。项目旁 D 图标在这个项目目录的 Harness 工作区里新建会话；未归属的 D 使用 Harness 默认工作区。打开已有的空白会话时会自动把它加入目录对应的工作区，原版输入框不再要求选择工作区。已经开始过对话的旧会话没有公开的迁移接口，保持原样。
+3. 网页左侧保留 projdeck 的项目/会话列表，Harness 会话折成「DeepSeek · N 个会话」一组（默认收起）；点击后右侧显示对应的原版聊天。项目旁 D 图标在这个项目目录的 Harness 工作区里新建会话；未归属的 D 使用 Harness 默认工作区。旧会话如果原本不属于工作区，原版仍会要求选择一次；projdeck 不会再在打开时自动创建会话（早期版本会因此产生重复的空会话，已修复）。
 4. 原版导航列仅在嵌入模式隐藏，不重绘聊天。切换左侧 Harness 会话时复用 iframe，通过同源消息桥调用原版的 `uiWorkspace.openSession`，避免显示错误会话或反复下载前端。
 5. 模型选择、权限确认、工具展示、附件等交互仍由原版网页处理；右上角「单独打开」使用 `/harness/`，保留完整原版侧栏。Harness 没有伪造的终端选项。
 6. 安卓 2.5.3 的 Harness 会话在现有 `SessionPage` 内容区内嵌 Android WebView，使用 `/harness/?embed=1&session=<原会话ID>` 选择同一个会话；顶部 D 使用 `/harness/?embed=1` 只显示聊天（手机放不下 280px 原版侧栏）。更新改为 App 内下载并直接打开系统安装器，带进度，不再让用户从通知栏找安装包。
@@ -84,7 +84,7 @@ systemctl --user disable --now projdeck-harness.service
 - Chrome 实际点击左侧两条隔离测试会话，确认右侧原版精确选中相应 ID、左侧 projdeck 保留、原版左栏宽度为 0，iframe 复用。没有调用模型。
 - 导航桥单元测试覆盖 bootstrap/live 加载器切换、父窗口/Origin 校验、无效会话拒绝、安卓顶层 WebView 的 session 参数。
 - 安卓 Flutter 检查、中文 IME/内嵌组件测试和 Kotlin 编译通过；真机 WebView 与文件选择尚未验证。
-- 公网手机宽度实测：打开旧空白会话后自动加入 projdeck 工作区，工作区选择提示消失，聊天输入框可见，原版侧栏不占位；桌面项目行图标由 7 个减到 5 个，DeepSeek 会话折叠分组。
+- 公网手机宽度实测：嵌入页面聊天输入框可见、原版侧栏不占位；旧会话仍可能要求选择一次工作区（原版没有公开的迁移接口）。桌面项目行改为「agent 选择按钮 + 终端按钮」，DeepSeek 会话折叠分组。
 - 本地假 HTTP/WS Host 覆盖鉴权、Cookie、RPC、超时、拒绝凭据外流、历史分页、修订、partial assistant、断线补历史与关闭。
 - 服务层集成测试在 herdr 离线时验证 Harness 创建、消息、历史、停止、归档/恢复，不调用 PTY。
 - LiveHub 测试覆盖多客户端共享订阅、重新配置后订阅重建、取消后的资源释放。

@@ -68,7 +68,6 @@ void main() {
             child: HarnessChat(
               connection: connection,
               sessionId: 'original:chat?one=1',
-              prepare: () async {},
             ),
           ),
         ),

@@ -375,6 +375,7 @@ function ProjectGroup(props: {
   useFlip(rowsRef);
   const [settings, setSettings] = useState(false);
   const [editingNote, setEditingNote] = useState(false);
+  const [pickingAgent, setPickingAgent] = useState(false);
 
   const start = async (kind: SessionKind) => {
     try {
@@ -424,11 +425,12 @@ function ProjectGroup(props: {
             </div>
             {/* 新开会话：直接点图标，不用下拉菜单 */}
             <div className="flex shrink-0 items-center">
-              {starters.map((k) => (
-                <IconAction key={k} label={`新开 ${KIND_LABEL[k]}`} onClick={() => void start(k)}>
-                  <AgentIcon kind={k} size="xs" />
-                </IconAction>
-              ))}
+              <IconAction label="新开 agent（选择类型）" onClick={() => setPickingAgent(true)}>
+                <span className="flex items-center gap-0.5">
+                  <AgentIcon kind={availableAgents.includes(project.defaultAgent) ? project.defaultAgent : availableAgents[0]!} size="xs" />
+                  <ChevronDownIcon className="size-3 text-muted-foreground" />
+                </span>
+              </IconAction>
               <IconAction label="新开临时终端" onClick={() => void start("shell")}>
                 <AgentIcon kind="shell" size="xs" />
               </IconAction>
@@ -472,8 +474,37 @@ function ProjectGroup(props: {
           <HarnessGroup sessions={sorted.filter((s) => s.kind === "harness")} project={project} activePane={activePane} />
         </div>
       )}
+      <AgentPickerDialog open={pickingAgent} onOpenChange={setPickingAgent} agents={availableAgents}
+        onPick={(k) => { setPickingAgent(false); void start(k); }} />
       <ProjectSettingsDialog project={project} open={settings} onOpenChange={setSettings} />
     </section>
+  );
+}
+
+/** 项目行只留一个 agent 按钮，点开选类型；终端另有独立按钮。 */
+function AgentPickerDialog(props: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  agents: AgentKind[];
+  onPick: (kind: AgentKind) => void;
+}) {
+  return (
+    <Dialog open={props.open} onOpenChange={props.onOpenChange}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>新开 agent</DialogTitle>
+          <DialogDescription>选择要启动的 agent。临时终端用旁边的终端按钮。</DialogDescription>
+        </DialogHeader>
+        <div className="grid grid-cols-2 gap-2">
+          {props.agents.map((k) => (
+            <Button key={k} variant="outline" className="justify-start gap-2" onClick={() => props.onPick(k)}>
+              <AgentIcon kind={k} size="sm" />
+              {KIND_LABEL[k]}
+            </Button>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -753,6 +784,7 @@ function UnassignedTab({ sessions, activePane }: { sessions: Session[]; activePa
   const [touch] = useState(isTouchDevice);
   // 拖动后先按新顺序显示，等 herdr 的新顺序推送过来再以它为准
   const [optimistic, setOptimistic] = useState<string[] | null>(null);
+  const [pickingAgent, setPickingAgent] = useState(false);
   const draggedRef = useRef(false);
   const listRef = useRef<HTMLDivElement>(null);
   useFlip(listRef, sort !== "herdr");
@@ -790,24 +822,29 @@ function UnassignedTab({ sessions, activePane }: { sessions: Session[]; activePa
       fail(err);
     }
   };
-  // 新开会话：和项目一样直接点图标，在主目录里启动，不属于任何项目
+  // 新开会话：一个 agent 选择按钮 + 一个终端按钮，主目录里启动
+  const available = AGENT_KINDS.filter((k) => k !== "harness" || overview?.harness?.configured);
   const starters = (
     <div className="flex shrink-0 items-center">
-      {AGENT_KINDS.filter((k) => k !== "harness" || overview?.harness?.configured).map((k) => (
-        <IconAction key={k} label={`新开 ${KIND_LABEL[k]}（在主目录）`} onClick={() => void start(k)}>
-          <AgentIcon kind={k} size="xs" />
-        </IconAction>
-      ))}
+      <IconAction label="新开 agent（选择类型）" onClick={() => setPickingAgent(true)}>
+        <span className="flex items-center gap-0.5">
+          <AgentIcon kind={available[0]!} size="xs" />
+          <ChevronDownIcon className="size-3 text-muted-foreground" />
+        </span>
+      </IconAction>
       <IconAction label="新开终端（在主目录）" onClick={() => void start("shell")}>
         <AgentIcon kind="shell" size="xs" />
       </IconAction>
     </div>
   );
+  const picker = <AgentPickerDialog open={pickingAgent} onOpenChange={setPickingAgent} agents={available}
+    onPick={(k) => { setPickingAgent(false); void start(k); }} />;
 
   if (sessions.length === 0) {
     return (
       <div className="flex flex-col gap-0.5">
         <div className="flex justify-end px-2 pb-1">{starters}</div>
+        {picker}
         <SectionEmpty icon={<InboxIcon />} title="没有未归属的会话" description="不在任何项目文件夹里启动的会话会出现在这里，也可以点上方图标在主目录里新开。" />
       </div>
     );
@@ -829,6 +866,7 @@ function UnassignedTab({ sessions, activePane }: { sessions: Session[]; activePa
         shown.filter((s) => s.backend !== "harness").map((s) => <SessionRow key={s.paneId} session={s} project={null} active={s.paneId === activePane} />)
       )}
       <HarnessGroup sessions={shown.filter((s) => s.backend === "harness" || s.kind === "harness")} project={null} activePane={activePane} />
+      {picker}
     </div>
   );
 }

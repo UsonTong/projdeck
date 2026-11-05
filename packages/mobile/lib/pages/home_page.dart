@@ -359,6 +359,18 @@ class _ProjectGroup extends StatelessWidget {
     await run(context, () => AppScope.read(context).api.updateProject(project.id, {'note': v}));
   }
 
+  /// 一个按钮选 agent 类型，避免每个项目行排一排图标。
+  void _pickAgent(BuildContext context, List<SessionKind> agents) {
+    HapticFeedback.lightImpact();
+    showActions(
+      context,
+      title: '新开 agent',
+      actions: [
+        for (final k in agents) SheetAction(Icons.add_rounded, '新开 ${kindLabel[k]}', () => _start(context, k)),
+      ],
+    );
+  }
+
   void _menu(BuildContext context) {
     final app = AppScope.read(context);
     final available = availableAgentKinds(AppScope.read(context).overview);
@@ -400,8 +412,6 @@ class _ProjectGroup extends StatelessWidget {
       if (available.contains(project.defaultAgent)) project.defaultAgent,
       ...available.where((k) => k != project.defaultAgent),
     ];
-    // 行内只留默认 agent 和 DeepSeek，其余仍在长按菜单里。
-    final inlineStarters = starters.where((k) => k == project.defaultAgent || k == SessionKind.harness).toList();
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 6, 4, 10),
       child: Column(
@@ -478,14 +488,19 @@ class _ProjectGroup extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsets.only(left: 6),
-            child: Wrap(
+            child: Row(
               children: [
-                for (final k in inlineStarters)
-                  _IconTap(
-                    tooltip: '新开 ${kindLabel[k]}',
-                    onTap: () => _start(context, k),
-                    child: AgentIcon(kind: k, size: 24),
+                _IconTap(
+                  tooltip: '新开 agent（选择类型）',
+                  onTap: () => _pickAgent(context, starters),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      AgentIcon(kind: starters.first, size: 24),
+                      Icon(Icons.expand_more_rounded, size: 18, color: p.mutedFg),
+                    ],
                   ),
+                ),
                 _IconTap(
                   tooltip: '新开临时终端',
                   onTap: () => _start(context, SessionKind.shell),
@@ -598,17 +613,35 @@ class _UnassignedTab extends StatelessWidget {
       if (paneId != null && context.mounted) openSession(context, paneId);
     }
 
-    // 新开会话：和项目一样直接点图标，在主目录里启动，不属于任何项目
+    // 新开会话：一个 agent 选择按钮 + 一个终端按钮，在主目录里启动
+    final agents = availableAgentKinds(app.overview);
+    void pickAgent() {
+      HapticFeedback.lightImpact();
+      showActions(
+        context,
+        title: '新开 agent',
+        actions: [for (final k in agents) SheetAction(Icons.add_rounded, '新开 ${kindLabel[k]}', () => start(k))],
+      );
+    }
     final starters = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-          for (final k in availableAgentKinds(app.overview))
-            _IconTap(tooltip: '新开 ${kindLabel[k]}（在主目录）', onTap: () => start(k), child: AgentIcon(kind: k, size: 24)),
-          _IconTap(
-            tooltip: '新开终端（在主目录）',
-            onTap: () => start(SessionKind.shell),
-            child: const AgentIcon(kind: SessionKind.shell, size: 24),
+        _IconTap(
+          tooltip: '新开 agent（选择类型）',
+          onTap: pickAgent,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AgentIcon(kind: agents.first, size: 24),
+              Icon(Icons.expand_more_rounded, size: 18, color: p.mutedFg),
+            ],
           ),
+        ),
+        _IconTap(
+          tooltip: '新开终端（在主目录）',
+          onTap: () => start(SessionKind.shell),
+          child: const AgentIcon(kind: SessionKind.shell, size: 24),
+        ),
       ],
     );
     // 空间足够时排序和创建入口同一行；窄屏自动换行。

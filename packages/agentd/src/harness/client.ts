@@ -216,8 +216,7 @@ export class HarnessClient implements HarnessBackend {
           : typeof row.cwd === "string" ? row.cwd : "",
         status: blocked ? "blocked" : row.running === true ? "working"
           : row.agentAvailable === true ? "idle" : "unknown",
-        activeAt: typeof row.updatedAt === "number" && Number.isFinite(row.updatedAt) ? row.updatedAt : null,
-        blank: row.blank === true };
+        activeAt: typeof row.updatedAt === "number" && Number.isFinite(row.updatedAt) ? row.updatedAt : null };
     });
   }
 
@@ -233,24 +232,6 @@ export class HarnessClient implements HarnessBackend {
   async createDefault(): Promise<string> {
     const workspaceId = await this.#defaultWorkspace();
     return this.#createIn(workspaceId);
-  }
-
-  #bound = new Set<string>();
-
-  /**
-   * 把尚未开始对话的空白会话重新加入对应工作区。原版就是通过 session/create
-   * 复用空白 sessionId；已经开始过的会话没有公开的迁移接口，保持原样。
-   */
-  async bindSession(id: string, cwd: string | null, blank: boolean): Promise<void> {
-    if (!blank || !cwd || this.#bound.has(id)) return;
-    this.#bound.add(id);
-    try {
-      const workspaceId = await this.#workspaceFor(cwd);
-      await this.#rpc("create", { workspaceId, sessionId: id });
-    } catch {
-      // 目录不匹配或已被占用时保持原会话，下次打开再试。
-      this.#bound.delete(id);
-    }
   }
 
   async #createIn(workspaceId: string | undefined): Promise<string> {
