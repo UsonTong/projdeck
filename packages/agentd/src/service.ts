@@ -26,6 +26,8 @@ import { listCodexRollouts, matchCodexRollouts, parseCodexRecords, type CodexRol
 import { findPiSession, parsePiRecords, piSessionId } from "./transcript/pi.ts";
 import { readJsonl } from "./transcript/jsonl.ts";
 import { acceptTrustPrompt } from "./trust.ts";
+import { tmpdir } from "node:os";
+import { SHARED_UPLOAD_ROOT } from "./uploads.ts";
 import { HarnessClient } from "./harness/client.ts";
 import { harnessKey, isHarnessKey, type HarnessBackend, type HarnessSession } from "./harness/backend.ts";
 
@@ -308,6 +310,11 @@ export class ProjdeckService {
   }
 
   // ---- 项目 ----
+
+  /** Agent 可以展示的资源所在目录：项目、上传目录、临时目录。 */
+  presentRoots(): string[] {
+    return [...this.store.projects.map((p) => p.path), SHARED_UPLOAD_ROOT, tmpdir()];
+  }
 
   /** 文件管理器使用的项目根目录。 */
   projectPath(id: string): string {

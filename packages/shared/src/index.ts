@@ -200,7 +200,22 @@ export type ServerMessage =
   /** 本机 Ghostty 配色变了（例如 dankcolors 随壁纸重新生成），前端重新获取主题。 */
   | { type: "theme" }
   /** 某个会话的输入框草稿（另一台设备上改的，或者刚打开时同步过来的） */
-  | { type: "draft"; paneId: string; text: string; at: number };
+  | { type: "draft"; paneId: string; text: string; at: number }
+  /** Agent 主动展示的资源（图片） */
+  | { type: "present"; resource: PresentedResource };
+
+/** Agent 展示给 projdeck 的资源。 */
+export interface PresentedResource {
+  id: string;
+  name: string;
+  title: string;
+  mime: string;
+  at: number;
+  /** 图片地址（同源，需要 projdeck 登录 Cookie） */
+  url: string;
+  /** 电脑上的绝对路径 */
+  path: string;
+}
 
 /** CC Switch 里一个应用（Claude Code、Codex……）的供应商。不含任何配置和密钥。 */
 export interface CcSwitchApp {

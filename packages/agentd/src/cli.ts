@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { readFileSync } from "node:fs";
 import { stdin, stdout } from "node:process";
 import { createInterface } from "node:readline/promises";
 import { hashPassword, SessionStore } from "./auth.ts";
@@ -7,7 +8,8 @@ import { configDir, loadConfig, saveConfig } from "./config.ts";
 const usage = `用法：
   set-password     设置登录密码（交互输入，不回显）
   revoke-sessions  注销所有已登录的设备
-  show-config      显示当前配置（不含密码哈希）`;
+  show-config      显示当前配置（不含密码哈希）
+  present <路径>   主动在 projdeck 网页/手机上展示一张图片（项目、上传或临时目录；可加 --title）`;
 
 async function readHidden(prompt: string): Promise<string> {
   const rl = createInterface({ input: stdin, output: stdout, terminal: true });
@@ -49,6 +51,40 @@ switch (command) {
     new SessionStore().revokeAll();
     console.log("已注销所有设备。");
     break;
+  case "present": {
+    const target = process.argv[3];
+    if (!target) {
+      console.error(usage);
+      process.exit(1);
+    }
+    const titleIndex = process.argv.indexOf("--title");
+    const title = titleIndex > 0 ? process.argv[titleIndex + 1] : undefined;
+    const config = loadConfig();
+    let key: string;
+    try {
+      key = readFileSync(config.accessKeyFile, "utf8").trim();
+    } catch {
+      console.error("找不到访问密钥：请先配置 projdeck 公网访问 key");
+      process.exit(1);
+    }
+    try {
+      const res = await fetch(`http://127.0.0.1:${config.port}/api/present`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie: `projdeck_key=${key}` },
+        body: JSON.stringify({ path: target, title }),
+      });
+      const data = await res.json() as { title?: string; url?: string; error?: string };
+      if (!res.ok) {
+        console.error(data.error ?? `展示失败（HTTP ${res.status}）`);
+        process.exit(1);
+      }
+      console.log(`已展示「${data.title}」：${data.url}`);
+    } catch (err) {
+      console.error(`连不上本机 projdeck：${(err as Error).message}`);
+      process.exit(1);
+    }
+    break;
+  }
   case "show-config": {
     const { passwordHash, ...rest } = loadConfig();
     console.log(JSON.stringify({ ...rest, passwordSet: passwordHash !== null }, null, 2));

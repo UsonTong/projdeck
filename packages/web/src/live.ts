@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
-import type { ClientMessage, Overview, ServerMessage, TranscriptEntry } from "@projdeck/shared";
+import type { ClientMessage, Overview, PresentedResource, ServerMessage, TranscriptEntry } from "@projdeck/shared";
 import { refreshTheme } from "@/lib/terminalTheme";
 
 type Listener = () => void;
@@ -16,6 +16,8 @@ interface PaneState {
 class LiveConnection {
   overview: Overview | null = null;
   connected = false;
+  /** Agent 主动展示的资源，最新的在前 */
+  presents: PresentedResource[] = [];
   private ws: WebSocket | null = null;
   private listeners = new Set<Listener>();
   private panes = new Map<string, PaneState>();
@@ -63,6 +65,7 @@ class LiveConnection {
   private handle(msg: ServerMessage): void {
     if (msg.type === "theme") return refreshTheme(true);
     if (msg.type === "overview") this.overview = msg.overview;
+    if (msg.type === "present") this.presents = [msg.resource, ...this.presents.filter((p) => p.id !== msg.resource.id)].slice(0, 50);
     if (msg.type === "draft") {
       // 服务端广播的草稿可能比自己本地旧（网络乱序），按时间取新的
       const cur = this.drafts.get(msg.paneId);

@@ -47,6 +47,8 @@ import { NotifyStream } from "./notifyStream.ts";
 import { CcSwitchBridge, type CcSwitchEvent } from "./ccswitchBridge.ts";
 import { readUsage } from "./ccswitchUsage.ts";
 import { registerHarnessWeb } from "./harness/webProxy.ts";
+import { PresentStore } from "./present.ts";
+import { createReadStream } from "node:fs";
 
 /** 解析 Origin 头的 host；格式异常（如 "null"）时返回 null，按跨站处理。 */
 function originHost(origin: string): string | null {
@@ -73,6 +75,7 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
   if (accessKey.enabled) app.log.info("已启用访问 key：带有效 key 的请求无需密码");
   const limiter = new LoginLimiter();
   const live = new LiveHub(service, herdr);
+  const present = new PresentStore();
   app.addHook("onClose", async () => service.harness.close());
   service.onSeen = () => live.scheduleOverview();
   const stopThemeWatch = watchGhosttyTheme(() => live.broadcast({ type: "theme" }));
@@ -116,6 +119,20 @@ export async function buildServer(config: Config, service: ProjdeckService, herd
   });
 
   const harnessWebProxy = await registerHarnessWeb(app, service.harness);
+
+  // Agent 主动展示资源：本机 CLI 调用，推送到所有网页/手机
+  app.post<{ Body: { path?: string; title?: string } }>("/api/present", async (req) => {
+    const item = present.add(String(req.body?.path ?? ""), req.body?.title, service.presentRoots());
+    live.broadcast({ type: "present", resource: item });
+    return item;
+  });
+  app.get("/api/present", async () => ({ items: present.list() }));
+  app.get<{ Params: { id: string } }>("/api/present/:id", async (req, reply) => {
+    const entry = present.get(req.params.id);
+    if (!entry) throw httpError(404, "资源不存在");
+    void reply.header("Content-Type", entry.item.mime).header("Cache-Control", "private, no-store");
+    return reply.send(createReadStream(entry.path));
+  });
 
   // ---- 认证 ----
 

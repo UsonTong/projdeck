@@ -109,6 +109,25 @@ class HarnessStatus {
       error = j['error'];
 }
 
+class PresentedResource {
+  final String id;
+  final String name;
+  final String title;
+  final String mime;
+  final int at;
+  final String url;
+  final String path;
+
+  PresentedResource.fromJson(Map<String, dynamic> j)
+    : id = j['id'],
+      name = j['name'] ?? '',
+      title = j['title'] ?? '',
+      mime = j['mime'] ?? '',
+      at = (j['at'] as num?)?.toInt() ?? 0,
+      url = j['url'] ?? '',
+      path = j['path'] ?? '';
+}
+
 class Overview {
   final HarnessStatus? harness;
   final bool herdrOnline;

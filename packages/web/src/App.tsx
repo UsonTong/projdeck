@@ -1,8 +1,10 @@
+import type { PresentedResource } from "@projdeck/shared";
 import { TerminalSquareIcon, WifiOffIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -55,7 +57,40 @@ export function App() {
       )}
       <Toaster position="top-center" />
       <ConfirmHost />
+      <PresentHost />
     </TooltipProvider>
+  );
+}
+
+/** Agent 通过 `projdeck present <图片>` 主动展示时弹出的图片层。 */
+function PresentHost() {
+  const { presents } = useLive();
+  const latest = presents[0] ?? null;
+  const seen = useRef<string | null>(null);
+  const initialized = useRef(false);
+  const [open, setOpen] = useState<PresentedResource | null>(null);
+  // 页面打开时已经存在的资源不弹；之后新展示的才弹。
+  useEffect(() => {
+    initialized.current = true;
+    seen.current = latest?.id ?? null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (!latest || !initialized.current) return;
+    if (latest.id === seen.current) return;
+    seen.current = latest.id;
+    setOpen(latest);
+  }, [latest]);
+  return (
+    <Dialog open={open !== null} onOpenChange={(v) => { if (!v) setOpen(null); }}>
+      <DialogContent className="gap-3 sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle className="truncate">{open?.title ?? "Agent 展示"}</DialogTitle>
+        </DialogHeader>
+        {open && <img src={open.url} alt={open.title} className="max-h-[72vh] w-full rounded-md object-contain" />}
+        <p className="truncate font-mono text-xs text-muted-foreground">{open?.path}</p>
+      </DialogContent>
+    </Dialog>
   );
 }
 

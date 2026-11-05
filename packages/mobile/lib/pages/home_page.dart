@@ -30,6 +30,8 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final TabController _tabs = TabController(length: 3, vsync: this);
+  late final AppState _app;
+  String? _lastPresent;
   // 电脑上装了 CC Switch 才显示它的入口
   bool _ccswitch = false;
   // 服务器上发布了更新的版本时，这里放着新版本号；关掉后本次不再提示
@@ -40,6 +42,8 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _app = AppScope.read(context);
+    _app.addListener(_onPresent);
     AppScope.read(context).api.ccStatus().then((s) => mounted && s.installed ? setState(() => _ccswitch = true) : null, onError: (_) {});
     _checkUpdate();
   }
@@ -69,8 +73,55 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     await installAppUpdate(context, app.conn);
   }
 
+  void _onPresent() {
+    final p = _app.latestPresent;
+    if (p == null || p.id == _lastPresent) return;
+    _lastPresent = p.id;
+    if (!mounted) return;
+    final url = _app.conn.base.resolve(p.url).toString();
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        insetPadding: const EdgeInsets.all(12),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: 720, maxHeight: MediaQuery.sizeOf(ctx).height * 0.85),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 4, 4),
+                child: Row(
+                  children: [
+                    Expanded(child: Text(p.title, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                    IconButton(tooltip: '关闭', icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(ctx)),
+                  ],
+                ),
+              ),
+              Flexible(
+                child: InteractiveViewer(
+                  maxScale: 4,
+                  child: Image.network(
+                    url,
+                    headers: {'Cookie': 'projdeck_key=${_app.conn.key}'},
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, _, _) => const Padding(padding: EdgeInsets.all(24), child: Text('图片加载失败')),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                child: Align(alignment: Alignment.centerLeft, child: Text(p.path, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: Palette.of(context).mutedFg))),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
+    _app.removeListener(_onPresent);
     WidgetsBinding.instance.removeObserver(this);
     _tabs.dispose();
     super.dispose();

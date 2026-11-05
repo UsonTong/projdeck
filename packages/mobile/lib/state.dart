@@ -34,6 +34,8 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   final Map<String, int> _watching = {};
   /// 各会话输入框的草稿，电脑和手机会实时同步
   final Map<String, String> drafts = {};
+  /// Agent 最近一次主动展示的图片
+  PresentedResource? latestPresent;
   Timer? _draftTimer;
   final Map<String, PaneTranscript> transcripts = {};
   bool _disposed = false;
@@ -113,6 +115,8 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
         if (paneId != _typingPane) {
           drafts[paneId] = msg['text'] as String? ?? '';
         }
+      case 'present':
+        latestPresent = PresentedResource.fromJson(msg['resource'] as Map<String, dynamic>);
       case 'transcript':
         final t = transcripts.putIfAbsent(msg['paneId'], PaneTranscript.new);
         final page = msg['page'] as Map<String, dynamic>;
