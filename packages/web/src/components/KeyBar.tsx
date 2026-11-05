@@ -65,8 +65,8 @@ export function KeyBar(props: {
   showKeys: boolean;
   ctrl: boolean;
   composerOpen: boolean;
-  onToggleComposer: () => void;
-  onPickFile: () => void;
+  onToggleComposer?: () => void;
+  onPickFile?: () => void;
 }) {
   const keys = useBarKeys();
   const keyPress = useKeyPress((k) => {
@@ -96,15 +96,15 @@ export function KeyBar(props: {
       )}
       {props.showKeys && keys.length > 0 && <Separator orientation="vertical" className="h-6" />}
       <div className={cn("flex shrink-0 gap-1", !props.showKeys && "ml-auto")}>
-        <Tooltip>
+        {props.onPickFile && <Tooltip>
           <TooltipTrigger asChild>
             <Button variant="ghost" size="icon-lg" aria-label="上传文件" onPointerDown={press(props.onPickFile)}>
               <PaperclipIcon />
             </Button>
           </TooltipTrigger>
           <TooltipContent>上传图片或文件，把路径粘贴到终端（也可以直接粘贴或拖进终端）</TooltipContent>
-        </Tooltip>
-        <Tooltip>
+        </Tooltip>}
+        {props.onToggleComposer && <Tooltip>
           <TooltipTrigger asChild>
             <Button
               variant={props.composerOpen ? "secondary" : "ghost"}
@@ -117,7 +117,7 @@ export function KeyBar(props: {
             </Button>
           </TooltipTrigger>
           <TooltipContent>输入框：适合长文本、中文输入法和图片附件</TooltipContent>
-        </Tooltip>
+        </Tooltip>}
       </div>
     </div>
   );

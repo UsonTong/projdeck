@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -12,6 +13,7 @@ import '../widgets/harness_chat.dart';
 import '../sort.dart';
 import '../state.dart';
 import '../theme.dart';
+import '../widgets/terminal_web.dart';
 import '../widgets/agent_icon.dart';
 import '../widgets/common.dart';
 import '../widgets/session_tile.dart';
@@ -99,6 +101,8 @@ class _SessionPageState extends State<SessionPage> {
     final prev = i > 0 ? order[i - 1].paneId : null;
     final next = i >= 0 && i < order.length - 1 ? order[i + 1].paneId : null;
     final status = statusLabel[s.status];
+    // 安卓端直接用 WebView 跑网页的 ghostty-web 引擎；其他平台保留原生 xterm 作为后备。
+    final ghosttyWeb = defaultTargetPlatform == TargetPlatform.android && !kIsWeb;
 
     return Scaffold(
       resizeToAvoidBottomInset: true,
@@ -173,9 +177,11 @@ class _SessionPageState extends State<SessionPage> {
                         key: const ValueKey('terminal'),
                         children: [
                           Expanded(
-                            child: TerminalPane(key: _term, paneId: s.paneId),
+                            child: ghosttyWeb
+                                ? TerminalWeb(connection: app.conn, paneId: s.paneId)
+                                : TerminalPane(key: _term, paneId: s.paneId),
                           ),
-                          if (s.supportsKeys) KeyBar(term: _term, paneId: s.paneId),
+                          if (!ghosttyWeb && s.supportsKeys) KeyBar(term: _term, paneId: s.paneId),
                         ],
                       )
                     : _ChatView(

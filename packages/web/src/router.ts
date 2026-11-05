@@ -15,9 +15,12 @@ export type Route =
   | { kind: "ccswitch"; section: string }
   | { kind: "devices" }
   | { kind: "harness" }
-  | { kind: "deepseek" };
+  | { kind: "deepseek" }
+  | { kind: "terminal"; paneId: string };
 
 function parse(): Route {
+  const t = /^#\/t\/(.+)$/.exec(location.hash);
+  if (t) return { kind: "terminal", paneId: decodeURIComponent(t[1]!) };
   const s = /^#\/s\/(.+)$/.exec(location.hash);
   if (s) return { kind: "session", paneId: decodeURIComponent(s[1]!) };
   const f = /^#\/f\/([^/]+)\/?(.*)$/.exec(location.hash);

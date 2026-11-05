@@ -14,6 +14,7 @@ import { OverviewPage } from "./components/Overview.tsx";
 import { CcSwitchPage } from "./components/CcSwitchPage.tsx";
 import { DevicesPage } from "./components/DevicesPage.tsx";
 import { DeepSeekPage } from "./components/DeepSeekPage.tsx";
+import { TerminalOnlyPage } from "./components/TerminalOnlyPage.tsx";
 import { HarnessPage } from "./components/HarnessPage.tsx";
 import { FilesPage } from "./components/FilesPage.tsx";
 import { SessionPage } from "./components/Session.tsx";
@@ -167,12 +168,17 @@ function Shell() {
       <DevicesPage />
     ) : route.kind === "deepseek" ? (
       <DeepSeekPage />
+    ) : route.kind === "terminal" ? (
+      <TerminalOnlyPage paneId={route.paneId} />
     ) : null;
   const page = content && (
     <div key={pageKey} className={`flex min-h-0 min-w-0 flex-1 flex-col ${enter}`}>
       {content}
     </div>
   );
+
+  // 手机原生端用 WebView 打开纯终端页时，不渲染 projdeck 的侧栏。
+  if (route.kind === "terminal") return <div className="flex h-full min-h-0 flex-col">{content}</div>;
 
   // 左边始终保留 projdeck 导航；Harness 仅占用右侧内容区，切换其会话时保持同一个 iframe。
   const harnessView = route.kind === "harness" || (route.kind === "session" && route.paneId.startsWith("harness:"));

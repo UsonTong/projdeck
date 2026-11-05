@@ -40,6 +40,7 @@ class MainActivity : FlutterActivity() {
         val views = HarnessWebViewFactory(this)
         harnessViews = views
         flutterEngine.platformViewsController.registry.registerViewFactory("projdeck/harness", views)
+        flutterEngine.platformViewsController.registry.registerViewFactory("projdeck/terminal", TerminalWebViewFactory(this))
         val ch = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "projdeck/native")
         channel = ch
         ch.setMethodCallHandler { call, result ->
