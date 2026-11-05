@@ -81,7 +81,8 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     final app = AppScope.of(context);
     final p = Palette.of(context);
     final o = app.overview;
-    bool visible(Session s) => app.showHidden || !s.hidden;
+    // 空会话只放在「DeepSeek 对话」总览里，不塞进项目/未归属列表。
+    bool visible(Session s) => (s.kind != SessionKind.harness || !s.title.startsWith('空会话')) && (app.showHidden || !s.hidden);
     final hiddenCount = o == null ? 0 : [...o.projects.expand((p) => p.sessions), ...o.unassigned].where((s) => s.hidden).length;
     final unassigned = o?.unassigned.where(visible).toList() ?? [];
     final archivedCount = (o?.archived.length ?? 0) + (o?.projects.where((p) => p.archived).length ?? 0);
@@ -406,8 +407,6 @@ class _ProjectGroup extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     final sorted = sortProjectSessions(sessions, sort);
-    final regular = sorted.where((s) => !s.isHarness).toList();
-    final harness = sorted.where((s) => s.isHarness).toList();
     final available = availableAgentKinds(AppScope.read(context).overview);
     final starters = [
       if (available.contains(project.defaultAgent)) project.defaultAgent,
@@ -520,57 +519,11 @@ class _ProjectGroup extends StatelessWidget {
                     child: Text('没有运行中的会话，点上方图标新开一个', style: TextStyle(fontSize: 12, color: p.mutedFg)),
                   )
                 : Column(
-                    children: [
-                      for (final s in regular) SessionTile(key: ValueKey(s.paneId), session: s, project: project),
-                      _HarnessGroup(sessions: harness, project: project),
-                    ],
+                    children: [for (final s in sorted) SessionTile(key: ValueKey(s.paneId), session: s, project: project)],
                   ),
           ),
         ],
       ),
-    );
-  }
-}
-
-/// 项目 / 未归属里的 DeepSeek 会话折成一组，默认收起；点一下展开。
-class _HarnessGroup extends StatefulWidget {
-  final List<Session> sessions;
-  final Project? project;
-  const _HarnessGroup({required this.sessions, this.project});
-
-  @override
-  State<_HarnessGroup> createState() => _HarnessGroupState();
-}
-
-class _HarnessGroupState extends State<_HarnessGroup> {
-  bool _open = false;
-
-  @override
-  Widget build(BuildContext context) {
-    if (widget.sessions.isEmpty) return const SizedBox.shrink();
-    final p = Palette.of(context);
-    return Column(
-      children: [
-        InkWell(
-          borderRadius: BorderRadius.circular(10),
-          onTap: () => setState(() => _open = !_open),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-            child: Row(
-              children: [
-                const AgentIcon(kind: SessionKind.harness, size: 22),
-                const SizedBox(width: 10),
-                const Expanded(child: Text('DeepSeek', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500))),
-                Text('${widget.sessions.length} 个会话', style: TextStyle(fontSize: 12, color: p.mutedFg)),
-                const SizedBox(width: 4),
-                Icon(_open ? Icons.expand_less_rounded : Icons.expand_more_rounded, size: 20, color: p.mutedFg),
-              ],
-            ),
-          ),
-        ),
-        if (_open)
-          for (final s in widget.sessions) SessionTile(key: ValueKey(s.paneId), session: s, project: widget.project),
-      ],
     );
   }
 }
@@ -606,8 +559,6 @@ class _UnassignedTab extends StatelessWidget {
     final p = Palette.of(context);
     final sort = app.unassignedSort;
     final sorted = sortUnassigned(sessions, sort);
-    final regular = sorted.where((s) => !s.isHarness).toList();
-    final harness = sorted.where((s) => s.isHarness).toList();
     Future<void> start(SessionKind kind) async {
       HapticFeedback.lightImpact();
       final paneId = await run(context, () => app.api.startUnassignedSession(kind));
@@ -672,8 +623,7 @@ class _UnassignedTab extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(4, 0, 4, 32),
         children: [
           header,
-          for (final s in regular) SessionTile(key: ValueKey(s.paneId), session: s),
-          _HarnessGroup(sessions: harness),
+          for (final s in sorted) SessionTile(key: ValueKey(s.paneId), session: s),
         ],
       );
     }
@@ -682,11 +632,10 @@ class _UnassignedTab extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(4, 0, 4, 32),
       header: header,
       buildDefaultDragHandles: false,
-      itemCount: regular.length,
-      footer: _HarnessGroup(sessions: harness),
+      itemCount: sorted.length,
       proxyDecorator: (child, _, _) => Material(color: p.card, elevation: 6, borderRadius: BorderRadius.circular(12), child: child),
       onReorderItem: (from, to) {
-        final list = [...regular];
+        final list = [...sorted];
         final moved = list.removeAt(from);
         if (moved.isHarness) return;
         list.insert(to, moved);
@@ -695,15 +644,17 @@ class _UnassignedTab extends StatelessWidget {
         run(context, () => app.api.moveBefore(moved.paneId, before?.paneId));
       },
       itemBuilder: (context, i) => SessionTile(
-        key: ValueKey(regular[i].paneId),
-        session: regular[i],
-        handle: ReorderableDragStartListener(
-          index: i,
-          child: Padding(
-            padding: const EdgeInsets.only(left: 8),
-            child: Icon(Icons.drag_indicator_rounded, size: 20, color: p.mutedFg),
-          ),
-        ),
+        key: ValueKey(sorted[i].paneId),
+        session: sorted[i],
+        handle: sorted[i].isHarness
+            ? null
+            : ReorderableDragStartListener(
+                index: i,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Icon(Icons.drag_indicator_rounded, size: 20, color: p.mutedFg),
+                ),
+              ),
       ),
     );
   }

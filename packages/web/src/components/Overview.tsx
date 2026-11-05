@@ -97,7 +97,8 @@ export function OverviewPage({ activePane, activeFiles, enter }: { activePane: s
     );
   }
 
-  const visible = (s: Session) => showHidden || !s.hidden;
+  // 空会话只放在「DeepSeek 对话」总览里，不塞进项目/未归属列表。
+  const visible = (s: Session) => (s.kind !== "harness" || !s.title.startsWith("空会话")) && (showHidden || !s.hidden);
   const hiddenCount = [...overview.projects.flatMap((p) => p.sessions), ...overview.unassigned].filter((s) => s.hidden).length;
   const unassigned = overview.unassigned.filter(visible);
   const archivedCount = overview.archived.length + overview.projects.filter((p) => p.archived).length;
@@ -468,10 +469,9 @@ function ProjectGroup(props: {
         <p className="px-3 py-2 text-xs text-muted-foreground">没有运行中的会话，点上方图标新开一个</p>
       ) : (
         <div ref={rowsRef} className="flex flex-col gap-0.5">
-          {sorted.filter((s) => s.kind !== "harness").map((s) => (
+          {sorted.map((s) => (
             <SessionRow key={s.paneId} session={s} project={project} active={s.paneId === activePane} />
           ))}
-          <HarnessGroup sessions={sorted.filter((s) => s.kind === "harness")} project={project} activePane={activePane} />
         </div>
       )}
       <AgentPickerDialog open={pickingAgent} onOpenChange={setPickingAgent} agents={availableAgents}
@@ -505,32 +505,6 @@ function AgentPickerDialog(props: {
         </div>
       </DialogContent>
     </Dialog>
-  );
-}
-
-/** DeepSeek 会话多时折成一组，默认收起；当前正在看的那条会自动展开。 */
-function HarnessGroup({ sessions, project, activePane }: { sessions: Session[]; project: ProjectView | null; activePane: string | null }) {
-  const containsActive = sessions.some((s) => s.paneId === activePane);
-  const [open, setOpen] = useState<boolean | null>(null);
-  const expanded = open ?? containsActive;
-  if (sessions.length === 0) return null;
-  return (
-    <div className="flex flex-col gap-0.5">
-      <button
-        type="button"
-        onClick={() => setOpen(!expanded)}
-        aria-expanded={expanded}
-        className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent/60"
-      >
-        <AgentIcon kind="harness" size="xs" />
-        <span className="flex-1 truncate text-sm">DeepSeek</span>
-        <span className="text-xs text-muted-foreground">{sessions.length} 个会话</span>
-        <ChevronDownIcon className={cn("size-4 text-muted-foreground transition-transform", expanded && "rotate-180")} />
-      </button>
-      {expanded && sessions.map((s) => (
-        <SessionRow key={s.paneId} session={s} project={project} active={s.paneId === activePane} />
-      ))}
-    </div>
   );
 }
 
@@ -863,9 +837,11 @@ function UnassignedTab({ sessions, activePane }: { sessions: Session[]; activePa
           </SortableContext>
         </DndContext>
       ) : (
-        shown.filter((s) => s.backend !== "harness").map((s) => <SessionRow key={s.paneId} session={s} project={null} active={s.paneId === activePane} />)
+        shown.map((s) => <SessionRow key={s.paneId} session={s} project={null} active={s.paneId === activePane} />)
       )}
-      <HarnessGroup sessions={shown.filter((s) => s.backend === "harness" || s.kind === "harness")} project={null} activePane={activePane} />
+      {sort === "herdr" && shown.filter((s) => s.backend === "harness").map((s) => (
+        <SessionRow key={s.paneId} session={s} project={null} active={s.paneId === activePane} />
+      ))}
       {picker}
     </div>
   );
