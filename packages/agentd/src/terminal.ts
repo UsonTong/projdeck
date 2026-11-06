@@ -51,6 +51,8 @@ export class TerminalBridge {
   private readonly config: Config;
   private readonly service: ProjdeckService;
   private readonly active = new Set<IPty>();
+  /** terminalId → 一条共享的 herdr attach；多个网页/手机视图复用，避免 herdr 的「已有客户端」错误。 */
+  private readonly shared = new Map<string, Shared>();
 
   private readonly desktopFocus: DesktopFocus;
 
@@ -68,21 +70,24 @@ export class TerminalBridge {
     sizing: TerminalSizing = "fit",
     initiallyActive = true,
   ): Promise<void> {
-    const control = (msg: ServerFrame) => ws.readyState === ws.OPEN && ws.send(JSON.stringify(msg));
     if (this.active.size >= MAX_TERMINALS) {
-      control({ t: "error", message: "打开的终端太多了，请先关闭一些页面" });
+      this.control(ws, { t: "error", message: "打开的终端太多了，请先关闭一些页面" });
       return ws.close();
     }
     let terminalId: string;
     try {
       terminalId = await this.service.terminalIdOf(paneId);
     } catch (err) {
-      control({ t: "error", message: (err as Error).message });
+      this.control(ws, { t: "error", message: (err as Error).message });
       return ws.close();
     }
     if (ws.readyState !== ws.OPEN) return;
-    // 打开网页终端即算看过这个会话，它的「已完成」不再提示
-    const viewing = this.service.beginView(paneId).catch(() => () => {});
+
+    const existing = this.shared.get(terminalId);
+    if (existing) {
+      this.join(existing, ws, paneId);
+      return;
+    }
 
     // 去掉 HERDR_* 变量：agentd 自己可能运行在某个 herdr pane 里，避免被当成嵌套客户端或连错 socket
     const env: Record<string, string> = {};
@@ -93,76 +98,116 @@ export class TerminalBridge {
     env.TERM = "xterm-256color";
     env.COLORTERM = "truecolor";
 
-    // 网页最近一次被操作的时间；与电脑上 Ghostty 最近一次切到前台的时间比较
-    let webActiveAt = initiallyActive ? Date.now() : 0;
+    const webActiveAt = { value: initiallyActive ? Date.now() : 0 };
     const desired = async () => {
       if (sizing === "fit") return null;
-      if (sizing === "auto" && webActiveAt >= this.desktopFocus.focusedAt) return null;
+      if (sizing === "auto" && webActiveAt.value >= this.desktopFocus.focusedAt) return null;
       if (sizing === "auto" && !(await desktopClientConnected(this.config.herdrSocket))) return null;
       return this.service.desktopSize(paneId).catch(() => null);
     };
-    let follow = await desired();
+    const follow = await desired();
     if (ws.readyState !== ws.OPEN) return;
-    let web = { cols: clamp(cols, 20, 500), rows: clamp(rows, 5, 200) };
-    const target = () => follow ?? web;
+    const web = { cols: clamp(cols, 20, 500), rows: clamp(rows, 5, 200) };
+    const target = () => (shared.follow ?? shared.web);
 
     const term = pty.spawn(this.config.herdrBin, ["terminal", "attach", terminalId], {
       name: "xterm-256color",
-      cols: target().cols,
-      rows: target().rows,
+      cols: (follow ?? web).cols,
+      rows: (follow ?? web).rows,
       cwd: process.env.HOME,
       env,
       encoding: null,
     });
     this.active.add(term);
-    control({ t: "size", follow });
 
-    const update = async () => {
-      const next = await desired();
-      if (JSON.stringify(next) === JSON.stringify(follow)) return;
-      follow = next;
-      term.resize(target().cols, target().rows);
-      control({ t: "size", follow });
+    const shared: Shared = {
+      paneId,
+      terminalId,
+      term,
+      clients: new Set(),
+      follow,
+      web,
+      webActiveAt: webActiveAt.value,
+      sizing,
+      started: false,
+      update: async () => {},
+      poll: undefined,
+      onDesktopFocus: () => {},
+      endView: undefined,
     };
-    // 电脑上改了窗口大小、或关掉 / 打开了 herdr 客户端时跟着变；电脑上切到 Ghostty 时立即变
-    const poll = setInterval(() => void update(), FOLLOW_POLL_MS);
-    const onDesktopFocus = () => void update();
-    this.desktopFocus.on("change", onDesktopFocus);
+    this.shared.set(terminalId, shared);
 
-    // attach 失败时 herdr 会输出一行 JSON 错误然后退出，转成可读的提示
-    let started = false;
+    // 打开网页终端即算看过这个会话；最后一个视图离开时才结束
+    const viewing = this.service.beginView(paneId).catch(() => () => {});
+    shared.endView = () => void viewing.then((end) => end());
+
+    shared.update = async () => {
+      const next = await desired();
+      if (JSON.stringify(next) === JSON.stringify(shared.follow)) return;
+      shared.follow = next;
+      term.resize(target().cols, target().rows);
+      this.broadcast(shared, JSON.stringify({ t: "size", follow: shared.follow }));
+    };
+    shared.poll = setInterval(() => void shared.update(), FOLLOW_POLL_MS);
+    shared.onDesktopFocus = () => void shared.update();
+    this.desktopFocus.on("change", shared.onDesktopFocus);
+
     term.onData((data) => {
       const buf = data as unknown as Buffer;
-      if (!started) {
-        started = true;
+      if (!shared.started) {
+        shared.started = true;
         const head = buf.subarray(0, 300).toString("utf8");
         if (head.startsWith('{"error"')) {
           const message = /"message":"([^"]*)"/.exec(head)?.[1] ?? head;
-          control({ t: "error", message: `无法连接终端：${message}` });
+          this.broadcast(shared, JSON.stringify({ t: "error", message: `无法连接终端：${message}` }));
           return;
         }
       }
-      if (ws.readyState !== ws.OPEN) return;
-      ws.send(buf, { binary: true });
-      if (ws.bufferedAmount > HIGH_WATER) {
-        term.pause();
-        const resume = setInterval(() => {
-          if (ws.readyState !== ws.OPEN || ws.bufferedAmount < HIGH_WATER / 4) {
-            clearInterval(resume);
-            term.resume();
-          }
-        }, 50);
+      for (const client of shared.clients) {
+        if (client.readyState !== client.OPEN) continue;
+        client.send(buf, { binary: true });
+        if (client.bufferedAmount > HIGH_WATER) {
+          term.pause();
+          const resume = setInterval(() => {
+            if (client.readyState !== client.OPEN || client.bufferedAmount < HIGH_WATER / 4) {
+              clearInterval(resume);
+              term.resume();
+            }
+          }, 50);
+        }
       }
     });
 
     term.onExit(() => {
-      clearInterval(poll);
-      this.desktopFocus.off("change", onDesktopFocus);
+      clearInterval(shared.poll);
+      this.desktopFocus.off("change", shared.onDesktopFocus);
       this.active.delete(term);
-      control({ t: "exit" });
-      ws.close();
+      this.shared.delete(terminalId);
+      this.broadcast(shared, JSON.stringify({ t: "exit" }));
+      for (const client of shared.clients) client.close();
+      shared.clients.clear();
+      this.finishView(shared);
     });
 
+    this.control(ws, { t: "size", follow: shared.follow });
+    this.bind(shared, ws, cols, rows);
+  }
+
+  /** 第二个及之后的网页/手机视图：复用同一条 attach，并补当前屏幕。 */
+  private join(shared: Shared, ws: WebSocket, paneId: string): void {
+    if (ws.readyState !== ws.OPEN) return;
+    this.control(ws, { t: "size", follow: shared.follow });
+    this.bind(shared, ws, shared.web.cols, shared.web.rows);
+    void this.service
+      .terminalSnapshot(paneId)
+      .then((text) => {
+        if (ws.readyState === ws.OPEN && text) ws.send(Buffer.from(text), { binary: true });
+      })
+      .catch(() => {});
+  }
+
+  private bind(shared: Shared, ws: WebSocket, cols: number, rows: number): void {
+    shared.clients.add(ws);
     ws.on("message", (raw, isBinary) => {
       if (isBinary) return;
       let frame: ClientFrame;
@@ -171,28 +216,74 @@ export class TerminalBridge {
       } catch {
         return;
       }
-      if (frame.t === "i" && typeof frame.d === "string") term.write(frame.d.replaceAll("\x02", "\x02\x02"));
+      if (frame.t === "i" && typeof frame.d === "string") shared.term.write(frame.d.replaceAll("\x02", "\x02\x02"));
       if (frame.t === "a" && frame.active === true) {
-        webActiveAt = Date.now();
-        void update(); // 切换操作的一边要立即生效
+        shared.webActiveAt = Date.now();
+        void shared.update();
       }
       if (frame.t === "r") {
-        web = { cols: clamp(frame.c, 20, 500), rows: clamp(frame.r, 5, 200) };
-        if (!follow) term.resize(web.cols, web.rows); // 跟随电脑时网页的尺寸不影响 pane
+        shared.web = { cols: clamp(frame.c, 20, 500), rows: clamp(frame.r, 5, 200) };
+        if (!shared.follow) shared.term.resize(shared.web.cols, shared.web.rows);
       }
     });
+    ws.on("close", () => this.leave(shared, ws));
+    ws.on("error", () => this.leave(shared, ws));
+    // 首次打开的视图尺寸已经是最新的；第二个视图沿用共享尺寸，仅记录它的行列用于后续操作
+    void cols;
+    void rows;
+  }
 
-    // 关闭网页即断开 attach，pane 尺寸随之恢复
-    ws.on("close", () => {
-      clearInterval(poll);
-      this.desktopFocus.off("change", onDesktopFocus);
-      void viewing.then((end) => end());
-      if (this.active.delete(term)) term.kill();
-    });
+  private leave(shared: Shared, ws: WebSocket): void {
+    if (!shared.clients.has(ws)) return;
+    shared.clients.delete(ws);
+    if (shared.clients.size > 0) return;
+    clearInterval(shared.poll);
+    this.desktopFocus.off("change", shared.onDesktopFocus);
+    this.shared.delete(shared.terminalId);
+    if (this.active.delete(shared.term)) shared.term.kill();
+    this.finishView(shared);
+  }
+
+  private finishView(shared: Shared): void {
+    const end = shared.endView;
+    shared.endView = undefined;
+    end?.();
+  }
+
+  private control(ws: WebSocket, msg: ServerFrame): void {
+    if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
+  }
+
+  private broadcast(shared: Shared, text: string): void {
+    for (const client of shared.clients) if (client.readyState === client.OPEN) client.send(text);
   }
 
   closeAll(): void {
-    for (const term of this.active) term.kill();
+    for (const shared of this.shared.values()) {
+      clearInterval(shared.poll);
+      this.desktopFocus.off("change", shared.onDesktopFocus);
+      this.finishView(shared);
+      for (const client of shared.clients) client.close();
+      shared.clients.clear();
+      shared.term.kill();
+    }
+    this.shared.clear();
     this.active.clear();
   }
+}
+
+interface Shared {
+  paneId: string;
+  terminalId: string;
+  term: IPty;
+  clients: Set<WebSocket>;
+  follow: { cols: number; rows: number } | null;
+  web: { cols: number; rows: number };
+  webActiveAt: number;
+  sizing: TerminalSizing;
+  started: boolean;
+  update: () => Promise<void>;
+  poll: ReturnType<typeof setInterval> | undefined;
+  onDesktopFocus: () => void;
+  endView: (() => void) | undefined;
 }

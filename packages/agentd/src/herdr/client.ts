@@ -110,6 +110,17 @@ export class HerdrClient extends EventEmitter<{ event: [HerdrEvent]; online: [bo
     return r.read.text;
   }
 
+  /** 当前可见屏幕（带 ANSI），用于第二个网页终端加入同一个 attach 时补画面。 */
+  async readVisibleAnsi(paneId: string): Promise<string> {
+    const r = await this.request<{ read: { text: string } }>("pane.read", {
+      pane_id: paneId,
+      source: "visible",
+      format: "ansi",
+      strip_ansi: false,
+    });
+    return r.read.text;
+  }
+
   /** 把工作区移到 beforeId 之前（null = 移到最后）。 */
   async moveWorkspaces(ids: string[], beforeId: string | null): Promise<void> {
     await this.request("workspace.move_block", { workspace_ids: ids, before_workspace_id: beforeId });

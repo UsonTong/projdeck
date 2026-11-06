@@ -496,6 +496,11 @@ export class ProjdeckService {
     return this.herdr.readPane(paneId, lines);
   }
 
+  /** 终端当前可见画面（ANSI），多个网页视图共享一个 attach 时给新视图补屏。 */
+  async terminalSnapshot(paneId: string): Promise<string> {
+    return this.herdr.readVisibleAnsi(paneId);
+  }
+
   async prompt(paneId: string, text: string, files: string[] = []): Promise<void> {
     const { session } = await this.lookup(paneId);
     for (const f of files) if (!isAbsolute(f)) throw httpError(400, `文件路径无效：${f}`);
