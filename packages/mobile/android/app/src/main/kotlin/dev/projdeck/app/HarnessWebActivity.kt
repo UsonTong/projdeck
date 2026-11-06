@@ -142,6 +142,7 @@ class HarnessWebActivity : Activity() {
             base: String,
             chooseFiles: (ValueCallback<Array<Uri>>, Intent) -> Unit,
             openExternal: ((Uri) -> Unit)? = null,
+            onPageFinished: ((WebView, String) -> Unit)? = null,
         ) {
             val origin = Uri.parse(base)
             fun sameOrigin(uri: Uri): Boolean =
@@ -186,6 +187,10 @@ class HarnessWebActivity : Activity() {
 
                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =
                     if (sameOrigin(request.url)) null else blocked()
+
+                override fun onPageFinished(view: WebView, url: String) {
+                    onPageFinished?.invoke(view, url)
+                }
             }
             web.webChromeClient = object : WebChromeClient() {
                 override fun onShowFileChooser(

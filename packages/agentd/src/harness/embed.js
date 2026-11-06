@@ -85,9 +85,21 @@
         const id = new URL(location.href).searchParams.get('session');
         message({ source: window, origin: location.origin, data: { channel: CHANNEL, type: 'select', sessionId: id || null, commandId: 1 } });
       }
+      // 原生 WebView 复用页面时，通过自定义事件切换会话，避免每次重新加载整个 SPA。
+      let nativeCommand = 0;
+      const nativeSelect = (event) => {
+        if (!standalone) return;
+        const id = event?.detail;
+        if (id !== null && (typeof id !== 'string' || id.length > 512)) return;
+        message({
+          source: window, origin: location.origin,
+          data: { channel: CHANNEL, type: 'select', sessionId: id || null, commandId: ++nativeCommand + 100000 },
+        });
+      };
+      window.addEventListener('projdeck-select', nativeSelect);
       stop = () => {
         clearTimeout(deadline); unlist(); unselected();
-        window.removeEventListener('message', message); observer.disconnect(); style.remove();
+        window.removeEventListener('message', message); window.removeEventListener('projdeck-select', nativeSelect); observer.disconnect(); style.remove();
       };
       return stop;
     }, 'projdeck: embedded original Harness navigation');
