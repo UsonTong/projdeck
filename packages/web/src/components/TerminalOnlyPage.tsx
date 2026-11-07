@@ -26,7 +26,8 @@ export function TerminalOnlyPage({ paneId }: { paneId: string }) {
   const size = fontSize || theme.fontSizePx || 14;
   return (
     <div className="flex h-full min-h-0 flex-col" style={{ background: theme.background }}>
-      <div className="min-h-0 flex-1">
+      {/* GhosttyTerminal 内部靠 flex-1 撑高，外层必须是 flex 容器，否则高度塌成 0、终端空白且按 80x24 连接 */}
+      <div className="flex min-h-0 flex-1 flex-col">
         <GhosttyTerminal
           key={`${paneId}:${themeKey(theme)}`}
           ref={term}
