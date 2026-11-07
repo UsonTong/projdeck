@@ -21,12 +21,14 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   bool? _notify;
   bool _busy = false;
+  bool _ghostty = true;
   String? _version;
 
   @override
   void initState() {
     super.initState();
     Native.notificationsEnabled().then((v) => mounted ? setState(() => _notify = v) : null);
+    SharedPreferences.getInstance().then((p) => mounted ? setState(() => _ghostty = p.getBool('ghosttyTerminal') ?? true) : null);
     Native.appVersion().then((v) => mounted ? setState(() => _version = v['name'] as String?) : null);
   }
 
@@ -103,6 +105,19 @@ class _SettingsPageState extends State<SettingsPage> {
             subtitle: Text('让公司电脑上的 adb 连到这台手机', style: TextStyle(color: p.mutedFg, fontSize: 12)),
             trailing: Icon(Icons.chevron_right_rounded, color: p.mutedFg),
             onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RemoteAdbPage())),
+          ),
+          _Section('终端'),
+          SwitchListTile(
+            title: const Text('使用 Ghostty 渲染'),
+            subtitle: Text('安卓上用网页版 Ghostty 引擎（和电脑网页一致）。打不开或键盘异常时关掉，改用原生 xterm。', style: TextStyle(color: p.mutedFg, fontSize: 12)),
+            value: _ghostty,
+            onChanged: (v) async {
+              setState(() => _ghostty = v);
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setBool('ghosttyTerminal', v);
+              if (!context.mounted) return;
+              toast(context, v ? '下次打开终端使用 Ghostty' : '下次打开终端使用原生 xterm');
+            },
           ),
           _Section('版本'),
           ListTile(

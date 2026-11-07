@@ -33,6 +33,7 @@ class SessionPage extends StatefulWidget {
 class _SessionPageState extends State<SessionPage> {
   final _term = GlobalKey<TerminalPaneState>();
   SessionView? _view;
+  bool _ghostty = true;
   double _dragX = 0;
   bool _dragFromEdge = false;
 
@@ -41,6 +42,7 @@ class _SessionPageState extends State<SessionPage> {
     super.initState();
     // 每个会话单独记住上次看的是终端还是对话：返回再进来还是那个视图
     SharedPreferences.getInstance().then((p) {
+      if (mounted) setState(() => _ghostty = p.getBool('ghosttyTerminal') ?? true);
       if (_view == null && mounted) {
         final saved = p.getString('view:${widget.paneId}') ?? p.getString('view');
         setState(() => _view = saved == 'chat' ? SessionView.chat : SessionView.terminal);
@@ -102,7 +104,7 @@ class _SessionPageState extends State<SessionPage> {
     final next = i >= 0 && i < order.length - 1 ? order[i + 1].paneId : null;
     final status = statusLabel[s.status];
     // 安卓端直接用 WebView 跑网页的 ghostty-web 引擎；其他平台保留原生 xterm 作为后备。
-    final ghosttyWeb = defaultTargetPlatform == TargetPlatform.android && !kIsWeb;
+    final ghosttyWeb = defaultTargetPlatform == TargetPlatform.android && !kIsWeb && _ghostty;
 
     return Scaffold(
       resizeToAvoidBottomInset: true,
