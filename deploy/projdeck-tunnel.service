@@ -4,11 +4,15 @@
 # 安装前把下面的 user@your-server 改成你的服务器（建议在 ~/.ssh/config 里配好别名和密钥）。
 [Unit]
 Description=projdeck 反向隧道
-After=network-online.target
+Wants=projdeck-agentd.service
+After=network-online.target projdeck-agentd.service
+# 断网或服务器尚未释放旧端口时持续重试，不触发启动频率限制
+StartLimitIntervalSec=0
 
 [Service]
-ExecStart=/usr/bin/ssh -N \
-  -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
+ExecStart=/usr/bin/ssh -NT \
+  -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 \
+  -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
   -o ExitOnForwardFailure=yes \
   -R 127.0.0.1:17420:127.0.0.1:7420 \
   user@your-server
