@@ -34,13 +34,16 @@ class MainActivity : FlutterActivity() {
     private var pendingPermission: MethodChannel.Result? = null
     private var pendingConfig: Pair<String, String>? = null
     private var harnessViews: HarnessWebViewFactory? = null
+    private var terminalViews: TerminalWebViewFactory? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         val views = HarnessWebViewFactory(this)
         harnessViews = views
         flutterEngine.platformViewsController.registry.registerViewFactory("projdeck/harness", views)
-        flutterEngine.platformViewsController.registry.registerViewFactory("projdeck/terminal", TerminalWebViewFactory(this))
+        val terminals = TerminalWebViewFactory(this)
+        terminalViews = terminals
+        flutterEngine.platformViewsController.registry.registerViewFactory("projdeck/terminal", terminals)
         val ch = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "projdeck/native")
         channel = ch
         ch.setMethodCallHandler { call, result ->
@@ -305,6 +308,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         harnessViews?.disposeCache()
+        terminalViews?.disposeCache()
         super.onDestroy()
     }
 

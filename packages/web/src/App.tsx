@@ -174,6 +174,7 @@ function Shell() {
   useUpdateCheck();
   const route = useRoute();
   const wide = useWide();
+  const { overview } = useLive();
   const activePane = route.kind === "session" ? route.paneId : null;
   const activeFiles = route.kind === "files" ? route.projectId : null;
 
@@ -212,12 +213,25 @@ function Shell() {
     </div>
   );
 
-  // 手机原生端用 WebView 打开纯终端页时，不渲染 projdeck 的侧栏。
-  if (route.kind === "terminal") return <div className="flex h-full min-h-0 flex-col">{content}</div>;
-
   // 左边始终保留 projdeck 导航；Harness 仅占用右侧内容区，切换其会话时保持同一个 iframe。
   const harnessView = route.kind === "harness" || (route.kind === "session" && route.paneId.startsWith("harness:"));
-  const details = harnessView ? <HarnessPage sessionId={route.kind === "session" ? route.paneId.slice("harness:".length) : undefined} /> : page;
+  // DeepSeek 原版前端启动要一两秒：进过一次就常驻（隐藏），之后进出、切换会话都不再重新启动。
+  // 电脑上空闲时提前启动好，第一次打开也不用等。
+  const [harnessMounted, setHarnessMounted] = useState(false);
+  const harnessOnline = !!overview?.harness?.configured && !!overview.harness.online;
+  useEffect(() => {
+    if (harnessView) return setHarnessMounted(true);
+    if (!wide || !harnessOnline || harnessMounted || route.kind === "terminal" || route.kind === "idle") return;
+    const t = setTimeout(() => setHarnessMounted(true), 3_000);
+    return () => clearTimeout(t);
+  }, [harnessView, wide, harnessOnline, harnessMounted, route.kind]);
+  const harness = (harnessMounted || harnessView) && (
+    <HarnessPage active={harnessView} sessionId={route.kind === "session" && harnessView ? route.paneId.slice("harness:".length) : undefined} />
+  );
+  const details = harnessView ? null : page;
+
+  // 手机原生端用 WebView 打开纯终端页时，不渲染 projdeck 的侧栏。
+  if (route.kind === "terminal" || route.kind === "idle") return <div className="flex h-full min-h-0 flex-col">{content}</div>;
 
   if (wide) {
     return (
@@ -227,7 +241,8 @@ function Shell() {
           <OverviewPage activePane={activePane} activeFiles={activeFiles} />
         </aside>
         <main className="flex min-h-0 min-w-0 flex-col">
-          {details ?? <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">选择一个会话</div>}
+          {harness}
+          {!harnessView && (details ?? <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">选择一个会话</div>)}
         </main>
       </div>
     );
@@ -235,7 +250,8 @@ function Shell() {
   return (
     <div className="flex h-full flex-col">
       <Banner />
-      {details ?? <OverviewPage key={enter} activePane={null} activeFiles={null} enter={enter === "motion-from-left" ? enter : undefined} />}
+      {harness}
+      {!harnessView && (details ?? <OverviewPage key={enter} activePane={null} activeFiles={null} enter={enter === "motion-from-left" ? enter : undefined} />)}
     </div>
   );
 }

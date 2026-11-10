@@ -126,7 +126,7 @@ export const GhosttyTerminal = forwardRef<TerminalHandle, Props>(function Ghostt
   const [touchMenu, setTouchMenu] = useState<{ geometry: SelectionGeometry | null; at: { x: number; y: number } } | null>(null);
   const touchRef = useRef<ReturnType<typeof attachTouch> | null>(null);
   const [status, setStatus] = useState<Status>("connecting");
-  // 新打开的终端在收到第一段画面之前是空白的（只有光标），先不显示，画面到了再淡入
+  // 新打开的终端在收到第一段画面之前是空白的（只有光标），先不显示，画面到了再快速淡入（不叠加位移，页面切换本身已有动效）
   const [painted, setPainted] = useState(false);
   const [error, setError] = useState("");
   const [reconnectTick, setReconnectTick] = useState(0);
@@ -536,7 +536,7 @@ export const GhosttyTerminal = forwardRef<TerminalHandle, Props>(function Ghostt
           {/* ghostty-web 会在这个容器里放 canvas；键盘焦点在 attachTextInput 放进来的 textarea 上 */}
           <div
             ref={container}
-            className={cn("absolute touch-none overflow-hidden outline-none transition-[opacity,translate] duration-500 ease-[var(--ease-out-expo)]", !painted && "translate-y-2 opacity-0")}
+            className={cn("absolute touch-none overflow-hidden outline-none transition-opacity duration-200 ease-out", !painted && "opacity-0")}
             style={{ inset: `${props.padding.y}px ${props.padding.x}px` }}
             onClick={() => termRef.current?.focus()}
           />

@@ -3,6 +3,7 @@ package dev.projdeck.app
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
 import android.net.Uri
 import android.view.View
 import android.view.ViewGroup
@@ -133,6 +134,8 @@ class HarnessWebViewFactory(private val activity: Activity) : PlatformViewFactor
             sessionId = session
             pageLoaded = previous?.loaded ?: false
             (browser.parent as? ViewGroup)?.removeView(browser)
+            // 页面加载出来之前透出 Flutter 的背景，而不是一块白屏
+            browser.setBackgroundColor(Color.TRANSPARENT)
             root.addView(browser, FrameLayout.LayoutParams(-1, -1))
             HarnessWebActivity.configureWebView(browser, origin!!, chooseFiles = { callback, picker ->
                 chooseFiles(this, callback, picker)

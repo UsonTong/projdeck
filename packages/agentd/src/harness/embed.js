@@ -15,10 +15,30 @@
   }
   /** 切换后这段时间内，原版自己把选中项改走（启动恢复等）一律改回目标会话。 */
   const GUARD_MS = 2500;
-  const send =(type, data = {}) => window.parent.postMessage({ channel: CHANNEL, type, ...data }, location.origin);
+  /** 最多遮住这么久：历史迟迟加载不完也要露出界面，不能卡在空白。 */
+  const REVEAL_MAX_MS = 4000;
+  // 启动和切换会话期间遮住原版界面（启动画面、空白新会话页、「Loading history…」），
+  // 目标会话的历史渲染好后再淡入。超过 0.4 秒才出现转圈，快速切换不闪。
+  const root = document.documentElement;
+  const veil = document.createElement('style');
+  // 遮住是瞬间的（不能让加载画面淡出时露出来），揭开时淡入
+  veil.textContent = 'html[data-projdeck-pending] body{opacity:0!important;pointer-events:none!important;transition:none!important}'
+    + 'body{transition:opacity .18s ease-out}'
+    + 'html[data-projdeck-pending]::after{content:"";position:fixed;left:50%;top:50%;width:18px;height:18px;margin:-11px;'
+    + 'border:2px solid rgba(128,128,128,.55);border-top-color:transparent;border-radius:50%;opacity:0;'
+    + 'animation:projdeck-spin .8s linear infinite,projdeck-fade .2s .4s forwards}'
+    + '@keyframes projdeck-spin{to{transform:rotate(360deg)}}@keyframes projdeck-fade{to{opacity:1}}';
+  (document.head ?? root).append(veil);
+  const conceal = () => { root.dataset.projdeckPending = ''; };
+  const uncover = () => { delete root.dataset.projdeckPending; };
+  conceal();
+  // 原版版本不兼容、嵌入适配没生效时，不能一直遮着
+  const bootSafety = setTimeout(uncover, 15000);
+  const send = (type, data = {}) => window.parent.postMessage({ channel: CHANNEL, type, ...data }, location.origin);
   let stop;
   const bind = (owner) => {
     document.documentElement.dataset.projdeckEmbed = 'applied';
+    clearTimeout(bootSafety);
     owner.plugin({ name: 'projdeck-harness-embedded', inject: ['uiWorkspace', 'sessions', 'layout'], apply(ctx) {
     stop?.();
     ctx.effect(() => {
@@ -27,6 +47,7 @@
       const sessions = ctx.get('sessions');
       const layout = ctx.get('layout');
       if (!workspace?.openSession || !workspace.selection?.subscribe || !sessions?.list || !layout?.beginNavigation) {
+        uncover();
         send('error', { message: '此 Harness 版本暂不支持嵌入会话联动，可单独打开原版网页。' });
         return;
       }
@@ -36,6 +57,24 @@
       let applying = false;
       let guardUntil = 0;
       let reassert;
+      let revealTimer;
+      /** 历史还在加载：对话列里有「Loading history…」提示（原版的 *_hint 元素）。 */
+      const loading = () => !!document.querySelector('[data-chat-flow]')?.querySelector?.(':scope > [class$="_hint"], :scope > [class*="_hint "]');
+      /** 目标会话渲染好后揭开遮罩并告诉父页面；没被遮住（同一个会话）时立即告诉。 */
+      const reveal = (commandId, sessionId) => {
+        clearTimeout(revealTimer);
+        if (root.dataset.projdeckPending === undefined) { send('shown', { sessionId, commandId }); return; }
+        const started = Date.now();
+        const tick = () => {
+          const waited = Date.now() - started;
+          // 至少等原版把新会话渲染出来（选中后下一帧才换掉旧会话的画面）
+          if (waited < 80 || (loading() && waited < REVEAL_MAX_MS)) { revealTimer = setTimeout(tick, 40); return; }
+          revealTimer = undefined;
+          uncover();
+          send('shown', { sessionId, commandId });
+        };
+        tick();
+      };
       const selected = () => {
         const id = workspace.selection.getSnapshot().sessionId;
         if (!accepted || typeof id !== 'string') return;
@@ -67,7 +106,9 @@
           clearTimeout(deadline);
           selected();
           send('selected', { sessionId: workspace.selection.getSnapshot().sessionId ?? null, commandId: command.commandId });
+          reveal(command.commandId, workspace.selection.getSnapshot().sessionId ?? null);
         } catch {
+          uncover();
           send('error', { commandId: command.commandId, message: '无法打开此 Harness 会话，请刷新后重试。' });
         } finally { applying = false; }
       };
@@ -79,7 +120,12 @@
         clearTimeout(deadline);
         command = { sessionId: msg.sessionId, commandId: msg.commandId };
         accepted = false;
-        deadline = setTimeout(() => send('error', { commandId: msg.commandId, message: '等待 Harness 会话同步超时，可刷新或单独打开原版。' }), 15000);
+        // 换到别的会话才遮住；同一个会话（例如父页面重新显示）保持原样
+        if (msg.sessionId !== null && msg.sessionId !== workspace.selection.getSnapshot().sessionId) conceal();
+        deadline = setTimeout(() => {
+          uncover();
+          send('error', { commandId: msg.commandId, message: '等待 Harness 会话同步超时，可刷新或单独打开原版。' });
+        }, 15000);
         apply();
       };
       const unlist = sessions.list.subscribe(apply);
@@ -119,7 +165,7 @@
       };
       window.addEventListener('projdeck-select', nativeSelect);
       stop = () => {
-        clearTimeout(deadline); clearTimeout(reassert); unlist(); unselected();
+        clearTimeout(deadline); clearTimeout(reassert); clearTimeout(revealTimer); unlist(); unselected();
         window.removeEventListener('message', message); window.removeEventListener('projdeck-select', nativeSelect); observer.disconnect(); style.remove();
       };
       return stop;

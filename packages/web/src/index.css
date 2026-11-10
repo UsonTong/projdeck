@@ -350,6 +350,20 @@
   animation: motion-from-left 340ms var(--ease-out-expo) backwards;
 }
 
+/* 加载提示：很快就好的不出现，超过 0.4 秒才淡入，避免一闪而过 */
+@keyframes motion-delayed-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.motion-delayed {
+  animation: motion-delayed-fade 200ms 400ms both;
+}
+
 /* 系统设置了「减少动态效果」就不要动 */
 @media (prefers-reduced-motion: reduce) {
   *,

@@ -7,6 +7,8 @@ import { useEffect, useState } from "react";
  *   #/f/<projectId>/<路径>  项目文件管理器（路径为项目内相对路径，可为空）
  *   #/ccs/<栏目>            CC Switch（栏目为 usage 或应用，如 claude、codex）
  *   #/devices              设备（连进 projdeck 的手机）
+ *   #/t/<paneId>           纯终端页（安卓原生端的 WebView 加载）
+ *   #/idle                 空白页：安卓端缓存终端 WebView 时停在这里，断开终端连接
  */
 export type Route =
   | { kind: "overview" }
@@ -16,7 +18,8 @@ export type Route =
   | { kind: "devices" }
   | { kind: "harness" }
   | { kind: "deepseek" }
-  | { kind: "terminal"; paneId: string };
+  | { kind: "terminal"; paneId: string }
+  | { kind: "idle" };
 
 function parse(): Route {
   const t = /^#\/t\/(.+)$/.exec(location.hash);
@@ -30,6 +33,7 @@ function parse(): Route {
   if (location.hash === "#/harness") return { kind: "harness" };
   if (location.hash === "#/ds") return { kind: "deepseek" };
   if (location.hash === "#/devices") return { kind: "devices" };
+  if (location.hash === "#/idle") return { kind: "idle" };
   return { kind: "overview" };
 }
 

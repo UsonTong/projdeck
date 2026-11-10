@@ -114,3 +114,20 @@ test("切换后原版又把选中项改回上次的会话：改回目标会话�
     assert.equal(f.document.documentElement.dataset.projdeckSession, "beta");
   } finally { f.cleanup(); }
 });
+
+test("切换会话时遮住原版界面，历史渲染好后才揭开并通知父页面；同一个会话不遮", () => {
+  const f = fixture();
+  try {
+    const root = f.document.documentElement.dataset;
+    assert.equal(root.projdeckPending, "", "启动画面期间就遮住");
+    f.select("beta", 1);
+    assert.equal(root.projdeckPending, "");
+    const started = Date.now();
+    while (!f.sent.some((m) => m.type === "shown") && Date.now() - started < 2000) f.runTimers();
+    assert.equal(root.projdeckPending, undefined);
+    assert.ok(f.sent.some((m) => m.type === "shown" && m.sessionId === "beta" && m.commandId === 1));
+    f.select("beta", 2);
+    assert.equal(root.projdeckPending, undefined);
+    assert.ok(f.sent.some((m) => m.type === "shown" && m.commandId === 2));
+  } finally { f.cleanup(); }
+});
