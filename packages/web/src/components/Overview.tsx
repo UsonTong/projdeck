@@ -412,16 +412,16 @@ function ProjectGroup(props: {
                   placeholder={`给「${project.name}」写个备注，留空清除`}
                   onSave={(note) => api.updateProject(project.id, { note })}
                   onDone={() => setEditingNote(false)}
-                  className="text-base font-semibold"
+                  className="text-sm font-semibold"
                 />
               ) : project.note ? (
-                <div className="truncate text-base leading-6 font-semibold">{project.note}</div>
+                <div className="truncate text-sm font-semibold">{project.note}</div>
               ) : (
                 <div className="truncate text-sm font-semibold">{project.name}</div>
               )}
-              <div className="truncate text-[11px] text-muted-foreground" title={project.path}>
+              <div className="truncate text-xs text-muted-foreground" title={project.path}>
                 {project.note && <span className="font-medium text-foreground/70">{project.name} · </span>}
-                <span className="font-mono">{shortPath(project.path)}</span>
+                {shortPath(project.path)}
               </div>
             </div>
             {/* 新开会话：直接点图标，不用下拉菜单 */}
@@ -583,9 +583,9 @@ function SessionRow({
             {...swipe.handlers}
             style={{ transform: swipe.offset ? `translateX(${swipe.offset}px)` : undefined }}
             className={cn(
-              "group/row relative flex touch-pan-y items-center gap-2.5 rounded-lg bg-background px-2 py-1.5 transition-colors hover:bg-accent/60",
-              !swipe.dragging && "transition-[background-color,transform]",
-              active && "bg-accent hover:bg-accent",
+              "group/row relative flex touch-pan-y items-center gap-2.5 rounded-lg border border-border/60 bg-background px-2 py-1.5 transition-colors hover:border-accent/60 hover:bg-accent/60",
+              !swipe.dragging && "transition-[background-color,border-color,transform]",
+              active && "border-transparent bg-accent hover:bg-accent",
               s.hidden && "opacity-50",
             )}
           >
@@ -622,7 +622,7 @@ function SessionRow({
                 ) : (
                   KIND_LABEL[s.kind]
                 )}
-                {!projectId && <span className="font-mono"> · {shortPath(s.cwd)}</span>}
+                {!projectId && <span> · {shortPath(s.cwd)}</span>}
               </div>
             </div>
             <div className={cn("relative z-10 flex shrink-0 items-center", ROW_ACTIONS)}>
