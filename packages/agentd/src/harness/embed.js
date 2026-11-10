@@ -29,16 +29,19 @@
     + 'animation:projdeck-spin .8s linear infinite,projdeck-fade .2s .4s forwards}'
     + '@keyframes projdeck-spin{to{transform:rotate(360deg)}}@keyframes projdeck-fade{to{opacity:1}}';
   (document.head ?? root).append(veil);
+  let bootSafety;
   const conceal = () => { root.dataset.projdeckPending = ''; };
-  const uncover = () => { delete root.dataset.projdeckPending; };
+  const uncover = () => { clearTimeout(bootSafety); delete root.dataset.projdeckPending; };
   conceal();
-  // 原版版本不兼容、嵌入适配没生效时，不能一直遮着
-  const bootSafety = setTimeout(uncover, 15000);
+  // 原版版本不兼容、嵌入适配没生效、或网页端预热（无 select 命令）时，不能一直遮着。
+  // 正常切换会由 reveal 更早揭开；uncover 幂等，15 秒兜底不会干扰。
+  bootSafety = setTimeout(uncover, 15000);
   const send = (type, data = {}) => window.parent.postMessage({ channel: CHANNEL, type, ...data }, location.origin);
   let stop;
   const bind = (owner) => {
     document.documentElement.dataset.projdeckEmbed = 'applied';
-    clearTimeout(bootSafety);
+    // 兜底定时器保留：网页端预热的 iframe 不会有 select 命令，绑定成功不代表会有会话切换。
+    // 没有命令时仍要揭开遮罩，否则一直黑着；uncover 幂等，正常切换会更早揭开，不受影响。
     owner.plugin({ name: 'projdeck-harness-embedded', inject: ['uiWorkspace', 'sessions', 'layout'], apply(ctx) {
     stop?.();
     ctx.effect(() => {
@@ -165,7 +168,7 @@
       };
       window.addEventListener('projdeck-select', nativeSelect);
       stop = () => {
-        clearTimeout(deadline); clearTimeout(reassert); clearTimeout(revealTimer); unlist(); unselected();
+        clearTimeout(deadline); clearTimeout(reassert); clearTimeout(revealTimer); clearTimeout(bootSafety); unlist(); unselected();
         window.removeEventListener('message', message); window.removeEventListener('projdeck-select', nativeSelect); observer.disconnect(); style.remove();
       };
       return stop;
