@@ -60,6 +60,10 @@ class HarnessWebViewFactory(private val activity: Activity) : PlatformViewFactor
 
     /** Activity 真正销毁时清掉保留的 WebView，避免泄漏。 */
     fun disposeCache() {
+        current?.release()?.web?.let { web ->
+            web.stopLoading()
+            web.destroy()
+        }
         cached?.web?.let { web ->
             (web.parent as? ViewGroup)?.removeView(web)
             web.stopLoading()
@@ -69,6 +73,9 @@ class HarnessWebViewFactory(private val activity: Activity) : PlatformViewFactor
     }
 
     private data class Cached(val origin: String, val web: WebView, var sessionId: String?, var loaded: Boolean)
+
+    /** 当前显示着 WebView 的视图。切换会话时新页面先于旧页面销毁创建，直接接管旧页面已启动的 WebView。 */
+    private var current: HarnessView? = null
 
     private inner class HarnessView(context: Context, params: Map<*, *>?) : PlatformView {
         private var web: WebView? = null
@@ -90,20 +97,25 @@ class HarnessWebViewFactory(private val activity: Activity) : PlatformViewFactor
             } else {
                 origin = base
                 sessionId = session
-                val previous = cached
+                val previous = cached ?: current?.release()
                 cached = null
-                if (previous != null && previous.origin == base) {
-                    attach(previous.web, session, previous)
-                } else {
-                    previous?.web?.apply {
+                if (previous != null && previous.origin != base) {
+                    previous.web.apply {
                         stopLoading()
                         destroy()
                     }
+                }
+                val reusable = previous?.takeIf { it.origin == base }
+                if (reusable != null && reusable.loaded) {
+                    attach(reusable.web, session, reusable)
+                } else {
+                    // 没有可复用的，或复用的页面还没加载完：按新会话的地址（重新）加载。
+                    // 加载中的页面不能靠事件切换，嵌入脚本可能还没开始监听，会停在旧地址里的会话。
                     try {
-                        val browser = WebView(context)
+                        val browser = reusable?.web ?: WebView(context)
                         attach(browser, session, null)
                         HarnessWebActivity.authenticate(activity, base, params?.get("key") as? String) { origin ->
-                            if (!disposed) {
+                            if (!disposed && web === browser) {
                                 if (origin == null) showError("无法认证 Harness，请检查连接配置")
                                 else loadSession(browser, session)
                             }
@@ -117,6 +129,7 @@ class HarnessWebViewFactory(private val activity: Activity) : PlatformViewFactor
 
         private fun attach(browser: WebView, session: String, previous: Cached?) {
             web = browser
+            current = this
             sessionId = session
             pageLoaded = previous?.loaded ?: false
             (browser.parent as? ViewGroup)?.removeView(browser)
@@ -128,11 +141,21 @@ class HarnessWebViewFactory(private val activity: Activity) : PlatformViewFactor
                 flush(view)
             })
             if (previous != null) {
-                // Reused WebView: the SPA is already booted; switch conversation without a reload.
-                if (pageLoaded && previous.sessionId == session) return
+                // 复用已启动的页面：不重新加载，通过事件切换会话
+                if (previous.sessionId == session) return
                 pendingSession = session
-                if (pageLoaded) flush(browser)
+                flush(browser)
             }
+        }
+
+        /** 交出 WebView 给新打开的会话页（本页面正在退场）。 */
+        fun release(): Cached? {
+            val browser = web ?: return null
+            if (current === this) current = null
+            cancelFiles(this)
+            root.removeAllViews()
+            web = null
+            return Cached(origin ?: "", browser, sessionId, pageLoaded)
         }
 
         private fun loadSession(browser: WebView, session: String) {
@@ -140,6 +163,7 @@ class HarnessWebViewFactory(private val activity: Activity) : PlatformViewFactor
                 .appendQueryParameter("embed", "1")
                 .appendQueryParameter("session", session)
                 .build()
+            pageLoaded = false
             browser.loadUrl(url.toString())
             sessionId = session
         }
@@ -168,10 +192,15 @@ class HarnessWebViewFactory(private val activity: Activity) : PlatformViewFactor
         override fun dispose() {
             disposed = true
             cancelFiles(this)
+            if (current === this) current = null
             val browser = web ?: return
             root.removeAllViews()
             if (browser.parent != null) (browser.parent as? ViewGroup)?.removeView(browser)
             // Keep the fully booted SPA for the next DeepSeek session; only Activity teardown destroys it.
+            cached?.web?.takeIf { it !== browser }?.let { old ->
+                old.stopLoading()
+                old.destroy()
+            }
             cached = Cached(origin ?: "", browser, sessionId, pageLoaded)
             web = null
         }

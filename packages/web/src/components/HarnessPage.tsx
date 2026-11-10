@@ -17,6 +17,9 @@ export function HarnessPage({ sessionId }: { sessionId?: string }) {
   const timeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const send = useRef<() => void>(() => {});
   const [opening, setOpening] = useState(true);
+  // 首次加载就带上目标会话：嵌入脚本在原版启动前写入它记住的选中项，原版不会先恢复成上次看的会话
+  const embedUrl = (id?: string) => `/harness/?embed=1${id ? `&session=${encodeURIComponent(id)}` : ""}`;
+  const [src] = useState(() => embedUrl(sessionId));
   const [error, setError] = useState("");
   const state = overview?.harness;
   const ready = state?.configured && (state.online || !state.error);
@@ -64,7 +67,7 @@ export function HarnessPage({ sessionId }: { sessionId?: string }) {
     bridgeReady.current = false;
     setOpening(true);
     setError("");
-    frame.current?.contentWindow?.location.reload();
+    frame.current?.contentWindow?.location.replace(embedUrl(target.current));
   };
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -80,7 +83,7 @@ export function HarnessPage({ sessionId }: { sessionId?: string }) {
       </header>
       {ready ? (
         <div className="relative flex min-h-0 flex-1 flex-col">
-          <iframe ref={frame} src="/harness/?embed=1" onLoad={loaded} title="DeepSeek Harness 原版聊天" allow="clipboard-read; clipboard-write; fullscreen" className="min-h-0 w-full flex-1 border-0 bg-background" />
+          <iframe ref={frame} src={src} onLoad={loaded} title="DeepSeek Harness 原版聊天" allow="clipboard-read; clipboard-write; fullscreen" className="min-h-0 w-full flex-1 border-0 bg-background" />
           {(opening || error) && (
             <div role="status" className="absolute inset-0 z-10 flex items-center justify-center gap-2 bg-background/95 p-4 text-sm text-muted-foreground">
               {error ? <span>{error}</span> : <><Spinner />正在打开 Harness 会话…</>}

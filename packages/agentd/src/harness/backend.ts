@@ -7,7 +7,7 @@ export interface HarnessSession {
   cwd: string;
   status: SessionStatus;
   activeAt: number | null;
-  /** 还没有开始对话：UI 上标成空会话，排在真实对话后面。 */
+  /** 还没有开始对话。只显示 projdeck 刚新建的那个，与原版侧栏一致。 */
   blank?: boolean;
 }
 

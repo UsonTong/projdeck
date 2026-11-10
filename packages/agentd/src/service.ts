@@ -105,16 +105,23 @@ export class ProjdeckService {
       return;
     }
     try {
-      // 有对话的排在前面，空会话放最后，避免一堆「DeepSeek 对话」把真正聊过的埋掉。
-      this.harnessSessions = (await this.harness.list()).sort((a, b) =>
-        Number(a.blank === true) - Number(b.blank === true) || (b.activeAt ?? 0) - (a.activeAt ?? 0));
+      // 按最近活动排序；刚新建的空会话活动时间就是创建时间，自然排在最前面，和其他 agent 新建后的表现一致。
+      this.harnessSessions = (await this.harness.list()).sort((a, b) => (b.activeAt ?? 0) - (a.activeAt ?? 0));
+      // 已经开始对话或已不存在的，不再算「刚新建」
+      const fresh = this.store.state.harnessFresh;
+      const stale = Object.keys(fresh).filter((key) => !this.harnessSessions.some((h) => h.id === fresh[key] && h.blank));
+      for (const key of stale) delete fresh[key];
+      if (stale.length) this.store.saveState();
     } catch {
       // 适配器的 status 给出脱敏的离线原因；另一后端仍可继续使用。
     }
     overview.harness = this.harness.status();
     const archived = new Set(this.store.archive.filter((a) => a.kind === "harness").map((a) => a.conversationId));
+    const fresh = new Set(Object.values(this.store.state.harnessFresh));
     for (const [index, h] of this.harnessSessions.entries()) {
       if (archived.has(h.id) || this.store.state.harnessDismissed.includes(h.id)) continue;
+      // 原版也只显示当前的空会话：其他从未开始的会话（原版启动时自动建的、以前新建后没用的）不占列表
+      if (h.blank && !fresh.has(h.id)) continue;
       const id = harnessKey(h.id);
       const sticky = overview.projects.find((p) => p.id === this.store.state.sticky[id]);
       const project = sticky ?? overview.projects.filter((p) => isWithin(h.cwd, p.path)).sort((a, b) => b.path.length - a.path.length)[0];
@@ -127,7 +134,7 @@ export class ProjdeckService {
         capabilities: { terminal: false, chat: true, keys: false },
         kind: "harness",
         status: overview.harness.online ? this.seenStatus(id, h.status) : "unknown",
-        title: h.title || (h.blank ? "空会话（未开始）" : "DeepSeek 对话"),
+        title: h.title || (h.blank ? "新对话" : "DeepSeek 对话"),
         cwd: h.cwd,
         conversationId: h.id,
         hidden: this.store.isHidden(id, id),
@@ -465,8 +472,18 @@ export class ProjdeckService {
   }
 
   private async startHarness(project: Project | null): Promise<{ paneId: string }> {
+    const key = project?.id ?? "";
+    // 上次新建的还没开始对话：直接打开它（原版新建会话时也复用空会话）
+    const previous = this.store.state.harnessFresh[key];
+    if (previous && !this.store.archive.some((a) => a.kind === "harness" && a.conversationId === previous)
+      && !this.store.state.harnessDismissed.includes(previous)
+      && (await this.harness.list().catch(() => [])).some((h) => h.id === previous && h.blank)) {
+      return { paneId: harnessKey(previous) };
+    }
     const id = project ? await this.harness.create(project.path)
       : ((await this.harness.createDefault?.()) ?? (await this.harness.create(null)));
+    this.store.state.harnessFresh[key] = id;
+    this.store.saveState();
     const paneId = harnessKey(id);
     if (project) this.store.setSticky(paneId, project.id);
     this.snapshot = undefined;

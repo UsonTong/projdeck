@@ -8,10 +8,7 @@ import { openSession } from "../router.ts";
 import { AgentIcon } from "./AgentIcon.tsx";
 import { HarnessSettings } from "./HarnessSettings.tsx";
 
-/**
- * 所有 DeepSeek 对话的总览，不按项目分组。标题是空会话时明确标出，
- * 有对话的排在前面，解决「在一堆同名空会话里找不到历史」的问题。
- */
+/** 所有 DeepSeek 对话的总览，不按项目分组，按最近活动排序。 */
 export function DeepSeekPage() {
   const { overview } = useLive();
   const timeZone = useTimeZone();
@@ -19,7 +16,7 @@ export function DeepSeekPage() {
     if (!overview) return [];
     return [...overview.projects.flatMap((p) => p.sessions), ...overview.unassigned]
       .filter((s) => s.kind === "harness")
-      .sort((a, b) => Number(a.title.startsWith("空会话")) - Number(b.title.startsWith("空会话")) || (b.activeAt ?? 0) - (a.activeAt ?? 0));
+      .sort((a, b) => (b.activeAt ?? 0) - (a.activeAt ?? 0));
   }, [overview]);
   const projectOf = (s: Session) =>
     overview?.projects.find((p) => p.sessions.some((x) => x.paneId === s.paneId))?.name ?? "未归属";
@@ -48,9 +45,7 @@ export function DeepSeekPage() {
           <p className="p-6 text-center text-sm text-muted-foreground">还没有 DeepSeek 对话。在项目旁点 agent 按钮，选择 DeepSeek 新建。</p>
         ) : (
           <div className="mx-auto flex max-w-2xl flex-col gap-1">
-            {sessions.map((s) => {
-              const blank = s.title.startsWith("空会话");
-              return (
+            {sessions.map((s) => (
                 <button
                   key={s.paneId}
                   onClick={() => openSession(s.paneId)}
@@ -58,15 +53,14 @@ export function DeepSeekPage() {
                 >
                   <AgentIcon kind="harness" size="sm" />
                   <span className="min-w-0 flex-1">
-                    <span className={`block truncate text-sm ${blank ? "text-muted-foreground" : "font-medium"}`}>{s.title}</span>
+                    <span className="block truncate text-sm font-medium">{s.title}</span>
                     <span className="block truncate text-xs text-muted-foreground">
                       {projectOf(s)} · {s.cwd}
                       {s.activeAt ? ` · ${formatDateTime(new Date(s.activeAt).toISOString(), timeZone)}` : ""}
                     </span>
                   </span>
                 </button>
-              );
-            })}
+            ))}
           </div>
         )}
       </div>

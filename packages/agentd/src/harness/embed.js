@@ -7,7 +7,15 @@
   const standalone = window.parent === window;
   if (standalone && new URL(location.href).searchParams.get('embed') !== '1') return;
   document.documentElement.dataset.projdeckEmbed = 'loading';
-  const send = (type, data = {}) => window.parent.postMessage({ channel: CHANNEL, type, ...data }, location.origin);
+  // 原版启动时会从 localStorage 恢复「上次看的会话」，而且晚于下面的切换几毫秒，会把目标会话覆盖掉。
+  // 在原版模块运行前把目标写进它记住的选中项，让它恢复出来的就是目标会话。
+  const initial = new URL(location.href).searchParams.get('session');
+  if (initial && initial.length <= 512) {
+    try { localStorage.setItem('dsh.sessions.current', JSON.stringify({ sessionId: initial })); } catch { /* 无痕模式等 */ }
+  }
+  /** 切换后这段时间内，原版自己把选中项改走（启动恢复等）一律改回目标会话。 */
+  const GUARD_MS = 2500;
+  const send =(type, data = {}) => window.parent.postMessage({ channel: CHANNEL, type, ...data }, location.origin);
   let stop;
   const bind = (owner) => {
     document.documentElement.dataset.projdeckEmbed = 'applied';
@@ -26,9 +34,21 @@
       let accepted = false;
       let deadline;
       let applying = false;
+      let guardUntil = 0;
+      let reassert;
       const selected = () => {
         const id = workspace.selection.getSnapshot().sessionId;
         if (!accepted || typeof id !== 'string') return;
+        const target = command?.sessionId;
+        if (target && id !== target && Date.now() < guardUntil) {
+          // 不能在原版的选中通知里同步再切换（它还没更新完内部引用），放到下一轮执行；也不把这个临时的选中项报告给父页面
+          clearTimeout(reassert);
+          reassert = setTimeout(() => {
+            reassert = undefined;
+            if (command?.sessionId === target && workspace.selection.getSnapshot().sessionId !== target) workspace.openSession(target);
+          }, 0);
+          return;
+        }
         document.documentElement.dataset.projdeckSession = id;
         send('selected', { sessionId: id, commandId: command?.commandId });
       };
@@ -43,6 +63,7 @@
           layout.beginNavigation();
           if (command.sessionId !== null) workspace.openSession(command.sessionId);
           accepted = true;
+          guardUntil = Date.now() + GUARD_MS;
           clearTimeout(deadline);
           selected();
           send('selected', { sessionId: workspace.selection.getSnapshot().sessionId ?? null, commandId: command.commandId });
@@ -98,7 +119,7 @@
       };
       window.addEventListener('projdeck-select', nativeSelect);
       stop = () => {
-        clearTimeout(deadline); unlist(); unselected();
+        clearTimeout(deadline); clearTimeout(reassert); unlist(); unselected();
         window.removeEventListener('message', message); window.removeEventListener('projdeck-select', nativeSelect); observer.disconnect(); style.remove();
       };
       return stop;

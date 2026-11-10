@@ -15,6 +15,11 @@ interface State {
   seenDone: string[];
   /** 从 projdeck 的归档记录删除的 Harness 会话，不删除 Harness 原始历史，也不重新导入。 */
   harnessDismissed: string[];
+  /**
+   * projdeck 刚新建、还没开始对话的 Harness 会话：项目 id（未归属为 ""）→ 会话 id。
+   * 与原版侧栏一致，其余空会话不显示；再次新建时复用它。
+   */
+  harnessFresh: Record<string, string>;
 }
 
 export const defaultArgs: Record<AgentKind, string[]> = {
@@ -50,6 +55,7 @@ export class ProjectStore {
       codexOverrides: {},
       seenDone: [],
       harnessDismissed: [],
+      harnessFresh: {},
       ...readJson<Partial<State>>(this.stateFile, {}),
     };
   }

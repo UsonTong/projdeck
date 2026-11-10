@@ -7,8 +7,7 @@ import '../theme.dart';
 import '../widgets/agent_icon.dart';
 import '../widgets/session_tile.dart';
 
-/// 所有 DeepSeek 对话的总览，不按项目分组；有标题的真实对话排在空会话前面，
-/// 避免同名空会话把历史埋在列表里。
+/// 所有 DeepSeek 对话的总览，不按项目分组，按最近活动排序。
 class DeepSeekPage extends StatelessWidget {
   const DeepSeekPage({super.key});
 
@@ -25,10 +24,7 @@ class DeepSeekPage extends StatelessWidget {
         : [...o.projects.expand((project) => project.sessions), ...o.unassigned]
               .where((s) => s.kind == SessionKind.harness)
               .toList()
-          ..sort((a, b) {
-            final blank = (a.title.startsWith('空会话') ? 1 : 0).compareTo(b.title.startsWith('空会话') ? 1 : 0);
-            return blank != 0 ? blank : (b.activeAt ?? 0).compareTo(a.activeAt ?? 0);
-          });
+          ..sort((a, b) => (b.activeAt ?? 0).compareTo(a.activeAt ?? 0));
     String projectOf(Session s) =>
         o?.projects.where((project) => project.sessions.any((x) => x.paneId == s.paneId)).firstOrNull?.name ?? '未归属';
     return Scaffold(
@@ -58,10 +54,9 @@ class DeepSeekPage extends StatelessWidget {
               separatorBuilder: (_, _) => const Divider(height: 1, indent: 56),
               itemBuilder: (context, i) {
                 final s = sessions[i];
-                final blank = s.title.startsWith('空会话');
                 return ListTile(
                   leading: const AgentIcon(kind: SessionKind.harness, size: 34),
-                  title: Text(s.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: blank ? p.mutedFg : null)),
+                  title: Text(s.title, maxLines: 1, overflow: TextOverflow.ellipsis),
                   subtitle: Text(
                     '${projectOf(s)} · ${s.cwd}',
                     maxLines: 1,

@@ -13,7 +13,7 @@ function fixture(herdrOnline = false) {
   const calls: string[] = [];
   const project: Project = { id: "project", name: "demo", path: "/tmp/demo", createdAt: "", archived: false, defaultAgent: "claude", agentArgs: defaultArgs };
   const archive: ArchivedSession[] = [];
-  const state = { sticky: {} as Record<string, string>, hiddenTerminals: [] as string[], hiddenConversations: [] as string[], harnessDismissed: [] as string[], seenDone: [] as string[] };
+  const state = { sticky: {} as Record<string, string>, hiddenTerminals: [] as string[], hiddenConversations: [] as string[], harnessDismissed: [] as string[], seenDone: [] as string[], harnessFresh: {} as Record<string, string> };
   const store = {
     projects: [project], archive, state, settings: { autoTrust: true, timeZone: null },
     getProject: (id: string) => { assert.equal(id, project.id); return project; },
@@ -24,13 +24,20 @@ function fixture(herdrOnline = false) {
     markDoneSeen: () => false,
   } as unknown as ProjectStore;
   const rows: HarnessSession[] = [{ id: "one", title: "Harness 历史", cwd: "/tmp/demo/src", status: "working", activeAt: 100 }];
+  let created = 0;
   let online = true;
   const page: TranscriptPage = { conversationId: "one", cursor: 1, reset: true, entries: [{ kind: "assistant", id: "reply", text: "历史保留" }] };
   const harness: HarnessBackend = {
     status: () => ({ configured: true, online }),
     configure: async () => {}, close: () => {},
     list: async () => { if (!online) throw Error("offline"); return rows; },
-    create: async (cwd) => { calls.push("harness.create"); rows.push({ ...rows[0]!, id: "new", cwd: cwd ?? "/tmp", status: "idle" }); return "new"; },
+    // 和真实 Harness 一样：新建的会话还没开始对话，标题为空、blank 为真，活动时间是创建时间
+    create: async (cwd) => {
+      calls.push("harness.create");
+      const id = created++ ? `new${created}` : "new";
+      rows.push({ id, title: "", cwd: cwd ?? "/tmp", status: "idle", activeAt: 1000 + created, blank: true });
+      return id;
+    },
     prompt: async (id, text) => { calls.push(`prompt:${id}:${text}`); },
     cancel: async (id) => { calls.push(`cancel:${id}`); },
     rename: async (id, title) => { rows.find((r) => r.id === id)!.title = title; },
@@ -44,7 +51,7 @@ function fixture(herdrOnline = false) {
     closePane: () => { throw Error("Harness 不得关闭 herdr pane"); },
     sendKeys: () => { throw Error("Harness 不得发送 PTY 按键"); },
   }) as unknown as HerdrClient;
-  return { service: new ProjdeckService({} as Config, herdr, store, harness), store, calls, page,
+  return { service: new ProjdeckService({} as Config, herdr, store, harness), store, calls, page, rows,
     offline: () => { online = false; }, setStatus: (s: SessionStatus) => { rows[0]!.status = s; } };
 }
 
@@ -98,4 +105,27 @@ test("Harness 断线保留已知会话，不因后端短暂离线显示成对话
   assert.equal(o.herdr.online, true);
   assert.equal(o.projects[0]!.sessions[0]!.paneId, "harness:one");
   assert.equal(o.projects[0]!.sessions[0]!.status, "unknown");
+});
+
+test("新建的 Harness 会话立即显示在最前面；未开始对话前再次新建复用它；其他空会话不显示", async () => {
+  const { service, calls, rows } = fixture();
+  // 原版启动时自动建的、以前新建后没用的空会话
+  rows.push({ id: "stale", title: "", cwd: "/tmp/demo", status: "idle", activeAt: 5000, blank: true });
+  assert.deepEqual((await service.overview()).projects[0]!.sessions.map((s) => s.paneId), ["harness:one"]);
+
+  assert.deepEqual(await service.startSession("project", "harness"), { paneId: "harness:new" });
+  let sessions = (await service.overview()).projects[0]!.sessions;
+  assert.deepEqual(sessions.map((s) => s.paneId), ["harness:new", "harness:one"]);
+  assert.equal(sessions[0]!.title, "新对话");
+
+  // 还没开始对话：再点新建打开的是同一个，不再多建
+  assert.deepEqual(await service.startSession("project", "harness"), { paneId: "harness:new" });
+  assert.equal(calls.filter((c) => c === "harness.create").length, 1);
+
+  // 开始对话后就是普通会话，再新建才会建新的
+  Object.assign(rows.find((r) => r.id === "new")!, { blank: false, title: "第一句话" });
+  await service.overview();
+  assert.deepEqual(await service.startSession("project", "harness"), { paneId: "harness:new2" });
+  sessions = (await service.overview()).projects[0]!.sessions;
+  assert.deepEqual(sessions.map((s) => s.paneId), ["harness:new2", "harness:new", "harness:one"]);
 });
