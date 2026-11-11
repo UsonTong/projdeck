@@ -1,12 +1,13 @@
 import type { Session } from "@projdeck/shared";
 import { AArrowDownIcon, AArrowUpIcon, ArchiveIcon, CheckIcon, EllipsisIcon, EyeIcon, EyeOffIcon, HistoryIcon, PencilIcon, SquareIcon, type LucideIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatDateTime, useTimeZone } from "@/lib/time";
 import { api } from "../api.ts";
@@ -82,18 +83,25 @@ export function SessionActions(props: {
   return (
     <>
       {props.wide ? (
-        <div className="flex items-center">
-          {actions.map((a) => (
-            <Tooltip key={a.key}>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label={a.label} onClick={a.run}>
+        // 电脑端也收进「更多」菜单，不再一排七八个图标挤在标题栏
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" aria-label="更多操作">
+              <EllipsisIcon />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            {actions.map((a, i) => (
+              <Fragment key={a.key}>
+                {i > 0 && i === actions.length - 1 && <DropdownMenuSeparator />}
+                <DropdownMenuItem variant={a.key === "archive" ? "destructive" : "default"} onSelect={a.run}>
                   <a.icon />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{a.label}</TooltipContent>
-            </Tooltip>
-          ))}
-        </div>
+                  {a.label}
+                </DropdownMenuItem>
+              </Fragment>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       ) : (
         <Button variant="ghost" size="icon" aria-label="更多操作" onClick={() => setSheet(true)}>
           <EllipsisIcon />
