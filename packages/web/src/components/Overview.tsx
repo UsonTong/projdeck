@@ -396,7 +396,7 @@ function ProjectGroup(props: {
     : availableAgents;
 
   return (
-    <section data-flip={project.id}>
+    <section data-flip={project.id} className="rounded-xl border border-border/60 bg-secondary/30 p-1.5">
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <div
@@ -583,9 +583,9 @@ function SessionRow({
             {...swipe.handlers}
             style={{ transform: swipe.offset ? `translateX(${swipe.offset}px)` : undefined }}
             className={cn(
-              "group/row relative flex touch-pan-y items-center gap-2.5 rounded-lg border border-border/60 bg-background px-2 py-1.5 transition-colors hover:border-accent/60 hover:bg-accent/60",
-              !swipe.dragging && "transition-[background-color,border-color,transform]",
-              active && "border-transparent bg-accent hover:bg-accent",
+              "group/row relative flex touch-pan-y items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-accent/60",
+              !swipe.dragging && "transition-[background-color,transform]",
+              active && "bg-accent hover:bg-accent",
               s.hidden && "opacity-50",
             )}
           >
