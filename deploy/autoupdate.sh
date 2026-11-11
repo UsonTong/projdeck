@@ -4,7 +4,7 @@
 set -euo pipefail
 
 REPO="UsonTong/projdeck"
-BASE="https://github.com/$REPO/releases/latest/download"
+BASE="https://github.com/$REPO/releases/download/latest"
 REPO_DIR="$HOME/Repositories/projdeck"
 WEB_DIST="$REPO_DIR/packages/web/dist"
 APK_DIR="$HOME/.cache/projdeck/android"
