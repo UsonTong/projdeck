@@ -59,7 +59,9 @@ export class Notifier {
   };
 
   private async check(): Promise<void> {
-    if (this.checking || this.push.count + (this.stream?.count ?? 0) === 0) return;
+    // 不再因为有/无接收者而跳过：状态变化必须始终跟踪，否则手机 App 后台连接断开的那段时间里
+    // 状态已经 working→idle/unknown，等它重连后 before 又变成 undefined，永远错过完成通知。
+    if (this.checking) return;
     this.checking = true;
     try {
       const { overview } = await this.service.refresh();

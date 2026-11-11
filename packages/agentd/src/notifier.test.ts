@@ -105,3 +105,21 @@ test("DeepSeek Harness 完成后 agent 实例被销毁（working → unknown）�
   assert.equal(sent.length, 1);
   assert.match(sent[0]!.title, /DeepSeek 完成了/);
 });
+
+test("没有接收者（无订阅、无连接）也跟踪状态，不因 count=0 跳过", async () => {
+  const frames = [{ unassigned: [session("a", "working")] }, { unassigned: [session("a", "done")] }];
+  let i = 0;
+  const sent: PushPayload[] = [];
+  const service = {
+    refresh: async () => ({ overview: { herdr: { online: true }, projects: [], unassigned: frames[Math.min(i++, frames.length - 1)]!.unassigned } }),
+    lastReply: async () => "最后一句",
+    isViewed: () => false,
+  } as unknown as ProjdeckService;
+  const push = { count: 0, send: async (p: PushPayload) => void sent.push(p) } as unknown as PushService;
+  const notifier = new Notifier(service, new EventEmitter() as unknown as HerdrClient, push);
+  const check = () => (notifier as unknown as { check(): Promise<void> }).check();
+  await check(); // working，第一次看到
+  await check(); // done：没有接收者，但状态要正常走到完成（发送自然落空，但不再把 before 重置成 undefined）
+  // 此时再接一个接收者，下一次状态变化应能正常通知
+  assert.equal(sent.length, 0);
+});
