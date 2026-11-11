@@ -32,6 +32,9 @@ jobs:
   build-apk:
     if: github.repository == 'UsonTong/projdeck'
     runs-on: ubuntu-latest
+    env:
+      # runner 预装了 Android SDK；不用 setup-android（它默认装已废弃的 tools 包会失败）
+      ANDROID_HOME: /usr/local/lib/android/sdk
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -43,7 +46,8 @@ jobs:
           channel: stable
           flutter-version: 3.47.7
           cache: true
-      - uses: android-actions/setup-android@v3
+      - name: Accept Android SDK licenses
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
       # 和本地同一把签名密钥，手机才能覆盖安装
       - name: Restore signing key
         env:
