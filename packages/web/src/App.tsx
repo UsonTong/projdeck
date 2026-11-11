@@ -244,11 +244,13 @@ function Shell() {
   if (wide) {
     return (
       <div className={cn("grid h-full", collapsed ? "grid-cols-[1fr]" : "grid-cols-[minmax(320px,380px)_1fr]")}>
-        {/* 折叠时彻底不渲染侧栏，避免 tabs 胶囊的 padding 溢出残留一竖条 */}
-        <aside className={cn("flex min-h-0 min-w-0 flex-col border-r", collapsed && "hidden")}>
-          <Banner />
-          <OverviewPage activePane={activePane} activeFiles={activeFiles} />
-        </aside>
+        {/* 折叠时用条件渲染彻底移除侧栏，避免 hidden 类与 flex 冲突导致它仍被渲染、堆到内容区上方 */}
+        {!collapsed && (
+          <aside className="flex min-h-0 min-w-0 flex-col border-r">
+            <Banner />
+            <OverviewPage activePane={activePane} activeFiles={activeFiles} />
+          </aside>
+        )}
         <main className="relative flex min-h-0 min-w-0 flex-col">
           {harness}
           {!harnessView && (details ?? <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">选择一个会话</div>)}
