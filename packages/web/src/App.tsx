@@ -243,8 +243,9 @@ function Shell() {
 
   if (wide) {
     return (
-      <div className={cn("grid h-full", collapsed ? "grid-cols-[0px_1fr]" : "grid-cols-[minmax(320px,380px)_1fr]")}>
-        <aside className={cn("flex min-h-0 min-w-0 flex-col overflow-hidden border-r", collapsed && "border-0")}>
+      <div className={cn("grid h-full", collapsed ? "grid-cols-[1fr]" : "grid-cols-[minmax(320px,380px)_1fr]")}>
+        {/* 折叠时彻底不渲染侧栏，避免 tabs 胶囊的 padding 溢出残留一竖条 */}
+        <aside className={cn("flex min-h-0 min-w-0 flex-col border-r", collapsed && "hidden")}>
           <Banner />
           <OverviewPage activePane={activePane} activeFiles={activeFiles} />
         </aside>
