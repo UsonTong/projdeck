@@ -57,7 +57,8 @@ async function fixture(t: TestContext, host = "127.0.0.1") {
     list: { items: [
       { sessionId: "s1", updatedAt: 1700000000000, running: true, agentAvailable: true, cwd: "/work",
         projections: { values: { title: "标题", workingDirectory: "/current" } } },
-      { sessionId: "cold", updatedAt: 0, running: false, agentAvailable: false },
+      { sessionId: "cold", updatedAt: 0, running: false, agentAvailable: false, blank: true },
+      { sessionId: "finished", updatedAt: 2, running: false, agentAvailable: false, blank: false },
       { sessionId: "ask", updatedAt: 1, running: true, agentAvailable: true,
         projections: { values: { userQuestions: { active: [{ state: "open" }] } } } },
     ] }, create: { sessionId: "new-session" }, prompt: { accepted: true }, cancel: { accepted: true },
@@ -200,7 +201,8 @@ test("配置、API peer Cookie、官方 RPC 参数和会话映射；list 缓存�
   assert.equal(f.requests.filter((r) => r.message?.method === "session/list").length, 1);
   assert.deepEqual(lists[0], [
     { id: "s1", title: "标题", cwd: "/current", status: "working", activeAt: 1700000000000, blank: false },
-    { id: "cold", title: "", cwd: "", status: "unknown", activeAt: 0, blank: false },
+    { id: "cold", title: "", cwd: "", status: "idle", activeAt: 0, blank: true },
+    { id: "finished", title: "", cwd: "", status: "done", activeAt: 2, blank: false },
     { id: "ask", title: "", cwd: "", status: "blocked", activeAt: 1, blank: false },
   ]);
   lists[0]![0]!.title = "不要污染缓存";
@@ -256,10 +258,10 @@ test("握手不跟随任何非预期重定向，也不把 Cookie/token 发给目
 test("localhost 与 IPv6 loopback 地址可用", async (t) => {
   const f = await fixture(t);
   await f.client.configure(f.url.replace("127.0.0.1", "localhost"));
-  assert.equal((await f.client.list()).length, 3);
+  assert.equal((await f.client.list()).length, 4);
   const ipv6 = await fixture(t, "::1");
   await ipv6.client.configure(ipv6.url);
-  assert.equal((await ipv6.client.list()).length, 3);
+  assert.equal((await ipv6.client.list()).length, 4);
 });
 
 test("401、WS 401、业务失败和 rpcId 错配不能假成功或泄露秘密", async (t) => {

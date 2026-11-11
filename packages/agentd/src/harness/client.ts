@@ -214,8 +214,9 @@ export class HarnessClient implements HarnessBackend {
       return { id: string(row.sessionId), title: typeof hints.title === "string" ? hints.title : "",
         cwd: typeof hints.workingDirectory === "string" ? hints.workingDirectory
           : typeof row.cwd === "string" ? row.cwd : "",
+        // DSH 没有独立的「已完成」：有内容且不在运行就是完成，空白未开始的会话才算空闲
         status: blocked ? "blocked" : row.running === true ? "working"
-          : row.agentAvailable === true ? "idle" : "unknown",
+          : row.blank === true ? "idle" : "done",
         activeAt: typeof row.updatedAt === "number" && Number.isFinite(row.updatedAt) ? row.updatedAt : null,
         blank: row.blank === true };
     });
