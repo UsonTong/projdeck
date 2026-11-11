@@ -78,6 +78,8 @@ export class ProjdeckService {
   readonly harness: HarnessBackend;
   /** 断线时保留最后的列表，避免临时网络故障让正在看的会话消失。 */
   private harnessSessions: HarnessSession[] = [];
+  /** 刚发过提问的 Harness 会话：dsh 的 running 字段要几秒才更新，先乐观显示为「工作中」。 */
+  private readonly recentPrompts = new Map<string, number>();
   /** 正在网页上查看的会话：terminalId → 查看者数量（终端视图、对话视图各算一个）。 */
   private readonly viewers = new Map<string, number>();
   /** 当前处于 done 状态的 terminal。 */
@@ -125,6 +127,10 @@ export class ProjdeckService {
       const id = harnessKey(h.id);
       const sticky = overview.projects.find((p) => p.id === this.store.state.sticky[id]);
       const project = sticky ?? overview.projects.filter((p) => isWithin(h.cwd, p.path)).sort((a, b) => b.path.length - a.path.length)[0];
+      // 提问后 dsh 的 running 还没更新，先乐观显示「工作中」，等它报告真实状态再修正
+      const prompted = this.recentPrompts.get(h.id);
+      const optimisticWorking = prompted !== undefined && Date.now() - prompted < 30_000
+        && (h.status === "done" || h.status === "idle");
       const session: Session = {
         paneId: id,
         // 兼容原有身份/已读存储；不是终端地址，terminalIdOf 会拒绝对此做终端操作。
@@ -133,7 +139,7 @@ export class ProjdeckService {
         backend: "harness",
         capabilities: { terminal: false, chat: true, keys: false },
         kind: "harness",
-        status: overview.harness.online ? this.seenStatus(id, h.status) : "unknown",
+        status: overview.harness.online ? this.seenStatus(id, optimisticWorking ? "working" : h.status) : "unknown",
         title: h.title || (h.blank ? "新对话" : "DeepSeek 对话"),
         cwd: h.cwd,
         conversationId: h.id,
@@ -525,7 +531,10 @@ export class ProjdeckService {
     if (!full) throw httpError(400, "消息为空");
     if (session.kind === "harness") {
       if (files.length) throw httpError(400, "Harness 附件上传尚未接入，请先发送文本消息");
-      return this.harness.prompt(session.conversationId!, text);
+      await this.harness.prompt(session.conversationId!, text);
+      this.recentPrompts.set(session.conversationId!, Date.now());
+      this.snapshot = undefined;
+      return;
     }
     if (session.kind === "shell") await this.herdr.sendInput(paneId, full, ["enter"]);
     else {
