@@ -103,11 +103,11 @@ export function Bubbles(props: {
           )}
           {blocks.map((b) =>
             b.kind === "user" ? (
-              <div key={b.entry.id} className={isNew(b.entry.id) ? "flex flex-col motion-rise" : "flex flex-col"}>
+              <div key={b.entry.id} className={isNew(b.entry.id) ? "flex flex-col motion-fade" : "flex flex-col"}>
                 <UserMessage entry={b.entry} files={b.files} projectId={props.projectId} />
               </div>
             ) : (
-              <div key={b.id} className={isNew(b.id) ? "flex flex-col motion-rise" : "flex flex-col"}>
+              <div key={b.id} className={isNew(b.id) ? "flex flex-col motion-fade" : "flex flex-col"}>
                 <AssistantTurn agent={props.agent} time={b.time} parts={b.parts} />
               </div>
             ),

@@ -381,3 +381,17 @@ html.theme-switching,
 html.theme-switching * {
   transition: background-color 240ms ease, color 240ms ease, border-color 240ms ease !important;
 }
+
+/* 新消息只淡入、不位移，避免插入时和自动滚动叠加产生“向下闪” */
+@keyframes motion-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.motion-fade {
+  animation: motion-fade 260ms ease-out;
+}
