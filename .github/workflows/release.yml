@@ -96,6 +96,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete latest --yes --cleanup-tag || true
-          gh release create latest web-dist.tar.gz projdeck.apk version.json \
+          # release job 没有 checkout，用 --repo 明确指定仓库
+          gh release delete latest --repo UsonTong/projdeck --yes --cleanup-tag || true
+          gh release create latest --repo UsonTong/projdeck web-dist.tar.gz projdeck.apk version.json \
             --title "latest" --notes "自动构建于 $(date -Iseconds)，commit ${{ github.sha }}" --prerelease
