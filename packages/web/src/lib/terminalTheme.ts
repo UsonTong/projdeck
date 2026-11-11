@@ -106,7 +106,13 @@ function applyAppTheme(t: TerminalTheme): void {
     // 文件管理器的文件夹颜色：取调色板的「蓝」，跟随主题
     "--folder": t.palette[4] ?? "#61afef",
   };
-  const root = document.documentElement.style;
+  const el = document.documentElement;
+  const root = el.style;
+  // 切主题时颜色平滑过渡，而不是瞬间跳变；过渡结束后移除，避免干扰平时的 hover 等动画
+  el.classList.add("theme-switching");
+  clearTimeout(applyAppTheme.timer);
   for (const [k, v] of Object.entries(vars)) root.setProperty(k, v);
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", bg);
+  applyAppTheme.timer = setTimeout(() => el.classList.remove("theme-switching"), 280);
 }
+applyAppTheme.timer = undefined as ReturnType<typeof setTimeout> | undefined;

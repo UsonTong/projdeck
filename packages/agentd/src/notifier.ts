@@ -77,8 +77,10 @@ export class Notifier {
         this.prev.set(s.terminalId, s.status);
         if (before === undefined || before === s.status) continue; // 第一次看到不通知（agentd 刚启动）
         if (project && muted.has(project)) continue;
-        // herdr 的会话完成后是 done；DeepSeek Harness 的会话模型没有 done，完成时是 working → idle
-        const finished = s.status === "done" || (s.kind === "harness" && s.status === "idle");
+        // herdr 的会话完成后是 done；DeepSeek Harness 没有 done：完成后 agent 实例要么空闲（idle）
+        // 要么已被 dsh 销毁（unknown），所以只要离开 working（且不是去等确认）都算完成
+        const finished = s.status === "done"
+          || (s.kind === "harness" && s.status !== "working" && s.status !== "blocked");
         if (finished && before === "working") void this.notifyDone(s, projectName);
         if (s.status === "blocked") this.scheduleBlocked(s, projectName);
       }

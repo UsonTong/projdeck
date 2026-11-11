@@ -1,5 +1,5 @@
 import type { PresentedResource } from "@projdeck/shared";
-import { TerminalSquareIcon, WifiOffIcon } from "lucide-react";
+import { PanelLeftCloseIcon, PanelLeftOpenIcon, TerminalSquareIcon, WifiOffIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Spinner } from "@/components/ui/spinner";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import { useTerminalTheme } from "@/lib/terminalTheme";
 import { api, authEvents } from "./api.ts";
 import { ConfirmHost } from "./components/Confirm.tsx";
@@ -230,19 +231,37 @@ function Shell() {
   );
   const details = harnessView ? null : page;
 
+  // 左侧栏可折叠：折叠时收起，内容区占满，展开按钮回到交界处
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem("projdeck-sidebar") === "collapsed");
+  const toggleSidebar = () => setCollapsed((c) => {
+    localStorage.setItem("projdeck-sidebar", c ? "open" : "collapsed");
+    return !c;
+  });
+
   // 手机原生端用 WebView 打开纯终端页时，不渲染 projdeck 的侧栏。
   if (route.kind === "terminal" || route.kind === "idle") return <div className="flex h-full min-h-0 flex-col">{content}</div>;
 
   if (wide) {
     return (
-      <div className="grid h-full grid-cols-[minmax(320px,380px)_1fr]">
-        <aside className="flex min-h-0 flex-col border-r">
+      <div className={cn("grid h-full", collapsed ? "grid-cols-[0px_1fr]" : "grid-cols-[minmax(320px,380px)_1fr]")}>
+        <aside className={cn("flex min-h-0 min-w-0 flex-col overflow-hidden border-r", collapsed && "border-0")}>
           <Banner />
           <OverviewPage activePane={activePane} activeFiles={activeFiles} />
         </aside>
-        <main className="flex min-h-0 min-w-0 flex-col">
+        <main className="relative flex min-h-0 min-w-0 flex-col">
           {harness}
           {!harnessView && (details ?? <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">选择一个会话</div>)}
+          <button
+            onClick={toggleSidebar}
+            aria-label={collapsed ? "展开侧栏" : "收起侧栏"}
+            title={collapsed ? "展开侧栏" : "收起侧栏"}
+            className={cn(
+              "absolute top-3 z-30 flex size-6 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm transition-colors hover:text-foreground",
+              collapsed ? "left-2" : "-left-3",
+            )}
+          >
+            {collapsed ? <PanelLeftOpenIcon className="size-3.5" /> : <PanelLeftCloseIcon className="size-3.5" />}
+          </button>
         </main>
       </div>
     );
