@@ -466,7 +466,13 @@ function ProjectGroup(props: {
       </ContextMenu>
 
       {sorted.length === 0 ? (
-        <p className="px-3 py-2 text-xs text-muted-foreground">没有运行中的会话，点上方图标新开一个</p>
+        <button
+          onClick={() => setPickingAgent(true)}
+          className="flex w-full items-center gap-2 rounded-lg border border-dashed border-border/70 px-2.5 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground"
+        >
+          <PlusIcon className="size-3.5 shrink-0" />
+          <span>还没有会话，点这里新开一个</span>
+        </button>
       ) : (
         <div ref={rowsRef} className="flex flex-col gap-0.5">
           {sorted.map((s) => (
