@@ -13,7 +13,8 @@ import { HarnessSettings } from "./HarnessSettings.tsx";
  * 切换期间用不透明的遮罩盖住，目标会话的历史渲染好（嵌入脚本发来 shown）后再淡出。
  */
 export function HarnessPage({ sessionId, active = true }: { sessionId?: string; active?: boolean }) {
-  const { overview } = useLive();
+  const live = useLive();
+  const overview = live.overview;
   const frame = useRef<HTMLIFrameElement>(null);
   const target = useRef(sessionId);
   target.current = sessionId;
@@ -25,6 +26,11 @@ export function HarnessPage({ sessionId, active = true }: { sessionId?: string; 
   const shown = useRef<string | null | undefined>(undefined);
   const activeRef = useRef(active);
   activeRef.current = active;
+  // DSH 会话不走 BubblesView 的 usePane，这里补上 watch：真正打开（active）时标记已读
+  useEffect(() => {
+    if (!sessionId || !active) return;
+    return live.watch(`harness:${sessionId}`);
+  }, [live, sessionId, active]);
   const [opening, setOpening] = useState(true);
   // 首次加载就带上目标会话：嵌入脚本在原版启动前写入它记住的选中项，原版不会先恢复成上次看的会话
   const embedUrl = (id?: string) => `/harness/?embed=1${id ? `&session=${encodeURIComponent(id)}` : ""}`;
