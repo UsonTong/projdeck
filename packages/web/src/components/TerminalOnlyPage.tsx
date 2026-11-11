@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Spinner } from "@/components/ui/spinner";
-import { themeKey, useTerminalTheme } from "@/lib/terminalTheme";
+import { useTerminalTheme } from "@/lib/terminalTheme";
 import { useWide } from "../live.ts";
 import type { TerminalHandle } from "./GhosttyTerminal.tsx";
 import { GhosttyTerminal } from "./GhosttyTerminal.tsx";
@@ -29,7 +29,7 @@ export function TerminalOnlyPage({ paneId }: { paneId: string }) {
       {/* GhosttyTerminal 内部靠 flex-1 撑高，外层必须是 flex 容器，否则高度塌成 0、终端空白且按 80x24 连接 */}
       <div className="flex min-h-0 flex-1 flex-col">
         <GhosttyTerminal
-          key={`${paneId}:${themeKey(theme)}`}
+          key={paneId}
           ref={term}
           paneId={paneId}
           theme={theme}

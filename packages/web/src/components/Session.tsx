@@ -7,7 +7,7 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "
 import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { doneLaunching, isLaunching, STATUS_LABEL } from "@/lib/session";
-import { themeKey, useTerminalTheme } from "@/lib/terminalTheme";
+import { useTerminalTheme } from "@/lib/terminalTheme";
 import { uploadFile } from "@/lib/upload";
 import { api } from "../api.ts";
 import { useTerminalSizing } from "@/lib/devicePrefs";
@@ -244,7 +244,7 @@ export function SessionPage({ paneId }: { paneId: string }) {
           ) : (
           <Suspense fallback={<Loading label="加载终端…" />}>
             <GhosttyTerminal
-              key={`${paneId}:${themeKey(theme)}`}
+              key={paneId}
               ref={term}
               paneId={paneId}
               theme={theme}
