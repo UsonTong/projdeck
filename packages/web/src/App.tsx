@@ -134,7 +134,8 @@ const runningEntry = document.querySelector<HTMLScriptElement>('script[type="mod
 /**
  * 本机重新构建了前端后更新页面。手机、平板上的页面常常开着很久不刷新，否则会一直停在旧版本
  * （新旧前端与 agentd 的约定不一致时会出现奇怪的行为）。
- * 没在操作这个页面（窗口没有焦点）时直接刷新；正在操作时只提示，不打断。未发送的草稿存在本地，刷新不会丢。
+ * 只在页面已经切到后台（标签页不可见）时自动刷新：正在看的时候刷新会让 DeepSeek 和终端整个重来。
+ * 可见时只弹一条提示，由用户决定何时刷新。未发送的草稿存在本地，刷新不会丢。
  * 在重新连上本机、切回前台时检查，平时每 5 分钟检查一次。
  */
 function useUpdateCheck() {
@@ -146,11 +147,16 @@ function useUpdateCheck() {
         const html = await (await fetch("/", { cache: "no-store" })).text();
         const latest = /<script type="module"[^>]* src="([^"]+)"/.exec(html)?.[1];
         if (latest && latest !== runningEntry) {
-          if (!document.hasFocus()) return location.reload();
+          // 同一个旧入口只自动刷新一次，防止部署过程中反复刷新成循环
+          const key = "projdeck-update-reloaded";
+          if (document.visibilityState === "hidden" && sessionStorage.getItem(key) !== runningEntry) {
+            sessionStorage.setItem(key, runningEntry);
+            return location.reload();
+          }
           toast("projdeck 有新版本", {
             id: "update",
             duration: Infinity,
-            action: { label: "刷新", onClick: () => location.reload() },
+            action: { label: "刷新", onClick: () => { sessionStorage.removeItem(key); location.reload(); } },
           });
         }
       } catch {
@@ -159,12 +165,15 @@ function useUpdateCheck() {
     };
     void check();
     const onVisible = () => document.visibilityState === "visible" && void check();
+    // 切到后台时再查一次：这时自动刷新不会打断正在看的画面
+    const onHidden = () => document.visibilityState === "hidden" && void check();
     document.addEventListener("visibilitychange", onVisible);
-    window.addEventListener("blur", check);
+    document.addEventListener("visibilitychange", onHidden);
+    // 不监听 blur：切到别的窗口不等于离开，整页刷新会很打扰（DeepSeek / 终端都要重新加载）
     const timer = setInterval(check, 5 * 60_000);
     return () => {
       document.removeEventListener("visibilitychange", onVisible);
-      window.removeEventListener("blur", check);
+      document.removeEventListener("visibilitychange", onHidden);
       clearInterval(timer);
     };
   }, [connected]);

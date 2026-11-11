@@ -32,6 +32,9 @@ export function HarnessPage({ sessionId, active = true }: { sessionId?: string; 
     return live.watch(`harness:${sessionId}`);
   }, [live, sessionId, active]);
   const [opening, setOpening] = useState(true);
+  // 一旦 iframe 成功启动过，短暂断线（agentd 重启、Harness 重连）不再卸载它：
+  // 卸载会让原版 DeepSeek 整个重新启动，看起来就是「动不动重新加载一遍」。
+  const [everReady, setEverReady] = useState(false);
   // 首次加载就带上目标会话：嵌入脚本在原版启动前写入它记住的选中项，原版不会先恢复成上次看的会话
   const embedUrl = (id?: string) => `/harness/?embed=1${id ? `&session=${encodeURIComponent(id)}` : ""}`;
   const [src] = useState(() => embedUrl(sessionId));
@@ -79,8 +82,12 @@ export function HarnessPage({ sessionId, active = true }: { sessionId?: string; 
   }, []);
   useEffect(() => { send.current(); }, [sessionId, active]);
   useEffect(() => {
-    if (!ready) { bridgeReady.current = false; clearTimeout(timeout.current); }
-  }, [ready]);
+    if (ready) setEverReady(true);
+    if (!ready && !everReady) {
+      bridgeReady.current = false;
+      clearTimeout(timeout.current);
+    }
+  }, [ready, everReady]);
   const loaded = () => {
     if (bridgeReady.current) return;
     clearTimeout(timeout.current);
@@ -105,7 +112,10 @@ export function HarnessPage({ sessionId, active = true }: { sessionId?: string; 
           </Button>
         )}
       </header>
-      {ready ? (
+      {!ready && everReady && (
+        <p role="status" className="shrink-0 border-b px-3 py-1.5 text-xs text-muted-foreground">Harness 连接中断，恢复后自动继续；页面不会重新加载。</p>
+      )}
+      {ready || everReady ? (
         <div className="relative flex min-h-0 flex-1 flex-col">
           <iframe ref={frame} src={src} onLoad={loaded} title="DeepSeek Harness 原版聊天" allow="clipboard-read; clipboard-write; fullscreen" className="min-h-0 w-full flex-1 border-0 bg-background" />
           <div

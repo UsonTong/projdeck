@@ -24,14 +24,21 @@ if [ "$commit" = "$(cat "$STATE_DIR/commit" 2>/dev/null || true)" ]; then
 fi
 echo "发现新构建 $commit，开始更新…"
 
-# 3. 网页：下载、解压到临时目录，再原子替换（fastify-static 按需读文件，替换后下次请求即新版本）
+# 3. 网页：下载解压后先合并静态资源（文件名带内容哈希，不会覆盖旧文件），最后原子替换 index.html。
+#    这样任何时刻打开页面，它引用的资源都已经存在；不会出现新旧版本混用、页面加载失败反复刷新的情况。
 curl -fsSL "$BASE/web-dist.tar.gz" -o "$STATE_DIR/web-dist.tar.gz"
 rm -rf "$STATE_DIR/dist"
 tar -xzf "$STATE_DIR/web-dist.tar.gz" -C "$STATE_DIR"   # 得到 $STATE_DIR/dist
-rm -rf "$WEB_DIST.old"
-[ -e "$WEB_DIST" ] && mv "$WEB_DIST" "$WEB_DIST.old"
-mv "$STATE_DIR/dist" "$WEB_DIST"
-rm -rf "$WEB_DIST.old"
+mkdir -p "$WEB_DIST"
+rsync -a --exclude '/index.html*' "$STATE_DIR/dist/" "$WEB_DIST/"
+for f in "$STATE_DIR"/dist/index.html*; do
+  [ -e "$f" ] || continue
+  name="$(basename "$f")"
+  mv -f "$f" "$WEB_DIST/$name.tmp"
+  mv -f "$WEB_DIST/$name.tmp" "$WEB_DIST/$name"   # 同目录单文件改名是原子的
+done
+# 清掉两周前留下的旧资源，避免越积越多
+find "$WEB_DIST/assets" -type f -mtime +14 -delete 2>/dev/null || true
 echo "网页已更新"
 
 # 4. 安卓 App：下载 APK 和 version.json（手机端读 version.json 判断升级）

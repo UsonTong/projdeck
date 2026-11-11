@@ -122,30 +122,53 @@ interface Rect {
 
 /** 对齐到设备像素，保证线条清晰、相邻格子无缝。 */
 const snap = (v: number, dpr: number) => Math.round(v * dpr) / dpr;
+/**
+ * 线宽对齐到整数个设备像素。分数 DPR（如 1.25 / 1.5）时，1 CSS 像素是 1.25 个设备像素，
+ * 线条会跨在两个像素之间被抗锯齿成灰边；取整后线条边缘落在整设备像素上，清晰、粗细一致。
+ */
+const lineWidth = (v: number, dpr: number) => Math.max(1, Math.round(v * dpr)) / dpr;
 
-function drawBox(ctx: CanvasRenderingContext2D, r: Rect, arms: string, light: number) {
+function drawBox(ctx: CanvasRenderingContext2D, r: Rect, arms: string, light: number, dpr: number) {
   const [up, right, down, left] = [...arms].map(Number) as [number, number, number, number];
-  const heavy = light * 2;
-  const gap = light; // 双线两条线之间的间距
-  const cx = r.x + Math.floor(r.w / 2);
-  const cy = r.y + Math.floor(r.h / 2);
-  const thick = (w: number) => (w === 2 ? heavy : light);
+  // 线宽都取整到整设备像素，分数 DPR 下也保持清晰、粗细一致
+  const thin = lineWidth(light, dpr);
+  const heavy = lineWidth(light * 2, dpr);
+  const gap = thin; // 双线两条线之间的间距
+  // 格子的中心：先对齐到设备像素，再作为线条的中心线
+  const cx = snap(r.x + r.w / 2, dpr);
+  const cy = snap(r.y + r.h / 2, dpr);
+  const thick = (w: number) => (w === 2 ? heavy : thin);
   // 与当前方向垂直的那根线的半宽：让交叉处完全覆盖，不留缺口
-  const half = (a: number, b: number) => Math.max(a === 3 || b === 3 ? gap + light / 2 : thick(Math.max(a, b)) / 2, light / 2);
+  const half = (a: number, b: number) => Math.max(a === 3 || b === 3 ? gap + thin / 2 : thick(Math.max(a, b)) / 2, thin / 2);
   const hHalf = half(up, down);
   const vHalf = half(left, right);
 
+  // 横向线条：上下边缘都要落在整设备像素上
+  const hRect = (x0: number, x1: number, centerY: number, t: number) => {
+    const left = snap(x0, dpr);
+    const right = snap(x1, dpr);
+    const top = snap(centerY - t / 2, dpr);
+    const h = lineWidth(t, dpr);
+    if (right > left) ctx.fillRect(left, top, right - left, h);
+  };
+  const vRect = (y0: number, y1: number, centerX: number, t: number) => {
+    const top = snap(y0, dpr);
+    const bottom = snap(y1, dpr);
+    const left = snap(centerX - t / 2, dpr);
+    const w = lineWidth(t, dpr);
+    if (bottom > top) ctx.fillRect(left, top, w, bottom - top);
+  };
   const hLine = (x0: number, x1: number, w: number) => {
     if (w === 3) {
-      ctx.fillRect(x0, cy - gap - light / 2, x1 - x0, light);
-      ctx.fillRect(x0, cy + gap - light / 2, x1 - x0, light);
-    } else ctx.fillRect(x0, cy - thick(w) / 2, x1 - x0, thick(w));
+      hRect(x0, x1, cy - gap, thin);
+      hRect(x0, x1, cy + gap, thin);
+    } else hRect(x0, x1, cy, thick(w));
   };
   const vLine = (y0: number, y1: number, w: number) => {
     if (w === 3) {
-      ctx.fillRect(cx - gap - light / 2, y0, light, y1 - y0);
-      ctx.fillRect(cx + gap - light / 2, y0, light, y1 - y0);
-    } else ctx.fillRect(cx - thick(w) / 2, y0, thick(w), y1 - y0);
+      vRect(y0, y1, cx - gap, thin);
+      vRect(y0, y1, cx + gap, thin);
+    } else vRect(y0, y1, cx, thick(w));
   };
 
   if (left) hLine(r.x, cx + (right ? 0 : hHalf), left);
@@ -154,22 +177,35 @@ function drawBox(ctx: CanvasRenderingContext2D, r: Rect, arms: string, light: nu
   if (down) vLine(cy - (up ? 0 : vHalf), r.y + r.h, down);
 }
 
-function drawDashed(ctx: CanvasRenderingContext2D, r: Rect, [dir, weight, n]: [string, number, number], light: number) {
-  const t = weight === 2 ? light * 2 : light;
+function drawDashed(ctx: CanvasRenderingContext2D, r: Rect, [dir, weight, n]: [string, number, number], light: number, dpr: number) {
+  const t = lineWidth(weight === 2 ? light * 2 : light, dpr);
   const len = dir === "h" ? r.w : r.h;
   const seg = len / n;
   const dash = seg * 0.6;
+  const cx = snap(r.x + r.w / 2, dpr);
+  const cy = snap(r.y + r.h / 2, dpr);
+  const top = snap(cy - t / 2, dpr);
+  const left = snap(cx - t / 2, dpr);
   for (let i = 0; i < n; i++) {
     const s = i * seg + (seg - dash) / 2;
-    if (dir === "h") ctx.fillRect(r.x + s, r.y + Math.floor(r.h / 2) - t / 2, dash, t);
-    else ctx.fillRect(r.x + Math.floor(r.w / 2) - t / 2, r.y + s, t, dash);
+    if (dir === "h") {
+      const x0 = snap(r.x + s, dpr);
+      const x1 = snap(r.x + s + dash, dpr);
+      if (x1 > x0) ctx.fillRect(x0, top, x1 - x0, t);
+    } else {
+      const y0 = snap(r.y + s, dpr);
+      const y1 = snap(r.y + s + dash, dpr);
+      if (y1 > y0) ctx.fillRect(left, y0, t, y1 - y0);
+    }
   }
 }
 
 /** ╭╮╯╰ 圆角。 */
-function drawArc(ctx: CanvasRenderingContext2D, r: Rect, cp: number, light: number) {
-  const cx = r.x + Math.floor(r.w / 2);
-  const cy = r.y + Math.floor(r.h / 2);
+function drawArc(ctx: CanvasRenderingContext2D, r: Rect, cp: number, light: number, dpr: number) {
+  const lw = lineWidth(light, dpr);
+  // 弧线与直线段共用同一条中心线，接缝处才不会有错位
+  const cx = snap(snap(r.x + r.w / 2, dpr) - lw / 2, dpr) + lw / 2;
+  const cy = snap(snap(r.y + r.h / 2, dpr) - lw / 2, dpr) + lw / 2;
   const rad = Math.min(r.w, r.h) / 2;
   // 竖线端点 vy 与横线端点 hx：╭ 下右，╮ 下左，╯ 上左，╰ 上右
   const vy = cp === 0x256d || cp === 0x256e ? r.y + r.h : r.y;
@@ -177,7 +213,7 @@ function drawArc(ctx: CanvasRenderingContext2D, r: Rect, cp: number, light: numb
   const sy = Math.sign(vy - cy);
   const sx = Math.sign(hx - cx);
   ctx.save();
-  ctx.lineWidth = light;
+  ctx.lineWidth = lw;
   ctx.strokeStyle = ctx.fillStyle;
   ctx.beginPath();
   ctx.moveTo(cx, vy);
@@ -188,9 +224,9 @@ function drawArc(ctx: CanvasRenderingContext2D, r: Rect, cp: number, light: numb
   ctx.restore();
 }
 
-function drawDiagonal(ctx: CanvasRenderingContext2D, r: Rect, cp: number, light: number) {
+function drawDiagonal(ctx: CanvasRenderingContext2D, r: Rect, cp: number, light: number, dpr: number) {
   ctx.save();
-  ctx.lineWidth = light;
+  ctx.lineWidth = lineWidth(light, dpr);
   ctx.strokeStyle = ctx.fillStyle;
   ctx.beginPath();
   if (cp === 0x2571 || cp === 0x2573) {
@@ -243,7 +279,7 @@ function drawBlock(ctx: CanvasRenderingContext2D, r: Rect, cp: number, dpr: numb
 }
 
 /** Powerline 箭头与半圆（U+E0B0–E0BF），填满整个格子，与相邻背景无缝衔接。 */
-function drawPowerline(ctx: CanvasRenderingContext2D, r: Rect, cp: number, light: number): boolean {
+function drawPowerline(ctx: CanvasRenderingContext2D, r: Rect, cp: number, light: number, dpr: number): boolean {
   const { x, y, w, h } = r;
   const cy = y + h / 2;
   const L = x;
@@ -268,7 +304,7 @@ function drawPowerline(ctx: CanvasRenderingContext2D, r: Rect, cp: number, light
 
   ctx.save();
   ctx.strokeStyle = ctx.fillStyle;
-  ctx.lineWidth = light;
+  ctx.lineWidth = lineWidth(light, dpr);
   const up = -Math.PI / 2;
   const down = Math.PI / 2;
   switch (cp) {
@@ -314,12 +350,12 @@ function drawSpecial(r: Renderer, cell: Cell, col: number, row: number): boolean
   applyForeground(r, cell, col, row);
   if (cell.flags & CellFlags.FAINT) ctx.globalAlpha = 0.5;
   let done = true;
-  if (BOX[cp]) drawBox(ctx, rect, BOX[cp]!, light);
-  else if (DASHED[cp]) drawDashed(ctx, rect, DASHED[cp]!, light);
-  else if (cp >= 0x256d && cp <= 0x2570) drawArc(ctx, rect, cp, light);
-  else if (cp >= 0x2571 && cp <= 0x2573) drawDiagonal(ctx, rect, cp, light);
+  if (BOX[cp]) drawBox(ctx, rect, BOX[cp]!, light, dpr);
+  else if (DASHED[cp]) drawDashed(ctx, rect, DASHED[cp]!, light, dpr);
+  else if (cp >= 0x256d && cp <= 0x2570) drawArc(ctx, rect, cp, light, dpr);
+  else if (cp >= 0x2571 && cp <= 0x2573) drawDiagonal(ctx, rect, cp, light, dpr);
   else if (cp >= 0x2580 && cp <= 0x259f) done = drawBlock(ctx, rect, cp, dpr);
-  else done = drawPowerline(ctx, rect, cp, light);
+  else done = drawPowerline(ctx, rect, cp, light, dpr);
   ctx.restore();
   return done;
 }
