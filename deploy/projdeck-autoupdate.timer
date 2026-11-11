@@ -1,0 +1,10 @@
+[Unit]
+Description=每 5 分钟检查一次 projdeck 更新
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

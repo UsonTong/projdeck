@@ -1,0 +1,6 @@
+[Unit]
+Description=projdeck 自动更新（从 GitHub Release 拉取网页和安卓 App）
+
+[Service]
+Type=oneshot
+ExecStart=%h/Repositories/projdeck/deploy/autoupdate.sh
