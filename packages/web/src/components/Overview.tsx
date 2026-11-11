@@ -2,7 +2,6 @@ import type { AgentKind, ArchivedSession, CcSwitchStatus, Overview, ProjectView,
 import {
   ArchiveIcon,
   ArchiveRestoreIcon,
-  ChevronDownIcon,
   ArrowRightLeftIcon,
   SmartphoneIcon,
   FolderInputIcon,
@@ -426,14 +425,8 @@ function ProjectGroup(props: {
             </div>
             {/* 新开会话：直接点图标，不用下拉菜单 */}
             <div className="flex shrink-0 items-center">
-              <IconAction label="新开 agent（选择类型）" onClick={() => setPickingAgent(true)}>
-                <span className="flex items-center gap-0.5">
-                  <AgentIcon kind={availableAgents.includes(project.defaultAgent) ? project.defaultAgent : availableAgents[0]!} size="xs" />
-                  <ChevronDownIcon className="size-3 text-muted-foreground" />
-                </span>
-              </IconAction>
-              <IconAction label="新开临时终端" onClick={() => void start("shell")}>
-                <AgentIcon kind="shell" size="xs" />
+              <IconAction label="新开会话" onClick={() => setPickingAgent(true)}>
+                <PlusIcon />
               </IconAction>
               <IconAction label="文件" onClick={() => openFiles(project.id)} className={props.filesOpen ? "bg-accent" : undefined}>
                 <FolderOpenIcon />
@@ -492,17 +485,19 @@ function AgentPickerDialog(props: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   agents: AgentKind[];
-  onPick: (kind: AgentKind) => void;
+  onPick: (kind: SessionKind) => void;
 }) {
+  // 临时终端也在这个选择框里，不单独放一个按钮
+  const kinds: SessionKind[] = [...props.agents, "shell"];
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>新开 agent</DialogTitle>
-          <DialogDescription>选择要启动的 agent。临时终端用旁边的终端按钮。</DialogDescription>
+          <DialogTitle>新开会话</DialogTitle>
+          <DialogDescription>选择要启动的 agent，或开一个临时终端。</DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-2 gap-2">
-          {props.agents.map((k) => (
+          {kinds.map((k) => (
             <Button key={k} variant="outline" className="justify-start gap-2" onClick={() => props.onPick(k)}>
               <AgentIcon kind={k} size="sm" />
               {KIND_LABEL[k]}
@@ -802,18 +797,12 @@ function UnassignedTab({ sessions, activePane }: { sessions: Session[]; activePa
       fail(err);
     }
   };
-  // 新开会话：一个 agent 选择按钮 + 一个终端按钮，主目录里启动
+  // 新开会话：一个 + 按钮，弹出 agent / 终端选择框
   const available = AGENT_KINDS.filter((k) => k !== "harness" || overview?.harness?.configured);
   const starters = (
     <div className="flex shrink-0 items-center">
-      <IconAction label="新开 agent（选择类型）" onClick={() => setPickingAgent(true)}>
-        <span className="flex items-center gap-0.5">
-          <AgentIcon kind={available[0]!} size="xs" />
-          <ChevronDownIcon className="size-3 text-muted-foreground" />
-        </span>
-      </IconAction>
-      <IconAction label="新开终端（在主目录）" onClick={() => void start("shell")}>
-        <AgentIcon kind="shell" size="xs" />
+      <IconAction label="新开会话" onClick={() => setPickingAgent(true)}>
+        <PlusIcon />
       </IconAction>
     </div>
   );
