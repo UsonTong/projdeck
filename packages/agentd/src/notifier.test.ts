@@ -80,3 +80,16 @@ test("关掉通知的项目不通知", async () => {
   await tick();
   assert.equal(sent.length, 0);
 });
+
+test("DeepSeek Harness 完成（working → idle）也通知，因为它没有 done 状态", async () => {
+  const harness = (status: Session["status"]) => ({ ...session("dsh", status), kind: "harness" as const });
+  const { sent, tick } = setup([
+    { unassigned: [harness("working")] },
+    { unassigned: [harness("idle")] },
+  ]);
+  await tick();
+  assert.equal(sent.length, 0); // 第一次看到 working，不通知
+  await tick();
+  assert.equal(sent.length, 1);
+  assert.match(sent[0]!.title, /DeepSeek 完成了/);
+});

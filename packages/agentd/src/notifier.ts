@@ -77,7 +77,9 @@ export class Notifier {
         this.prev.set(s.terminalId, s.status);
         if (before === undefined || before === s.status) continue; // 第一次看到不通知（agentd 刚启动）
         if (project && muted.has(project)) continue;
-        if (s.status === "done" && before === "working") void this.notifyDone(s, projectName);
+        // herdr 的会话完成后是 done；DeepSeek Harness 的会话模型没有 done，完成时是 working → idle
+        const finished = s.status === "done" || (s.kind === "harness" && s.status === "idle");
+        if (finished && before === "working") void this.notifyDone(s, projectName);
         if (s.status === "blocked") this.scheduleBlocked(s, projectName);
       }
       for (const id of this.prev.keys()) if (!alive.has(id)) this.prev.delete(id);
