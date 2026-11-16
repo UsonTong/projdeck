@@ -25,6 +25,7 @@ import { isTouchDevice } from "@/lib/swipe";
  * 格子尺寸也会按回退字体算错。
  */
 let ready: Promise<void> | null = null;
+// 失败时清掉缓存的 promise，重试时会重新加载（弱网下 WASM 可能一次没取下来，不能永远停在空白）
 const ensureInit = () =>
   (ready ??= Promise.all([
     init(),
@@ -32,7 +33,7 @@ const ensureInit = () =>
       document.fonts.load(f).catch(() => []),
     ),
     document.fonts.load('16px "Symbols Nerd Font Mono"', "\ue0b6").catch(() => []),
-  ]).then(() => undefined));
+  ]).then(() => undefined, (err) => { ready = null; throw err; }));
 
 /** 切到后台超过这么久就断开 attach，让电脑上的 pane 恢复原尺寸。 */
 const BACKGROUND_DETACH_MS = 15_000;
@@ -130,6 +131,8 @@ export const GhosttyTerminal = forwardRef<TerminalHandle, Props>(function Ghostt
   const [painted, setPainted] = useState(false);
   const [error, setError] = useState("");
   const [reconnectTick, setReconnectTick] = useState(0);
+  /** 重新挂载终端（引擎加载失败后重试用）。 */
+  const [mountTick, setMountTick] = useState(0);
   // 未连接状态持续一会儿才显示覆盖层：改尺寸、切回前台等短暂重连不闪「已断开」
   const [overlay, setOverlay] = useState(false);
   useEffect(() => {
@@ -196,7 +199,7 @@ export const GhosttyTerminal = forwardRef<TerminalHandle, Props>(function Ghostt
     termRef.current?.focus();
   };
 
-  // 创建终端（只做一次）
+  // 创建终端（首次挂载；引擎加载失败后重试会增加 mountTick 重新来一次）
   useEffect(() => {
     let disposed = false;
     let fit: FitAddon | undefined;
@@ -267,6 +270,10 @@ export const GhosttyTerminal = forwardRef<TerminalHandle, Props>(function Ghostt
         if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ t: "r", c: cols, r: rows }));
       });
       setReconnectTick((n) => n + 1); // 终端就绪后建立连接
+    }).catch((err: unknown) => {
+      if (disposed) return;
+      setError(`终端引擎加载失败：${(err as Error)?.message ?? String(err)}`);
+      setStatus("error");
     });
     return () => {
       disposed = true;
@@ -275,7 +282,7 @@ export const GhosttyTerminal = forwardRef<TerminalHandle, Props>(function Ghostt
       termRef.current?.dispose();
       termRef.current = null;
     };
-  }, []);
+  }, [mountTick]);
 
   /**
    * 跟随电脑尺寸：行列数固定为电脑上的，字号缩小到整个终端能放进容器（不超过设定的字号）。
@@ -336,9 +343,21 @@ export const GhosttyTerminal = forwardRef<TerminalHandle, Props>(function Ghostt
     // herdr 在 attach 时会完整重绘。旧画面先留着，等新连接的第一段输出到了再清，避免重连时闪一下空白
     let firstChunk = true;
 
-    ws.onopen = () => setStatus("open");
+    // 连上了却迟迟收不到画面（弱网、attach 失败等）：提示并允许重试
+    let stall: ReturnType<typeof setTimeout> | undefined;
+    ws.onopen = () => {
+      setStatus("open");
+      stall = setTimeout(() => {
+        if (ws.readyState !== WebSocket.OPEN) return;
+        intentional = true;
+        setError("终端没有收到画面，可能是网络或终端连接有问题。");
+        setStatus("error");
+        ws.close();
+      }, 15_000);
+    };
     ws.onmessage = (ev) => {
       if (ev.data instanceof ArrayBuffer) {
+        clearTimeout(stall);
         if (firstChunk) {
           firstChunk = false;
           term.reset();
@@ -409,6 +428,7 @@ export const GhosttyTerminal = forwardRef<TerminalHandle, Props>(function Ghostt
 
     return () => {
       intentional = true;
+      clearTimeout(stall);
       clearTimeout(hiddenTimer);
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("focus", reportActive);
@@ -569,7 +589,7 @@ export const GhosttyTerminal = forwardRef<TerminalHandle, Props>(function Ghostt
                 <>
                   <TriangleAlertIcon className="size-5 text-destructive" />
                   <p className="max-w-sm">{error}</p>
-                  <Button variant="outline" size="sm" onClick={() => setReconnectTick((n) => n + 1)}>
+                  <Button variant="outline" size="sm" onClick={() => { setError(""); setStatus("connecting"); setReconnectTick((n) => n + 1); setMountTick((n) => n + 1); }}>
                     <RotateCwIcon data-icon="inline-start" />
                     重试
                   </Button>

@@ -70,8 +70,17 @@ class TerminalWebViewFactory(private val activity: Activity) : PlatformViewFacto
                         // 网页和 WASM 已经启动好：只切换 hash，终端页按新的 pane 重新连接
                         attach(reusable.web, loaded = true)
                         reusable.web.evaluateJavascript("location.replace(${JSONObject.quote(route(paneId))})", null)
+                    } else if (reusable != null) {
+                        // 上次还没加载完就被关掉：保留这个仍在加载的 WebView，按新地址继续加载。
+                        // 以前这里会销毁重建，弱网下每次打开都在半路重新开始，永远打不开终端。
+                        attach(reusable.web, loaded = false)
+                        HarnessWebActivity.authenticate(activity, base, params?.get("key") as? String) { origin ->
+                            if (disposed || web !== reusable.web) return@authenticate
+                            if (origin == null) errorView("无法认证终端，请检查连接")
+                            else reusable.web.loadUrl("$origin/${route(paneId)}")
+                        }
                     } else {
-                        val browser = reusable?.web ?: WebView(context)
+                        val browser = WebView(context)
                         attach(browser, loaded = false)
                         HarnessWebActivity.authenticate(activity, base, params?.get("key") as? String) { origin ->
                             if (disposed || web !== browser) return@authenticate
@@ -125,15 +134,11 @@ class TerminalWebViewFactory(private val activity: Activity) : PlatformViewFacto
             val browser = web ?: return
             web = null
             root.removeAllViews()
-            if (!pageLoaded) {
-                // 还没加载完的页面不值得留：直接销毁
-                browser.destroyQuietly()
-                return
-            }
-            // 离开终端：断开 attach，电脑上的 pane 立刻恢复尺寸；网页本身留着下次用
-            browser.evaluateJavascript("location.replace('#/idle')", null)
+            // 还没加载完的页面也留着继续在后台加载：弱网下用户常常等不及就返回，
+            // 下次打开时能接着用，而不是从头再来一遍。
+            if (pageLoaded) browser.evaluateJavascript("location.replace('#/idle')", null)
             cached?.web?.takeIf { it !== browser }?.destroyQuietly()
-            cached = Cached(origin ?: "", browser, true)
+            cached = Cached(origin ?: "", browser, pageLoaded)
         }
     }
 }
