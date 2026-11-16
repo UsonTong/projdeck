@@ -24,17 +24,20 @@ const ctrlKey = (letter: string, hint: string): BarKey => ({
 });
 const char = (c: string): BarKey => ({ id: c, label: c, title: c, seq: () => c });
 
-/** 可以放进快捷键条的键，按这个顺序显示。 */
+/**
+ * 可以放进快捷键条的键，按这个顺序显示。
+ * 回车和 Esc 放最前面：确认选项、退出 TUI 提示时最常用，窄屏手机上也能一眼看到，不用横向滚动。
+ */
 export const BAR_KEYS: BarKey[] = [
+  { id: "enter", label: "⏎", title: "回车（确认选项）", seq: () => "\r" },
+  { id: "esc", label: "esc", title: "Esc（Claude / Codex：打断 / 退出提示）", seq: () => "\x1b" },
   { id: "ctrl", label: "ctrl", title: "Ctrl：下一个输入的字母按 Ctrl 组合发送" },
-  { id: "esc", label: "esc", title: "Esc（Claude / Codex：打断）", seq: () => "\x1b" },
-  { id: "tab", label: "tab", title: "Tab", seq: () => "\t" },
   { id: "stab", label: "⇧tab", title: "Shift+Tab（切换 Claude 模式）", seq: () => "\x1b[Z" },
+  { id: "tab", label: "tab", title: "Tab", seq: () => "\t" },
   { id: "up", label: "↑", title: "上", seq: arrow("A"), repeat: true },
   { id: "down", label: "↓", title: "下", seq: arrow("B"), repeat: true },
   { id: "left", label: "←", title: "左", seq: arrow("D"), repeat: true },
   { id: "right", label: "→", title: "右", seq: arrow("C"), repeat: true },
-  { id: "enter", label: "⏎", title: "回车（确认选项）", seq: () => "\r" },
   { id: "home", label: "home", title: "Home", seq: () => "\x1b[H" },
   { id: "end", label: "end", title: "End", seq: () => "\x1b[F" },
   { id: "pgup", label: "pgup", title: "Page Up", seq: () => "\x1b[5~", repeat: true },
@@ -49,7 +52,7 @@ export const BAR_KEYS: BarKey[] = [
   ...["/", "|", "~", "-", "_", "@", "!", "#", "*", "`", "\\", "$", "&", ">", "<", "=", ":"].map(char),
 ];
 
-export const DEFAULT_BAR_KEYS = ["ctrl", "esc", "tab", "stab", "up", "down", "left", "right", "enter", "^C", "/", "|", "~"];
+export const DEFAULT_BAR_KEYS = ["enter", "esc", "ctrl", "stab", "tab", "up", "down", "left", "right", "^C", "/", "|", "~"];
 
 const PREF = "keyBar";
 

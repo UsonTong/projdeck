@@ -85,7 +85,7 @@ export class TerminalBridge {
 
     const existing = this.shared.get(terminalId);
     if (existing) {
-      this.join(existing, ws, paneId);
+      this.join(existing, ws, paneId, cols, rows, sizing);
       return;
     }
 
@@ -194,8 +194,21 @@ export class TerminalBridge {
   }
 
   /** 第二个及之后的网页/手机视图：复用同一条 attach，并补当前屏幕。 */
-  private join(shared: Shared, ws: WebSocket, paneId: string): void {
+  private join(
+    shared: Shared,
+    ws: WebSocket,
+    paneId: string,
+    cols: number,
+    rows: number,
+    sizing: TerminalSizing,
+  ): void {
     if (ws.readyState !== ws.OPEN) return;
+    // 「适配网页」的视图（手机纯终端页）加入时，必须把自己的行列数应用到 PTY：
+    // 否则程序仍按先建立的宽屏视图排版，手机按自己的窄网格渲染，画面会错位、右侧出现残影。
+    if (sizing === "fit") {
+      shared.web = { cols: clamp(cols, 20, 500), rows: clamp(rows, 5, 200) };
+      if (!shared.follow) shared.term.resize(shared.web.cols, shared.web.rows);
+    }
     this.control(ws, { t: "size", follow: shared.follow });
     this.bind(shared, ws, shared.web.cols, shared.web.rows);
     void this.service

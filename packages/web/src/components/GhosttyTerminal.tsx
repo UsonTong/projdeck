@@ -347,6 +347,8 @@ export const GhosttyTerminal = forwardRef<TerminalHandle, Props>(function Ghostt
     let stall: ReturnType<typeof setTimeout> | undefined;
     ws.onopen = () => {
       setStatus("open");
+      // 连上就把自己的行列数告诉服务端：加入已有的共享 attach 时，保证 PTY 与自己的网格一致
+      ws.send(JSON.stringify({ t: "r", c: term.cols, r: term.rows }));
       stall = setTimeout(() => {
         if (ws.readyState !== WebSocket.OPEN) return;
         intentional = true;
