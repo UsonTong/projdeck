@@ -54,23 +54,23 @@ export function ProjectSettingsDialog(props: { project: ProjectView; open: boole
               onValueChange={(v) => v && void api.updateProject(project.id, { defaultAgent: v as AgentKind }).catch(fail)}
               className="w-full flex-wrap"
             >
-              <ToggleGroupItem value="claude" className="flex-1 gap-2">
+              <ToggleGroupItem value="claude" className="flex-1 basis-[30%] min-w-0 gap-1.5">
                 <AgentIcon kind="claude" size="xs" />
                 Claude
               </ToggleGroupItem>
-              <ToggleGroupItem value="codex" className="flex-1 gap-2">
+              <ToggleGroupItem value="codex" className="flex-1 basis-[30%] min-w-0 gap-1.5">
                 <AgentIcon kind="codex" size="xs" />
                 Codex
               </ToggleGroupItem>
-              <ToggleGroupItem value="pi" className="flex-1 gap-2">
+              <ToggleGroupItem value="pi" className="flex-1 basis-[30%] min-w-0 gap-1.5">
                 <AgentIcon kind="pi" size="xs" />
                 Pi
               </ToggleGroupItem>
-              <ToggleGroupItem value="agy" className="flex-1 gap-2">
+              <ToggleGroupItem value="agy" className="flex-1 basis-[30%] min-w-0 gap-1.5">
                 <AgentIcon kind="agy" size="xs" />
                 Antigravity
               </ToggleGroupItem>
-              <ToggleGroupItem value="harness" className="flex-1 gap-2">
+              <ToggleGroupItem value="harness" className="flex-1 basis-[30%] min-w-0 gap-1.5">
                 <AgentIcon kind="harness" size="xs" />
                 DeepSeek
               </ToggleGroupItem>
