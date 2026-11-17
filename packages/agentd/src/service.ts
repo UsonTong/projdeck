@@ -46,6 +46,13 @@ function cleanTitle(title: string | undefined): string {
   return (title ?? "").replace(/^[^\p{L}\p{N}~/.]+/u, "").trim();
 }
 
+/** 会话标题：agy 的命令行标题没有可读信息，退回目录名。 */
+function ayTitleFor(raw: string | undefined, kind: SessionKind, fallback: string): string {
+  const title = cleanTitle(raw);
+  if (kind === "agy" && /^agy\b/i.test(title)) return fallback;
+  return title || fallback;
+}
+
 function expandHome(p: string): string {
   return p === "~" ? homedir() : p.startsWith("~/") ? join(homedir(), p.slice(2)) : p;
 }
@@ -59,6 +66,15 @@ interface Snapshot {
 /** 会话最后活动的时间：对话记录文件最后修改的时间（每条新消息都会写入）。 */
 function lastActivity(kind: SessionKind, conversationId: string | null, cwd: string, rollout?: CodexRollout): number | null {
   if (kind === "codex") return rollout?.mtimeMs ?? null;
+  // Antigravity：会话库是 ~/.gemini/antigravity-cli/conversations/<id>.db，修改时间即最后活动
+  if (kind === "agy") {
+    if (!conversationId) return null;
+    try {
+      return statSync(join(homedir(), ".gemini", "antigravity-cli", "conversations", `${conversationId}.db`)).mtimeMs;
+    } catch {
+      return null;
+    }
+  }
   if (kind === "pi") return conversationId ? (findPiSession(cwd, conversationId)?.mtimeMs ?? null) : null;
   if (kind !== "claude" || !conversationId) return null;
   const file = findClaudeTranscript(cwd, conversationId);
@@ -212,12 +228,19 @@ export class ProjdeckService {
     const workspaceNumber = new Map(workspaces.map((w) => [w.workspace_id, w.number]));
     for (const pane of panes) {
       const agent = agentByPane.get(pane.pane_id);
-      const kind: SessionKind = agent?.agent === "claude" || agent?.agent === "codex" || agent?.agent === "pi" ? agent.agent : "shell";
+      const agentKind = agent?.agent;
+      const kind: SessionKind =
+        agentKind === "claude" || agentKind === "codex" || agentKind === "pi" || agentKind === "agy" ? agentKind : "shell";
       let conversationId: string | null = null;
       let rollout: CodexRollout | undefined;
       if (kind === "claude") conversationId = agent?.agent_session?.value ?? null;
       // pi：herdr 报的是会话文件的路径（文件在第一条消息之后才出现），取出其中的会话 id
       if (kind === "pi") conversationId = piSessionId(agent?.agent_session?.value);
+      // Antigravity：herdr 暂不提供 agent_session，会话 id 出现在终端标题里（agy --conversation=<uuid>）
+      if (kind === "agy") {
+        const text = `${agent?.terminal_title_stripped ?? ""} ${pane.terminal_title ?? ""}`;
+        conversationId = /--conversation[= ]([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i.exec(text)?.[1] ?? null;
+      }
       if (kind === "codex") {
         const override = this.store.state.codexOverrides[pane.terminal_id];
         rollout = override ? (await this.codexRollouts()).find((r) => r.threadId === override) : codexMatches.get(pane.terminal_id);
@@ -228,8 +251,11 @@ export class ProjdeckService {
         terminalId: pane.terminal_id,
         workspaceId: pane.workspace_id,
         kind,
+        // Antigravity 暂时没有可解析的对话记录：只提供终端，不显示「对话」视图
+        ...(kind === "agy" ? { capabilities: { terminal: true, chat: false, keys: true } } : {}),
         status: kind === "shell" ? "unknown" : this.seenStatus(pane.terminal_id, agent?.agent_status ?? pane.agent_status),
-        title: pane.label || cleanTitle(agent?.terminal_title_stripped ?? pane.terminal_title_stripped) || basename(pane.cwd),
+        // agy 的终端标题就是启动命令行（agy --conversation=…），不适合当会话名
+        title: pane.label || ayTitleFor(agent?.terminal_title_stripped ?? pane.terminal_title_stripped, kind, basename(pane.cwd)),
         cwd: pane.cwd,
         conversationId,
         hidden: this.store.isHidden(pane.terminal_id, conversationId),
@@ -451,7 +477,7 @@ export class ProjdeckService {
     await this.herdr.startAgent(paneId, kind, name, [...extraArgs, ...(project?.agentArgs[kind] ?? defaultArgs[kind])]);
     // 项目目录是用户主动新建或导入的，自动通过「信任此文件夹」确认；后台进行，不阻塞请求
     // （其他目录由设置里的「自动信任文件夹」处理）
-    if (project && kind !== "pi") void acceptTrustPrompt(this.herdr, paneId).catch(() => {});
+    if (project && kind !== "pi" && kind !== "agy") void acceptTrustPrompt(this.herdr, paneId).catch(() => {});
   }
 
   /**
@@ -622,12 +648,13 @@ export class ProjdeckService {
   async archive(paneId: string): Promise<ArchivedSession> {
     const { session, projectId } = await this.lookup(paneId);
     if (session.kind === "shell") throw httpError(400, "临时终端没有对话可归档，请直接关闭");
-    if (!session.conversationId) throw httpError(409, "找不到该会话的对话 ID，无法归档后恢复");
+    // Antigravity 的会话 id 可能拿不到：仍然允许归档，恢复时用 agy --continue
+    if (!session.conversationId && session.kind !== "agy") throw httpError(409, "找不到该会话的对话 ID，无法归档后恢复");
     const item: ArchivedSession = {
-      id: `${Date.now().toString(36)}-${session.conversationId.slice(0, 8)}`,
+      id: `${Date.now().toString(36)}-${session.conversationId?.slice(0, 8) || "agy"}`,
       projectId,
       kind: session.kind,
-      conversationId: session.conversationId,
+      conversationId: session.conversationId ?? "",
       title: session.title,
       cwd: session.cwd,
       archivedAt: new Date().toISOString(),
@@ -666,7 +693,10 @@ export class ProjdeckService {
     const paneId = await this.openPane(project, existsSync(item.cwd) ? item.cwd : (project?.path ?? homedir()));
     if (project) this.store.setSticky(await this.terminalIdOf(paneId), project.id);
     const resumeArgs =
-      item.kind === "claude" ? ["--resume", item.conversationId] : item.kind === "pi" ? ["--session", item.conversationId] : ["resume", item.conversationId];
+      item.kind === "claude" ? ["--resume", item.conversationId]
+      : item.kind === "pi" ? ["--session", item.conversationId]
+      : item.kind === "agy" ? (item.conversationId ? ["--conversation", item.conversationId] : ["--continue"])
+      : ["resume", item.conversationId];
     await this.launchAgent(paneId, project, item.kind, resumeArgs);
     this.store.archive = this.store.archive.filter((a) => a.id !== archiveId);
     this.store.saveArchive();

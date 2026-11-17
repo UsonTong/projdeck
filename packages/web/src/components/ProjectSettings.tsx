@@ -52,7 +52,7 @@ export function ProjectSettingsDialog(props: { project: ProjectView; open: boole
               variant="outline"
               value={project.defaultAgent}
               onValueChange={(v) => v && void api.updateProject(project.id, { defaultAgent: v as AgentKind }).catch(fail)}
-              className="w-full"
+              className="w-full flex-wrap"
             >
               <ToggleGroupItem value="claude" className="flex-1 gap-2">
                 <AgentIcon kind="claude" size="xs" />
@@ -65,6 +65,10 @@ export function ProjectSettingsDialog(props: { project: ProjectView; open: boole
               <ToggleGroupItem value="pi" className="flex-1 gap-2">
                 <AgentIcon kind="pi" size="xs" />
                 Pi
+              </ToggleGroupItem>
+              <ToggleGroupItem value="agy" className="flex-1 gap-2">
+                <AgentIcon kind="agy" size="xs" />
+                Antigravity
               </ToggleGroupItem>
               <ToggleGroupItem value="harness" className="flex-1 gap-2">
                 <AgentIcon kind="harness" size="xs" />

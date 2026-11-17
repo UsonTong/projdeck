@@ -62,6 +62,17 @@ function CodexLogo({ className }: { className?: string }) {
   );
 }
 
+/** Antigravity（agy）的标志：深色底上一个简洁的 A，右侧带一点光点。 */
+function AntigravityLogo({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} role="img" aria-label="Antigravity" fill="none">
+      <path d="M5.2 19.2 12 4.8l6.8 14.4" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M8.6 14.2h6.8" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" />
+      <circle cx="19.3" cy="5.2" r="1.5" fill="#8b8cf0" />
+    </svg>
+  );
+}
+
 /**
  * Pi 启动时在终端里打印的标志：4×4 的三色方块，深色底。
  *   P P P .      P 粉 #f09082
@@ -113,6 +124,7 @@ export function AgentIcon({
         kind === "claude" && "bg-[#d97757]/12 text-[#d97757] ring-[#d97757]/25",
         kind === "codex" && "bg-[#0b0c10] ring-white/10",
         kind === "pi" && "bg-[#151c26] ring-white/10",
+        kind === "agy" && "bg-[#111318] text-[#e9e9f2] ring-white/10",
         kind === "harness" && "bg-[#4d6bfe]/12 ring-[#4d6bfe]/25",
         kind === "shell" && "bg-muted text-muted-foreground ring-border",
         className,
@@ -121,6 +133,7 @@ export function AgentIcon({
       {kind === "claude" && <PixelArt rows={CRAB} title="Claude" className="w-[78%]" />}
       {kind === "codex" && <CodexLogo className="w-[78%]" />}
       {kind === "pi" && <PiLogo className="w-[52%]" />}
+      {kind === "agy" && <AntigravityLogo className="w-[68%]" />}
       {kind === "harness" && <img src="/deepseek.svg" alt="DeepSeek" draggable={false} className="w-[62%]" />}
       {kind === "shell" && <SquareTerminalIcon className="size-[55%]" />}
       {plus && (

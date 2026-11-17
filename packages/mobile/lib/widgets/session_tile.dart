@@ -11,7 +11,7 @@ import '../theme.dart';
 import 'agent_icon.dart';
 import 'common.dart';
 
-const kindLabel = {SessionKind.claude: 'Claude', SessionKind.codex: 'Codex', SessionKind.pi: 'Pi', SessionKind.shell: '终端', SessionKind.harness: 'DeepSeek'};
+const kindLabel = {SessionKind.claude: 'Claude', SessionKind.codex: 'Codex', SessionKind.pi: 'Pi', SessionKind.agy: 'Antigravity', SessionKind.shell: '终端', SessionKind.harness: 'DeepSeek'};
 const statusLabel = {SessionStatus.working: '工作中', SessionStatus.blocked: '需处理', SessionStatus.done: '已完成'};
 
 Future<void> openHarnessWeb(BuildContext context) async {

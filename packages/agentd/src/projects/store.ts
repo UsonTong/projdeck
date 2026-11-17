@@ -27,6 +27,8 @@ export const defaultArgs: Record<AgentKind, string[]> = {
   codex: ["--yolo"],
   // pi 的工具本来就不需要逐个确认（相当于 yolo），唯一的确认是「信任项目里的本地文件」，--approve 直接信任
   pi: ["--approve"],
+  // Antigravity CLI（agy）：与 Claude 相同的全自动确认开关
+  agy: ["--dangerously-skip-permissions"],
   // 独立后端，不通过终端启动，不使用 CLI 参数。
   harness: [],
 };

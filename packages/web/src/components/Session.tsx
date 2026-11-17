@@ -124,9 +124,11 @@ export function SessionPage({ paneId }: { paneId: string }) {
 
   const { session, project } = found;
   const hasTerminal = session.capabilities?.terminal ?? session.kind !== "harness";
-  // 临时终端没有对话视图；不属于项目的会话没有文件视图
+  // 临时终端、以及没有可解析对话记录的 agent（如 Antigravity）没有对话视图
+  const hasChat = session.capabilities?.chat ?? session.kind !== "shell";
+  // 不属于项目的会话没有文件视图
   let view: View = chosenView ?? openedView.current ?? preferredView;
-  if (view === "bubbles" && session.kind === "shell") view = "terminal";
+  if (view === "bubbles" && !hasChat) view = "terminal";
   if (view === "files" && !project) view = "terminal";
   if (!hasTerminal && view === "terminal") view = "bubbles";
   if (session.kind !== "shell") doneLaunching(paneId);
@@ -193,7 +195,7 @@ export function SessionPage({ paneId }: { paneId: string }) {
               <SquareTerminalIcon />
               <span className="max-sm:sr-only">终端</span>
             </ToggleGroupItem>}
-            {session.kind !== "shell" && (
+            {hasChat && (
               <ToggleGroupItem value="bubbles" aria-label="对话">
                 <MessagesSquareIcon />
                 <span className="max-sm:sr-only">对话</span>

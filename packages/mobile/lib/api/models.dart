@@ -1,6 +1,6 @@
 // 与 packages/shared/src/index.ts 对应的数据结构（只取 App 用到的字段）。
 
-enum SessionKind { claude, codex, pi, shell, harness }
+enum SessionKind { claude, codex, pi, agy, shell, harness }
 
 enum SessionStatus { working, idle, blocked, done, unknown }
 

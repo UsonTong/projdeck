@@ -1,6 +1,6 @@
 // projdeck 前后端共享的 API 契约。只放类型，运行时为空。
 
-export type AgentKind = "claude" | "codex" | "pi" | "harness";
+export type AgentKind = "claude" | "codex" | "pi" | "agy" | "harness";
 export type SessionKind = AgentKind | "shell";
 export type SessionStatus = "working" | "idle" | "blocked" | "done" | "unknown";
 

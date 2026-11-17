@@ -14,7 +14,7 @@ const _pi = ['PPP.', 'B.P.', 'BB.Y', 'B..Y'];
 const _piColors = {'P': Color(0xfff09082), 'B': Color(0xff4d9abf), 'Y': Color(0xfff1be58)};
 
 /// 能新开的 agent，按默认顺序。
-const agentKinds = [SessionKind.claude, SessionKind.codex, SessionKind.pi, SessionKind.harness];
+const agentKinds = [SessionKind.claude, SessionKind.codex, SessionKind.pi, SessionKind.agy, SessionKind.harness];
 
 List<SessionKind> availableAgentKinds(Overview? overview) => [
   for (final k in agentKinds)
@@ -63,6 +63,32 @@ class _CodexPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_CodexPainter old) => false;
+}
+
+/// Antigravity（agy）的「A」标志，右侧一个紫色光点（与网页的 AgentIcon 相同，按 24×24 坐标）。
+class _AgPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final k = size.width / 24;
+    final stroke = Paint()
+      ..color = const Color(0xffe9e9f2)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.3 * k
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawPath(
+      Path()
+        ..moveTo(5.2 * k, 19.2 * k)
+        ..lineTo(12 * k, 4.8 * k)
+        ..lineTo(18.8 * k, 19.2 * k),
+      stroke,
+    );
+    canvas.drawLine(Offset(8.6 * k, 14.2 * k), Offset(15.4 * k, 14.2 * k), stroke..strokeWidth = 2.1 * k);
+    canvas.drawCircle(Offset(19.3 * k, 5.2 * k), 1.5 * k, Paint()..color = const Color(0xff8b8cf0));
+  }
+
+  @override
+  bool shouldRepaint(_AgPainter old) => false;
 }
 
 /// Pi 的三色方块标志（方格是正方形，不像别的图标按 1×2 画）。
@@ -123,6 +149,7 @@ class AgentIcon extends StatelessWidget {
       SessionKind.claude => (claudeColor.withValues(alpha: 0.12), claudeColor, claudeColor.withValues(alpha: 0.25)),
       SessionKind.codex => (_codexBg, codexColor, Colors.white.withValues(alpha: 0.10)),
       SessionKind.pi => (const Color(0xff151c26), piColor, Colors.white.withValues(alpha: 0.10)),
+      SessionKind.agy => (const Color(0xff111318), const Color(0xffe9e9f2), Colors.white.withValues(alpha: 0.10)),
       SessionKind.shell => (p.muted, p.mutedFg, p.border),
       SessionKind.harness => (const Color(0xff4d6bfe).withValues(alpha: 0.12), const Color(0xff4d6bfe), const Color(0xff4d6bfe).withValues(alpha: 0.25)),
     };
@@ -149,13 +176,15 @@ class AgentIcon extends StatelessWidget {
                 : kind == SessionKind.harness
                 ? Image.asset('assets/deepseek.png', width: size * 0.64, height: size * 0.64, fit: BoxFit.contain)
                 : SizedBox(
-                    width: size * (kind == SessionKind.claude ? 0.78 : kind == SessionKind.pi ? 0.5 : 0.7),
-                    height: kind == SessionKind.claude ? size * 0.7 : kind == SessionKind.pi ? size * 0.5 : size * 0.7,
+                    width: size * (kind == SessionKind.claude ? 0.78 : kind == SessionKind.pi ? 0.5 : kind == SessionKind.agy ? 0.68 : 0.7),
+                    height: kind == SessionKind.claude ? size * 0.7 : kind == SessionKind.pi ? size * 0.5 : kind == SessionKind.agy ? size * 0.68 : size * 0.7,
                     child: CustomPaint(
                       painter: kind == SessionKind.pi
                           ? _PiPainter()
                           : kind == SessionKind.codex
                           ? _CodexPainter()
+                          : kind == SessionKind.agy
+                          ? _AgPainter()
                           : _PixelPainter(_crab, fg),
                     ),
                   ),
